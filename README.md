@@ -60,6 +60,17 @@ Personal (login interno — elige rol + sucursal, luego correo + contraseña `li
 
 Paciente (portal externo — celular + contraseña `paciente`): `809-555-0142` (Ana Batista).
 
+## Producción
+
+- **Despliegue:** ver [DEPLOY.md](DEPLOY.md) (Docker + nginx + Supabase, paso a paso + checklist).
+- **Seguridad:** ver [SECURITY.md](SECURITY.md) (controles aplicados y recomendaciones).
+
+```bash
+# Producción (backend + web en contenedores; DB = Supabase externa)
+docker compose -f docker-compose.prod.yml run --rm server npx prisma db push   # 1ª vez
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
 ## Fases
 
 1. ✅ Auth por rol/sucursal + modelo de datos PostgreSQL
