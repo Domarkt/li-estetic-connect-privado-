@@ -62,14 +62,15 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
   );
 });
 
+const methodEnum = z.enum(['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'AZUL']);
 const billSchema = z.object({
   patientId: z.string().nullish(),
   concept: z.string().min(1),
-  amount: z.number().int().positive(),
-  method: z.enum(['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'AZUL']),
+  // Pago dividido: una o varias líneas por método que suman el total.
+  payments: z.array(z.object({ method: methodEnum, amount: z.number().int().positive() })).min(1),
   chargeItemIds: z.array(z.string()).optional(), // marca estos cargos como facturados
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
-  paymentKind: z.enum(['TOTAL', 'ABONO']).default('TOTAL'),
+  paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
 });
 
 /** Emitir recibo (cobro). Asigna No. + NCF, calcula ITBIS y marca cargos facturados. */
@@ -86,27 +87,33 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   }
   if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal para facturar' });
 
-  // Si el pago aplica a un tratamiento, ajusta el saldo (total = salda todo; abono = descuenta).
+  // Total = suma del pago dividido. Método dominante = el de mayor monto.
+  const amount = b.payments.reduce((s, p) => s + p.amount, 0);
+  if (amount <= 0) return res.status(400).json({ error: 'El monto debe ser mayor que cero' });
+  const dominant = [...b.payments].sort((x, y) => y.amount - x.amount)[0].method;
+
+  // Si el pago aplica a un tratamiento, ajusta el saldo (abono/saldo descuentan lo pagado).
   let treatmentAfter: { balance: number; perSession: number; remaining: number } | null = null;
   if (b.treatmentId) {
     const t = await prisma.treatment.findUnique({ where: { id: b.treatmentId } });
     if (t && t.patientId === b.patientId) {
-      const newBalance = Math.max(0, t.balance - b.amount);
+      const newBalance = Math.max(0, t.balance - amount);
       await prisma.treatment.update({ where: { id: t.id }, data: { balance: newBalance } });
       const remaining = Math.max(0, t.totalSessions - t.doneSessions);
       treatmentAfter = { balance: newBalance, remaining, perSession: remaining > 0 ? Math.round(newBalance / remaining) : newBalance };
     }
   }
 
-  const { subtotal, itbis } = splitItbis(b.amount);
+  const { subtotal, itbis } = splitItbis(amount);
   const { number, ncf } = await allocateSequence(branchId);
 
   const invoice = await prisma.invoice.create({
     data: {
       number, ncf, branchId, patientId: b.patientId ?? null, cashierId: req.staff!.sub,
       treatmentId: b.treatmentId ?? null, paymentKind: b.paymentKind,
-      concept: b.concept, subtotal, itbis, total: b.amount, method: b.method, status: 'PAGADA',
-      items: { create: { name: b.concept, qty: 1, unitPrice: b.amount, total: b.amount } },
+      concept: b.concept, subtotal, itbis, total: amount, method: dominant,
+      payments: b.payments, status: 'PAGADA',
+      items: { create: { name: b.concept, qty: 1, unitPrice: amount, total: amount } },
     },
     include: invoiceInclude,
   });
@@ -119,8 +126,8 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     });
   }
 
-  const msg = b.paymentKind === 'ABONO' && treatmentAfter
-    ? `Abono registrado · saldo restante ${'RD$' + treatmentAfter.balance.toLocaleString('en-US')} (${'RD$' + treatmentAfter.perSession.toLocaleString('en-US')}/sesión en ${treatmentAfter.remaining} sesiones)`
+  const msg = (b.paymentKind === 'ABONO' || b.paymentKind === 'SALDO') && treatmentAfter
+    ? `${b.paymentKind === 'SALDO' ? 'Saldo pagado' : 'Abono registrado'} · saldo restante ${'RD$' + treatmentAfter.balance.toLocaleString('en-US')}${treatmentAfter.balance > 0 ? ` (${'RD$' + treatmentAfter.perSession.toLocaleString('en-US')}/sesión en ${treatmentAfter.remaining} sesiones)` : ''}`
     : 'Recibo emitido · pago registrado en caja';
   res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg });
 });

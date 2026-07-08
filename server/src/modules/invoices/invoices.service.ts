@@ -45,7 +45,14 @@ export const invoiceInclude = {
   items: true,
 } satisfies Prisma.InvoiceInclude;
 
+function paymentLines(i: Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>) {
+  const raw = (i.payments ?? null) as { method: keyof typeof METHOD_LABEL; amount: number }[] | null;
+  if (!raw || raw.length === 0) return [{ method: METHOD_LABEL[i.method], amount: i.total }];
+  return raw.map((p) => ({ method: METHOD_LABEL[p.method], amount: p.amount }));
+}
+
 export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>) {
+  const lines = paymentLines(i);
   return {
     id: i.id,
     number: i.number,
@@ -53,7 +60,7 @@ export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeo
     date: i.issuedAt.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     branchName: i.branch.name,
     concept: i.concept,
-    method: METHOD_LABEL[i.method],
+    method: lines.length > 1 ? 'Mixto' : lines[0].method,
     total: i.total,
     status: i.status === 'PAGADA' ? 'Pagada' : i.status === 'ANULADA' ? 'Anulada' : 'Pendiente',
   };
@@ -76,6 +83,8 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     subtotal: i.subtotal,
     itbis: i.itbis,
     total: i.total,
-    method: METHOD_LABEL[i.method],
+    method: paymentLines(i).length > 1 ? 'Mixto' : METHOD_LABEL[i.method],
+    payments: paymentLines(i), // desglose para el recibo
+    paymentKind: i.paymentKind,
   };
 }

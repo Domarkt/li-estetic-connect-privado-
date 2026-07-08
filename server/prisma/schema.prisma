@@ -350,8 +350,9 @@ model Invoice {
   subtotal   Int // RD$
   itbis      Int // 18%
   total      Int
-  method     PaymentMethod
-  paymentKind String       @default("TOTAL") // TOTAL | ABONO
+  method     PaymentMethod // método dominante (para filtros/listado)
+  payments   Json? // desglose de pago dividido: [{ method, amount }]
+  paymentKind String       @default("TOTAL") // TOTAL | ABONO | SALDO
   status     InvoiceStatus @default(PAGADA)
   // DGII e-CF
   ncf        String? // secuencia NCF

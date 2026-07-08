@@ -61,7 +61,16 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, borderTop: '2px solid #1C2540', paddingTop: 10, marginTop: 8 }}>
               <span>TOTAL</span><span style={{ color: '#B31C86' }}>{fmtRD(receipt.total)}</span>
             </div>
-            <Row k="Método de pago" v={receipt.method} small mt={10} />
+            {receipt.payments && receipt.payments.length > 1 ? (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span style={{ color: '#6A7089' }}>Método de pago</span><span style={{ fontWeight: 700 }}>Mixto</span></div>
+                {receipt.payments.map((p) => (
+                  <div key={p.method} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6A7089', paddingLeft: 8 }}><span>· {p.method}</span><span>{fmtRD(p.amount)}</span></div>
+                ))}
+              </div>
+            ) : (
+              <Row k="Método de pago" v={receipt.method} small mt={10} />
+            )}
             <div style={{ textAlign: 'center', fontSize: 11, color: '#6A7089', marginTop: 20, borderTop: '1px dashed #C8CCDA', paddingTop: 12 }}>
               ¡Gracias por confiar en Li Estetic Center! 💜<br />Transformando Tu Cuerpo
             </div>

@@ -141,6 +141,8 @@ export interface Receipt {
   date: string; patient: string; concept: string;
   items: { name: string; qty: number; total: number }[];
   subtotal: number; itbis: number; total: number; method: string;
+  payments?: { method: string; amount: number }[];
+  paymentKind?: string;
 }
 
 export type Channel = 'INSTAGRAM' | 'WHATSAPP' | 'MESSENGER' | 'TIKTOK';
