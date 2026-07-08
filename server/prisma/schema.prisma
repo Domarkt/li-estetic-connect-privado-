@@ -1,0 +1,551 @@
+// Li Estetic Connect — modelo de datos
+// Multi-sucursal con aislamiento por branchId. Cubre todas las fases del handoff.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Supabase: DATABASE_URL usa el pooler (6543); DIRECT_URL la conexión directa (5432) para migraciones.
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN // Administradora (Dueña/Directora) — ve las 3 sucursales
+  RECEPCIONISTA // Recepcionista — solo su sucursal, factura
+  ESTETICISTA // Esteticista (Masajista) — solo su sucursal, parte clínica
+}
+
+enum FichaStatus {
+  PENDIENTE // ficha no completada -> paciente "Nuevo"
+  PASO1_OK // recepción completó el Paso 1, enviado a esteticista
+  COMPLETA // esteticista terminó -> paciente pasa a "Recurrente"
+}
+
+enum PatientType {
+  NUEVO
+  RECURRENTE
+}
+
+enum AppointmentStatus {
+  SIN_CONFIRMAR
+  CONFIRMADA
+  COMPLETADA
+  CANCELADA
+  REAGENDADA
+}
+
+enum CatalogKind {
+  SERVICIO
+  PAQUETE
+  COMBO
+  PRODUCTO
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+  AZUL
+}
+
+enum InvoiceStatus {
+  PENDIENTE
+  PAGADA
+  ANULADA
+}
+
+enum ReceiptSize {
+  CARTA
+  TICKET_80
+  TICKET_58
+}
+
+enum Channel {
+  INSTAGRAM
+  WHATSAPP
+  MESSENGER
+  TIKTOK
+}
+
+enum PipelineStage {
+  NUEVO_MENSAJE
+  EN_CONVERSACION
+  COTIZADO
+  CITA_AGENDADA
+  VENDIDO
+}
+
+enum PointsTier {
+  ORO
+  PLATA
+  BRONCE
+}
+
+enum PointsReason {
+  MANUAL
+  VENTA
+  PUNTUALIDAD
+  META
+  REFERIDO
+  RESENA
+  DEDUCCION
+  CANJE
+}
+
+enum ChargeItemStatus {
+  PENDIENTE_FACTURAR // cargado por esteticista, esperando recepción
+  FACTURADO
+}
+
+// ─────────────────────────────────────────────────────────────
+// SUCURSALES
+// ─────────────────────────────────────────────────────────────
+
+model Branch {
+  id        String   @id @default(cuid())
+  code      String   @unique // e1, e2, e3
+  name      String // Estética 1
+  place     String // Plaza San Vicente, 1er nivel
+  dotColor  String // color de marca de la sucursal
+  address   String // dirección impresa en el recibo
+  phone     String   @default("809-000-0000")
+  // Metas (parametrizables por Admin — Fase 6)
+  monthlyGoal    Int  @default(0)
+  dailyGoal      Int  @default(0)
+  perAsesorGoal  Int  @default(0)
+  createdAt DateTime @default(now())
+
+  users         User[]
+  patients      Patient[]
+  appointments  Appointment[]
+  invoices      Invoice[]
+  conversations Conversation[]
+  leads         Lead[]
+  chargeItems   ChargeItem[]
+  goals         BranchGoal[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// USUARIOS (personal) — Admin / Recepción / Esteticista
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  branchId     String? // ADMIN puede ser null (todas las sucursales)
+  active       Boolean  @default(true)
+  avatarColor  String   @default("#B31C86")
+  createdAt    DateTime @default(now())
+
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  // Como esteticista asignada
+  appointments    Appointment[]  @relation("TherapistAppointments")
+  clinicalRecords ClinicalRecord[] @relation("TherapistRecords")
+  invoicesIssued  Invoice[]      @relation("CashierInvoices")
+  pointsLedger    PointsEntry[]
+  redemptions     Redemption[]
+  therapistProfile TherapistProfile?
+  chargeItems     ChargeItem[]   @relation("ChargeItemCreatedBy")
+}
+
+// Perfil de desempeño de la esteticista (puntos/comisiones — Fase 6)
+model TherapistProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  points     Int      @default(0)
+  monthSales Int      @default(0) // ventas del mes (base de comisión 8%)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────
+// PACIENTES + FICHA CLÍNICA
+// ─────────────────────────────────────────────────────────────
+
+model Patient {
+  id          String      @id @default(cuid())
+  branchId    String
+  name        String
+  phone       String
+  cedula      String?
+  email       String?
+  age         Int?
+  birthDate   DateTime?
+  occupation  String?
+  address     String?
+  type        PatientType @default(NUEVO)
+  avatarColor String      @default("#B31C86")
+  createdAt   DateTime    @default(now())
+
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  clinicalRecord ClinicalRecord?
+  appointments   Appointment[]
+  invoices       Invoice[]
+  patientAccount PatientAccount?
+  chargeItems    ChargeItem[]
+  treatments     Treatment[]
+
+  @@index([branchId])
+  @@index([phone])
+}
+
+// Ficha clínica digital (una por paciente, 4 pasos divididos por rol)
+model ClinicalRecord {
+  id       String      @id @default(cuid())
+  patientId String     @unique
+  status   FichaStatus @default(PENDIENTE)
+  fichaNo  Int         @default(autoincrement())
+
+  // Paso 1 — Datos & motivo (Recepción)
+  consultDate DateTime?
+  motivos     String[] // Envejecimiento, Arrugas, Manchas, ...
+
+  // Paso 2 — Antecedentes (Esteticista)
+  antecedentes  Json? // { alergias:bool, diabetes:bool, ... }
+  ginecoObst    Json? // { embarazos, partos, abortos, lactancia }
+  quirurgicos   Json? // { implantes, cirugia, observaciones }
+
+  // Paso 3 — Medicamentos & piel (Esteticista)
+  medicamentos Json? // { asa:bool, acenocumarol:bool, ... }
+  fototipo     String? // I..VI (Fitzpatrick)
+  tallaCm      Int?
+  pesoLb       Int?
+
+  // Paso 4 — Tratamiento (Esteticista)
+  tratamiento     String?
+  controlCitas    Json? // [{n, fecha, observaciones}] x10
+  cancelPolicyAck Boolean @default(false)
+  signatureData   String? // firma (base64/svg) — slot
+
+  therapistId String?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  therapist User?   @relation("TherapistRecords", fields: [therapistId], references: [id])
+}
+
+// Tratamiento/paquete activo de un paciente (progreso de sesiones)
+model Treatment {
+  id            String   @id @default(cuid())
+  patientId     String
+  catalogItemId String?
+  name          String
+  totalSessions Int
+  doneSessions  Int      @default(0)
+  price         Int      @default(0) // valor total del paquete RD$
+  balance       Int      @default(0) // saldo pendiente RD$ (pesos enteros)
+  expiresAt     DateTime?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  invoices    Invoice[]
+
+  @@index([patientId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// CATÁLOGO — servicios / paquetes / combos / productos (Admin)
+// ─────────────────────────────────────────────────────────────
+
+model CatalogItem {
+  id        String      @id @default(cuid())
+  kind      CatalogKind
+  name      String
+  category  String?
+  price     Int // RD$ (pesos enteros)
+  sessions  Int         @default(1)
+  stock     Int? // para productos
+  tag       String? // "Ahorro RD$2,000", "Popular"
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  treatments   Treatment[]
+  chargeItems  ChargeItem[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// CITAS (agenda) + Google Calendar
+// ─────────────────────────────────────────────────────────────
+
+model Appointment {
+  id            String            @id @default(cuid())
+  branchId      String
+  patientId     String
+  therapistId   String?
+  serviceName   String
+  catalogItemId String?
+  startsAt      DateTime
+  durationMin   Int               @default(60)
+  status        AppointmentStatus @default(SIN_CONFIRMAR)
+  patientType   PatientType       @default(RECURRENTE) // marcado al agendar
+  sessionNo     Int? // sesión N del tratamiento
+  notes         String?
+  googleEventId String? // sync Google Calendar (Fase 3)
+  reminderSentAt DateTime?
+  createdAt     DateTime          @default(now())
+
+  branch      Branch  @relation(fields: [branchId], references: [id])
+  patient     Patient @relation(fields: [patientId], references: [id])
+  therapist   User?   @relation("TherapistAppointments", fields: [therapistId], references: [id])
+
+  @@index([branchId, startsAt])
+  @@index([patientId])
+}
+
+// Estado de integraciones de mensajería (WhatsApp / Meta / TikTok) — Fase Config
+model Integration {
+  id        String   @id @default(cuid())
+  kind      String // 'whatsapp' | 'meta' | 'tiktok'
+  scopeId   String   @default("global") // global o branchId
+  status    String   @default("CONNECTED") // CONNECTED | DISCONNECTED
+  mode      String   @default("demo") // demo | live
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@unique([kind, scopeId])
+}
+
+// Conexión OAuth a Google Calendar por usuario/sucursal (Fase 3)
+model CalendarConnection {
+  id           String   @id @default(cuid())
+  ownerType    String // "user" | "branch"
+  ownerId      String
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  calendarId   String   @default("primary")
+  createdAt    DateTime @default(now())
+
+  @@unique([ownerType, ownerId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// FACTURACIÓN (Recepción / Admin) — Fase 4
+// ─────────────────────────────────────────────────────────────
+
+model Invoice {
+  id         String        @id @default(cuid())
+  number     String        @unique // F-2219
+  branchId   String
+  patientId  String?
+  cashierId  String?
+  treatmentId String? // si el cobro/abono aplica a un tratamiento
+  concept    String
+  subtotal   Int // RD$
+  itbis      Int // 18%
+  total      Int
+  method     PaymentMethod
+  paymentKind String       @default("TOTAL") // TOTAL | ABONO
+  status     InvoiceStatus @default(PAGADA)
+  // DGII e-CF
+  ncf        String? // secuencia NCF
+  ecfTrackId String? // TrackId DGII
+  issuedAt   DateTime      @default(now())
+
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  patient   Patient?   @relation(fields: [patientId], references: [id])
+  cashier   User?      @relation("CashierInvoices", fields: [cashierId], references: [id])
+  treatment Treatment? @relation(fields: [treatmentId], references: [id])
+  items     InvoiceItem[]
+
+  @@index([branchId, issuedAt])
+}
+
+model InvoiceItem {
+  id        String @id @default(cuid())
+  invoiceId String
+  name      String
+  qty       Int    @default(1)
+  unitPrice Int
+  total     Int
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+// Secuencia de recibos / NCF por sucursal
+model InvoiceSequence {
+  id         String @id @default(cuid())
+  branchId   String @unique
+  lastNumber Int    @default(2218) // arranca cerca del prototipo
+  ncfType    String @default("B02") // consumidor final
+  lastNcf    Int    @default(0)
+}
+
+// Cargos que la esteticista envía a recepción para facturar (Fase 2/4)
+model ChargeItem {
+  id            String           @id @default(cuid())
+  branchId      String
+  patientId     String
+  catalogItemId String?
+  createdById   String?
+  name          String
+  price         Int
+  status        ChargeItemStatus @default(PENDIENTE_FACTURAR)
+  createdAt     DateTime         @default(now())
+
+  branch      Branch       @relation(fields: [branchId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  createdBy   User?        @relation("ChargeItemCreatedBy", fields: [createdById], references: [id])
+
+  @@index([branchId, status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// MENSAJERÍA OMNICANAL + PIPELINE — Fase 5
+// ─────────────────────────────────────────────────────────────
+
+model Conversation {
+  id           String   @id @default(cuid())
+  branchId     String
+  channel      Channel
+  externalId   String? // id del hilo en la plataforma
+  contactName  String
+  contactHandle String?
+  avatarColor  String   @default("#B31C86")
+  unread       Int      @default(0)
+  lastMessage  String?
+  lastAt       DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  messages Message[]
+
+  @@index([branchId, channel])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  fromMe         Boolean
+  body           String
+  externalId     String?
+  sentAt         DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model Lead {
+  id        String        @id @default(cuid())
+  branchId  String
+  name      String
+  summary   String?
+  stage     PipelineStage @default(NUEVO_MENSAJE)
+  channel   Channel?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, stage])
+}
+
+// ─────────────────────────────────────────────────────────────
+// PUNTOS "LÍDERES LI" + COMISIONES — Fase 6
+// ─────────────────────────────────────────────────────────────
+
+model PointsEntry {
+  id        String       @id @default(cuid())
+  userId    String
+  points    Int // + o -
+  reason    PointsReason @default(MANUAL)
+  label     String
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Regla parametrizable de ganar/perder puntos (Admin)
+model PointsRule {
+  id       String  @id @default(cuid())
+  label    String
+  points   Int // + o -
+  isEarn   Boolean // true=ganar, false=deducción
+  active   Boolean @default(true)
+  sortOrder Int    @default(0)
+}
+
+model Reward {
+  id        String  @id @default(cuid())
+  label     String
+  cost      Int // puntos
+  icon      String  @default("✦")
+  active    Boolean @default(true)
+
+  redemptions Redemption[]
+}
+
+model Redemption {
+  id        String   @id @default(cuid())
+  userId    String
+  rewardId  String
+  cost      Int
+  status    String   @default("SOLICITADO") // SOLICITADO | APROBADO | ENTREGADO
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reward Reward @relation(fields: [rewardId], references: [id])
+}
+
+// Meta mensual por sucursal (histórico parametrizable)
+model BranchGoal {
+  id       String @id @default(cuid())
+  branchId String
+  period   String // "2026-07"
+  monthly  Int
+  daily    Int
+  perAsesor Int
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, period])
+}
+
+// ─────────────────────────────────────────────────────────────
+// PORTAL DEL PACIENTE (login externo separado) — Fase 7
+// ─────────────────────────────────────────────────────────────
+
+model PatientAccount {
+  id           String   @id @default(cuid())
+  patientId    String   @unique
+  login        String   @unique // celular o cédula
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  purchaseRequests PurchaseRequest[]
+}
+
+// Solicitud de compra de paquete desde el portal (recepción gestiona)
+model PurchaseRequest {
+  id               String   @id @default(cuid())
+  patientAccountId String
+  catalogItemId    String?
+  itemName         String
+  status           String   @default("SOLICITADO") // SOLICITADO | GESTIONADO
+  createdAt        DateTime @default(now())
+
+  patientAccount PatientAccount @relation(fields: [patientAccountId], references: [id], onDelete: Cascade)
+}

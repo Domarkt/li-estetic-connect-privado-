@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --magenta: #b31c86;
+  --magenta-d: #8e1268;
+  --magenta-soft: #fbeef6;
+  --navy: #1c2540;
+  --navy-2: #28324f;
+  --navy-soft: #eef1f8;
+  --ink: #1c2540;
+  --muted: #6a7089;
+  --faint: #9aa0b4;
+  --bg: #f5f6fb;
+  --card: #ffffff;
+  --line: #e7e9f2;
+  --line-2: #eff1f7;
+  --ok: #1f9d6b;
+  --ok-soft: #e7f5ee;
+  --warn: #c9880e;
+  --warn-soft: #fbf1de;
+  --danger: #c0392b;
+  --danger-soft: #fbeae7;
+  --teal: #2c7fb8;
+  --teal-soft: #e6f0f7;
+  --r: 14px;
+  --sh: 0 1px 2px rgba(28, 37, 64, 0.06), 0 8px 24px rgba(28, 37, 64, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d9e6;
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* Impresión del recibo: solo se imprime #li-receipt */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #li-receipt,
+  #li-receipt * {
+    visibility: visible;
+  }
+  #li-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

@@ -1,0 +1,18 @@
+# Producción: backend (API) + web (nginx). La base de datos es Supabase (externa).
+services:
+  server:
+    build: ./server
+    env_file: ./server/.env
+    environment:
+      NODE_ENV: production
+    expose:
+      - "4000"
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: unless-stopped

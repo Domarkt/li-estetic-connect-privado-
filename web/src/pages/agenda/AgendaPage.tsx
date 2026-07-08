@@ -1,0 +1,223 @@
+import { useCallback, useEffect, useState } from 'react';
+import { api } from '../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
+import { useBranch } from '../../layout/BranchContext';
+import { useToast } from '../../components/Toast';
+import { fmtRD, type AgendaResponse, type Appointment, type CalendarStatus } from '../../lib/types';
+import ScheduleModal from './ScheduleModal';
+import FichaWizard from '../patients/FichaWizard';
+import CalendarView from './CalendarView';
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+export default function AgendaPage() {
+  const { staff } = useAuth();
+  const { activeBranch } = useBranch();
+  const toast = useToast();
+  const [data, setData] = useState<AgendaResponse>({ appointments: [], counters: { total: 0, confirmed: 0, pending: 0 } });
+  const [cal, setCal] = useState<CalendarStatus>({ connected: false, mode: null, googleConfigured: false });
+  const [schedOpen, setSchedOpen] = useState(false);
+  const [ficha, setFicha] = useState<{ id: string; name: string } | null>(null);
+  const [view, setView] = useState<'dia' | 'mes'>('dia');
+  const [date, setDate] = useState(todayISO());
+  const [remindFor, setRemindFor] = useState<Appointment | null>(null);
+
+  const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
+  // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
+  const canSchedule = true;
+  const isMasa = staff?.role === 'ESTETICISTA';
+  const isToday = date === todayISO();
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long' });
+
+  const load = useCallback(() => {
+    const q = new URLSearchParams();
+    q.set('date', date);
+    if (branchQuery) q.set('branch', branchQuery.split('=')[1]);
+    api.get<AgendaResponse>(`/appointments?${q.toString()}`).then(setData).catch(() => {});
+    api.get<CalendarStatus>('/calendar/status').then(setCal).catch(() => {});
+  }, [branchQuery, date]);
+
+  function shiftDate(days: number) {
+    const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
+  }
+
+  useEffect(() => { load(); }, [load]);
+
+  // Volver del OAuth de Google con ?calendar=connected
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('calendar') === 'connected') {
+      toast('Google Calendar conectado correctamente');
+      window.history.replaceState({}, '', '/app/agenda');
+      load();
+    }
+  }, [load, toast]);
+
+  async function connect() {
+    const r = await api.post<{ redirect?: string; message?: string }>('/calendar/connect');
+    if (r.redirect) { window.location.href = r.redirect; return; }
+    toast(r.message ?? 'Google Calendar conectado');
+    load();
+  }
+
+  return (
+    <div className="animate-fade">
+      {/* Toggle de vista + navegación de fecha */}
+      <div className="mb-3.5 flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-[10px] border border-line bg-bg p-1">
+          {(['dia', 'mes'] as const).map((v) => (
+            <button key={v} onClick={() => setView(v)} className="rounded-[7px] px-3.5 py-1.5 text-[12.5px] font-bold transition"
+              style={{ background: view === v ? 'var(--magenta)' : 'transparent', color: view === v ? '#fff' : 'var(--muted)' }}>
+              {v === 'dia' ? 'Día' : 'Calendario'}
+            </button>
+          ))}
+        </div>
+        {view === 'dia' && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => shiftDate(-1)} className="h-8 w-8 rounded-lg border border-line bg-card font-bold text-muted hover:border-magenta">‹</button>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12.5px] font-semibold" />
+            <button onClick={() => shiftDate(1)} className="h-8 w-8 rounded-lg border border-line bg-card font-bold text-muted hover:border-magenta">›</button>
+            {!isToday && <button onClick={() => setDate(todayISO())} className="rounded-lg border border-line bg-card px-3 py-1.5 text-[12px] font-bold text-muted hover:border-magenta">Hoy</button>}
+            <span className="text-[12.5px] font-semibold capitalize text-muted">{dateLabel}</span>
+          </div>
+        )}
+        <div className="flex-1" />
+        {canSchedule && (
+          <button onClick={() => setSchedOpen(true)} className="flex items-center gap-1.5 rounded-xl bg-magenta px-[18px] py-2 text-[13.5px] font-bold text-white">
+            <span className="text-[17px]">+</span> Agendar cita
+          </button>
+        )}
+      </div>
+
+      {view === 'mes' ? (
+        <CalendarView branchQuery={branchQuery} onPickDay={(d) => { setDate(d); setView('dia'); }} />
+      ) : (
+      <>
+      {cal.connected && (
+        <div className="mb-3.5 flex items-center gap-3 rounded-xl border px-4 py-3" style={{ background: 'var(--ok-soft)', borderColor: '#CDEBDD' }}>
+          <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md bg-white text-[13px] font-extrabold" style={{ color: '#1F9D6B' }}>G</span>
+          <div className="flex-1 text-[13px] font-bold" style={{ color: '#1F7A54' }}>
+            Google Calendar conectado · las citas se sincronizan automáticamente{cal.mode === 'demo' ? ' (modo demo)' : ''}
+          </div>
+          <span className="text-[11.5px] font-bold text-ok">● Activo</span>
+        </div>
+      )}
+
+      <div className="mb-[18px] flex gap-3.5">
+        <Counter label={isToday ? 'Citas de hoy' : 'Citas del día'} value={data.counters.total} />
+        <Counter label="Confirmadas" value={data.counters.confirmed} color="var(--ok)" />
+        <Counter label="Sin confirmar" value={data.counters.pending} color="var(--warn)" />
+        {!cal.connected && (
+          <button onClick={connect} className="flex items-center gap-2 rounded-xl border border-line bg-card px-[18px] text-[13px] font-bold text-navy hover:border-magenta">
+            <span className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-navy-soft text-[11px] font-extrabold" style={{ color: '#4285F4' }}>G</span>
+            Conectar Calendar
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-base border border-line bg-card p-2 shadow-card">
+        {data.appointments.length === 0 && <div className="py-10 text-center text-sm text-muted">No hay citas para este día. Aprovecha para gestionar pacientes.</div>}
+        {data.appointments.map((a) => (
+          <div key={a.id} className="flex items-center gap-4 rounded-[11px] px-3.5 py-3.5 hover:bg-bg">
+            <div className="w-[74px] flex-none text-right"><div className="text-sm font-extrabold">{a.time}</div></div>
+            <div className="w-[3px] self-stretch flex-none rounded" style={{ background: a.barColor }} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+                <span className="text-sm font-bold">{a.patient}</span>
+                {a.patientType === 'NUEVO'
+                  ? <span className="rounded-full bg-magenta-soft px-2 py-0.5 text-[10px] font-bold text-magenta">Cliente nuevo</span>
+                  : <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10px] font-bold text-muted">Recurrente</span>}
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: a.statusColor + '1a', color: a.statusColor }}>{a.statusLabel}</span>
+              </div>
+              <div className="mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist} · {a.branchName}</div>
+              {a.balance > 0 && (
+                <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
+                  ⚠ Saldo {fmtRD(a.balance)} · cobrar antes de atender
+                </div>
+              )}
+            </div>
+            {isMasa && (
+              <button onClick={() => setFicha({ id: a.patientId, name: a.patient })}
+                className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold"
+                style={a.fichaComplete ? { background: 'var(--magenta)', color: '#fff' } : { background: 'var(--magenta-soft)', color: 'var(--magenta)' }}>
+                {a.fichaComplete ? 'Abrir ficha' : 'Llenar ficha'}
+              </button>
+            )}
+            <button onClick={() => setRemindFor(a)} className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-muted hover:border-magenta hover:text-magenta">
+              {a.reminderSent ? 'Recordado ✓' : 'Recordar'}
+            </button>
+          </div>
+        ))}
+      </div>
+      </>
+      )}
+
+      {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
+      {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={load} />}
+      {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
+    </div>
+  );
+}
+
+const REMIND_CHANNELS = [
+  { key: 'whatsapp', label: 'WhatsApp', color: '#25D366' },
+  { key: 'correo', label: 'Correo', color: '#2C7FB8' },
+  { key: 'portal', label: 'Portal del paciente', color: '#B31C86' },
+] as const;
+
+function RemindModal({ appt, onClose, onSent }: { appt: Appointment; onClose: () => void; onSent: () => void }) {
+  const toast = useToast();
+  const [sel, setSel] = useState<Set<string>>(new Set(['whatsapp']));
+  const [busy, setBusy] = useState(false);
+  const toggle = (k: string) => { const n = new Set(sel); n.has(k) ? n.delete(k) : n.add(k); setSel(n); };
+  const all = sel.size === REMIND_CHANNELS.length;
+
+  async function send() {
+    if (!sel.size) { toast('Selecciona al menos un canal'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string; results: Record<string, string> }>(`/appointments/${appt.id}/remind`, { channels: [...sel] });
+      toast(r.message);
+      onSent();
+      onClose();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-center justify-center p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Recordar cita</div><div className="text-[12.5px] text-muted">{appt.patient} · {appt.time}</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3 px-6 py-5">
+          <div className="text-xs font-bold text-muted">¿Por qué vía quieres recordar?</div>
+          {REMIND_CHANNELS.map((c) => {
+            const on = sel.has(c.key);
+            return (
+              <button key={c.key} onClick={() => toggle(c.key)} className="flex items-center gap-3 rounded-[11px] border px-4 py-3 text-left" style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-extrabold text-white" style={{ background: c.color }}>{c.label.slice(0, 2).toUpperCase()}</span>
+                <span className="flex-1 text-[13.5px] font-bold">{c.label}</span>
+                <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>
+              </button>
+            );
+          })}
+          <button onClick={() => setSel(all ? new Set() : new Set(REMIND_CHANNELS.map((c) => c.key)))} className="text-[12.5px] font-bold text-magenta">{all ? 'Quitar todas' : 'Enviar por todas (notificación masiva)'}</button>
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+          <button onClick={send} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Enviar recordatorio</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Counter({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <div className="flex-1 rounded-xl border border-line bg-card px-[18px] py-3.5 shadow-card">
+      <div className="text-xs font-semibold text-muted">{label}</div>
+      <div className="text-[22px] font-extrabold" style={color ? { color } : undefined}>{value}</div>
+    </div>
+  );
+}

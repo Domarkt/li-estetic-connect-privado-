@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: li-estetic-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: li
+      POSTGRES_PASSWORD: li_dev_pw
+      POSTGRES_DB: li_estetic
+    ports:
+      - "5432:5432"
+    volumes:
+      - li_pgdata:/var/lib/postgresql/data
+
+volumes:
+  li_pgdata:
