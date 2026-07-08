@@ -130,6 +130,37 @@ model Branch {
   leads         Lead[]
   chargeItems   ChargeItem[]
   goals         BranchGoal[]
+  cashCloses    CashClose[]
+}
+
+// Cierre de caja diario (conteo ciego por recepción, cuadre por admin)
+model CashClose {
+  id            String   @id @default(cuid())
+  branchId      String
+  day           DateTime // fecha del cierre (00:00 local)
+  status        String   @default("ENVIADO") // ENVIADO | CUADRADO
+  // Conteo de recepción
+  denominations Json // { "2000": qty, "1000": qty, ... } efectivo
+  cardVouchers  Json // [montos de vouchers de tarjeta]
+  countedCash     Int @default(0)
+  countedCard     Int @default(0)
+  countedTransfer Int @default(0)
+  countedAzul     Int @default(0)
+  // Snapshot de lo ESPERADO según facturas del día (no visible para recepción)
+  expectedCash     Int @default(0)
+  expectedCard     Int @default(0)
+  expectedTransfer Int @default(0)
+  expectedAzul     Int @default(0)
+  notes          String?
+  submittedById  String?
+  reconciledById String?
+  reconciledAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, day])
 }
 
 // ─────────────────────────────────────────────────────────────

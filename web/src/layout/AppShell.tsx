@@ -17,6 +17,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'catalogo', label: 'Catálogo' },
     { key: 'puntos', label: 'Puntos & Comisiones' },
     { key: 'equipo', label: 'Equipo' },
+    { key: 'cierre', label: 'Cierre de caja' },
     { key: 'configuracion', label: 'Configuración' },
   ],
   RECEPCIONISTA: [
@@ -24,6 +25,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'mensajes', label: 'Mensajes', badge: 6 },
     { key: 'pacientes', label: 'Pacientes' },
     { key: 'facturacion', label: 'Cobro & Facturación' },
+    { key: 'cierre', label: 'Cierre de caja' },
     { key: 'seguimiento', label: 'Seguimiento' },
   ],
   ESTETICISTA: [
@@ -44,6 +46,7 @@ const PAGE_TITLE: Record<string, { title: string; sub: string }> = {
   puntos: { title: 'Puntos & Comisiones', sub: 'Programa Líderes LI' },
   equipo: { title: 'Equipo', sub: 'Colaboradoras y usuarios del sistema' },
   seguimiento: { title: 'Seguimiento', sub: 'Pipeline de ventas' },
+  cierre: { title: 'Cierre de caja', sub: 'Conteo diario y cuadre por sucursal' },
   configuracion: { title: 'Configuración', sub: 'Metas, reglas de puntos y premios' },
 };
 

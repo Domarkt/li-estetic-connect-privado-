@@ -201,3 +201,20 @@ export interface PortalPackages {
 export interface TeamCollaborator { id: string; name: string; role: string; branch: string; avatarColor: string; points: number; sales: number; commission: number; attendance: string }
 export interface SystemUser { id: string; name: string; email: string; role: string; branch: string; avatarColor: string; active: boolean }
 export interface TeamResponse { collaborators: TeamCollaborator[]; systemUsers: SystemUser[] }
+
+// ── Cierre de caja ──
+export interface CashCloseToday {
+  denominations: number[]; // denominaciones disponibles (RD$)
+  status: string | null;
+  submitted: boolean;
+  counted: { denominations: Record<string, number>; cardVouchers: number[]; countedCash: number; countedCard: number; countedTransfer: number; countedAzul: number } | null;
+}
+export interface CashCloseAdminRow {
+  closeId: string | null;
+  branchId: string; branchName: string; dotColor: string;
+  status: 'PENDIENTE' | 'ENVIADO' | 'CUADRADO';
+  methods: { method: string; expected: number; counted: number | null; diff: number | null }[];
+  totalExpected: number; totalCounted: number | null; totalDiff: number | null;
+  cardVouchers: number[] | null; notes: string | null;
+}
+export interface CashCloseAdminView { date: string; branches: CashCloseAdminRow[] }

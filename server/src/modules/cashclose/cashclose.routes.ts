@@ -1,0 +1,155 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { prisma } from '../../db/prisma.js';
+import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
+
+export const cashCloseRouter = Router();
+
+const DENOMS = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
+type MethodTotals = { EFECTIVO: number; TARJETA: number; TRANSFERENCIA: number; AZUL: number };
+
+function dayBounds(dateStr?: string) {
+  const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+/** Suma esperada por método según las facturas PAGADAS del día en la sucursal. */
+async function expectedForDay(branchId: string, start: Date, end: Date): Promise<MethodTotals> {
+  const invs = await prisma.invoice.findMany({
+    where: { branchId, status: 'PAGADA', issuedAt: { gte: start, lt: end } },
+  });
+  const t: MethodTotals = { EFECTIVO: 0, TARJETA: 0, TRANSFERENCIA: 0, AZUL: 0 };
+  for (const i of invs) {
+    const pays = (i.payments ?? null) as { method: keyof MethodTotals; amount: number }[] | null;
+    if (Array.isArray(pays) && pays.length) pays.forEach((p) => { t[p.method] = (t[p.method] ?? 0) + p.amount; });
+    else t[i.method as keyof MethodTotals] += i.total;
+  }
+  return t;
+}
+
+function cashFromDenoms(denoms: Record<string, number>): number {
+  return DENOMS.reduce((s, d) => s + d * (Number(denoms[String(d)]) || 0), 0);
+}
+
+// ─────────── RECEPCIÓN: conteo ciego ───────────
+
+const submitSchema = z.object({
+  denominations: z.record(z.number().int().nonnegative()).default({}),
+  cardVouchers: z.array(z.number().int().nonnegative()).default([]),
+  countedTransfer: z.number().int().nonnegative().default(0),
+  countedAzul: z.number().int().nonnegative().default(0),
+  notes: z.string().optional(),
+});
+
+/**
+ * Estado del cierre de HOY para la recepción (sin exponer lo esperado).
+ * Devuelve el conteo ya ingresado (si existe) para poder editarlo.
+ */
+cashCloseRouter.get('/today', requireStaff, requireRole('RECEPCIONISTA', 'ADMIN'), branchScope, async (req, res) => {
+  const branchId = req.staff!.role === 'ADMIN' ? (req.scopeBranchId ?? null) : req.staff!.branchId;
+  if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
+  const { start } = dayBounds();
+  const close = await prisma.cashClose.findUnique({ where: { branchId_day: { branchId, day: start } } });
+  res.json({
+    denominations: DENOMS,
+    status: close?.status ?? null,
+    submitted: !!close,
+    counted: close ? {
+      denominations: close.denominations, cardVouchers: close.cardVouchers,
+      countedCash: close.countedCash, countedCard: close.countedCard,
+      countedTransfer: close.countedTransfer, countedAzul: close.countedAzul,
+    } : null,
+    // Nota: NO se envía lo esperado ni la diferencia a recepción (conteo ciego).
+  });
+});
+
+/** Enviar el conteo del día (recepción). Calcula y guarda el snapshot esperado. */
+cashCloseRouter.post('/', requireStaff, requireRole('RECEPCIONISTA', 'ADMIN'), branchScope, async (req, res) => {
+  const b = submitSchema.parse(req.body);
+  const branchId = req.staff!.role === 'ADMIN' ? (req.body.branchId ?? req.scopeBranchId) : req.staff!.branchId;
+  if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
+  if (!assertBranchAccess(req, branchId)) return res.status(403).json({ error: 'Sucursal no permitida' });
+
+  const { start, end } = dayBounds();
+  const existing = await prisma.cashClose.findUnique({ where: { branchId_day: { branchId, day: start } } });
+  if (existing?.status === 'CUADRADO') return res.status(409).json({ error: 'El cierre de hoy ya fue cuadrado por administración' });
+
+  const countedCash = cashFromDenoms(b.denominations);
+  const countedCard = b.cardVouchers.reduce((s, v) => s + v, 0);
+  const expected = await expectedForDay(branchId, start, end);
+
+  const data = {
+    denominations: b.denominations, cardVouchers: b.cardVouchers,
+    countedCash, countedCard, countedTransfer: b.countedTransfer, countedAzul: b.countedAzul,
+    expectedCash: expected.EFECTIVO, expectedCard: expected.TARJETA,
+    expectedTransfer: expected.TRANSFERENCIA, expectedAzul: expected.AZUL,
+    notes: b.notes ?? null, submittedById: req.staff!.sub, status: 'ENVIADO',
+  };
+  await prisma.cashClose.upsert({
+    where: { branchId_day: { branchId, day: start } },
+    create: { branchId, day: start, ...data },
+    update: data,
+  });
+  // Respuesta ciega: solo confirma el envío.
+  res.status(201).json({ ok: true, message: 'Cierre enviado a administración para su cuadre', countedCash, countedCard });
+});
+
+// ─────────── ADMIN: cuadre por sucursal ───────────
+
+/** Vista de cuadre: esperado vs contado + diferencia por método, por sucursal. */
+cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const { start, end } = dayBounds(req.query.date as string | undefined);
+  const branchFilter = (req.query.branch as string | undefined) && req.query.branch !== 'all' ? { id: req.query.branch as string } : {};
+  const branches = await prisma.branch.findMany({ where: branchFilter, orderBy: { code: 'asc' } });
+
+  const rows = await Promise.all(branches.map(async (br) => {
+    const close = await prisma.cashClose.findUnique({ where: { branchId_day: { branchId: br.id, day: start } } });
+    const expected = close
+      ? { EFECTIVO: close.expectedCash, TARJETA: close.expectedCard, TRANSFERENCIA: close.expectedTransfer, AZUL: close.expectedAzul }
+      : await expectedForDay(br.id, start, end);
+    const counted = close
+      ? { EFECTIVO: close.countedCash, TARJETA: close.countedCard, TRANSFERENCIA: close.countedTransfer, AZUL: close.countedAzul }
+      : null;
+
+    const methods = (['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'AZUL'] as const).map((m) => ({
+      method: m,
+      expected: expected[m],
+      counted: counted ? counted[m] : null,
+      diff: counted ? counted[m] - expected[m] : null,
+    }));
+    const totalExpected = methods.reduce((s, m) => s + m.expected, 0);
+    const totalCounted = counted ? methods.reduce((s, m) => s + (m.counted ?? 0), 0) : null;
+    const totalDiff = totalCounted != null ? totalCounted - totalExpected : null;
+
+    return {
+      closeId: close?.id ?? null,
+      branchId: br.id, branchName: br.name, dotColor: br.dotColor,
+      status: close?.status ?? 'PENDIENTE', // PENDIENTE (no enviado) | ENVIADO | CUADRADO
+      methods, totalExpected, totalCounted, totalDiff,
+      denominations: close?.denominations ?? null,
+      cardVouchers: close?.cardVouchers ?? null,
+      notes: close?.notes ?? null,
+      reconciledAt: close?.reconciledAt ?? null,
+    };
+  }));
+
+  res.json({ date: start.toISOString().slice(0, 10), branches: rows });
+});
+
+const reconcileSchema = z.object({ notes: z.string().optional() });
+
+/** Cuadrar (aprobar) el cierre de una sucursal. */
+cashCloseRouter.patch('/:id/reconcile', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const { notes } = reconcileSchema.parse(req.body ?? {});
+  const close = await prisma.cashClose.findUnique({ where: { id: req.params.id } });
+  if (!close) return res.status(404).json({ error: 'Cierre no encontrado' });
+  const diff = (close.countedCash + close.countedCard + close.countedTransfer + close.countedAzul)
+    - (close.expectedCash + close.expectedCard + close.expectedTransfer + close.expectedAzul);
+  await prisma.cashClose.update({
+    where: { id: close.id },
+    data: { status: 'CUADRADO', reconciledById: req.staff!.sub, reconciledAt: new Date(), notes: notes ?? close.notes },
+  });
+  res.json({ ok: true, message: diff === 0 ? 'Caja cuadrada sin diferencias' : `Cuadrada con ${diff > 0 ? 'sobrante' : 'faltante'} de RD$${Math.abs(diff).toLocaleString('en-US')}` });
+});
