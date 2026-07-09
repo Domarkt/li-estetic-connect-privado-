@@ -119,6 +119,72 @@ Backups: los gestiona Supabase (Database → Backups). Verifica que estén activ
 - [ ] Rottelada la contraseña de la DB si se compartió en algún canal.
 - [ ] (Opcional) Restringir IPs de acceso a la DB en Supabase (Network Restrictions).
 
+---
+
+# Despliegue ONLINE para pruebas (GitHub + Render + Netlify)
+
+Recomendación: **Web en Netlify** + **API en Render** + **DB en Supabase** (ya la tienes).
+> Netlify NO corre el backend Node/Express; por eso la API va en **Render** (gratis, corre procesos Node). El frontend estático sí va perfecto en Netlify.
+
+```
+  Netlify (web, estático)  ──/api (proxy)──►  Render (API Node)  ──►  Supabase (PostgreSQL)
+```
+
+## Paso 1 — Subir el código a GitHub
+
+```bash
+cd C:\Users\lenovo\CLAUDE\li-estetic-connect
+# crea el repo en https://github.com/new (ej. "li-estetic-connect", privado)
+git remote add origin https://github.com/TU-USUARIO/li-estetic-connect.git
+git branch -M main
+git push -u origin main
+```
+(El `.env` NO se sube: está en `.gitignore`. ✅)
+
+## Paso 2 — Backend (API) en Render
+
+1. Entra a https://render.com → **New → Web Service** → conecta tu repo de GitHub.
+2. Configura:
+   - **Root Directory:** `server`
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `npm start`
+   - **Instance Type:** Free
+3. **Environment → Add** estas variables:
+   ```
+   NODE_ENV = production
+   DATABASE_URL = (tu cadena pooler 6543 de Supabase)
+   DIRECT_URL   = (tu cadena directa 5432 de Supabase)
+   JWT_SECRET        = (genera uno: openssl rand -base64 48)
+   JWT_PATIENT_SECRET = (otro distinto)
+   CORS_ORIGIN = https://TU-SITIO.netlify.app   ← lo tendrás tras el Paso 3
+   ```
+4. **Create Web Service**. Cuando termine, copia la URL (ej. `https://li-estetic-api.onrender.com`).
+5. La base ya está migrada en Supabase; si usaras una nueva, corre una vez en **Render → Shell**: `npx prisma db push`.
+
+> El plan Free de Render "duerme" tras inactividad; la primera carga puede tardar ~30s. Para pruebas está bien.
+
+## Paso 3 — Frontend (web) en Netlify
+
+1. Edita **`netlify.toml`** (raíz del repo) y reemplaza la URL del proxy por tu backend de Render:
+   ```toml
+   to = "https://li-estetic-api.onrender.com/api/:splat"
+   ```
+   Haz commit y push.
+2. Entra a https://netlify.com → **Add new site → Import from GitHub** → elige el repo.
+   - Netlify detecta `netlify.toml` (base `web`, publish `dist`). Deja lo demás por defecto.
+3. **Deploy**. Copia la URL del sitio (ej. `https://li-estetic.netlify.app`).
+4. Vuelve a **Render → tu servicio → Environment** y pon `CORS_ORIGIN = https://li-estetic.netlify.app`. Guarda (redepliega solo).
+
+## Paso 4 — Probar
+
+Abre `https://TU-SITIO.netlify.app` → login con las credenciales del seed
+(`direccion@liestetic.do` / `liestetic`). El portal de paciente en `/portal/login`.
+
+### Cada vez que hagas cambios
+`git push` → Render y Netlify redepliegan automáticamente.
+
+---
+
 ## Integraciones (segundo plano)
 
 WhatsApp / Meta / TikTok y Google Calendar se activan poniendo sus credenciales en `server/.env`
