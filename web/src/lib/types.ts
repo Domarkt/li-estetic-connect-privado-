@@ -196,6 +196,12 @@ export interface PortalProceso {
 }
 export interface PortalAppointment { id: string; date: string; service: string; therapist: string; code: string | null; checkedIn: boolean }
 export interface PortalBranch { id: string; name: string; place: string; phone: string; waNumber: string }
+export interface PortalProfile {
+  firstName: string; lastName: string; phone: string; branch: string | null; since: string; firstEval: string | null;
+  baseline: { tallaCm: number | null; pesoLb: number | null; fototipo: string | null; motivos: string[] };
+  treatment: { name: string; total: number; done: number; pct: number } | null;
+}
+export interface PortalHistoryItem { id: string; date: string; service: string; therapist: string; rating: number | null; ratingComment: string | null }
 export interface PortalPackages {
   active: { name: string; total: number; done: number; remaining: number; pct: number; expiresAt: string | null } | null;
   shop: { id: string; name: string; sessions: number; price: number }[];

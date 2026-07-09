@@ -138,18 +138,33 @@ cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, re
   res.json({ date: start.toISOString().slice(0, 10), branches: rows });
 });
 
-const reconcileSchema = z.object({ notes: z.string().optional() });
+const reconcileSchema = z.object({
+  notes: z.string().optional(),
+  // El admin ingresa/ajusta lo que arroja el sistema (esperado) por método.
+  expectedCash: z.number().int().nonnegative().optional(),
+  expectedCard: z.number().int().nonnegative().optional(),
+  expectedTransfer: z.number().int().nonnegative().optional(),
+  expectedAzul: z.number().int().nonnegative().optional(),
+});
 
-/** Cuadrar (aprobar) el cierre de una sucursal. */
+/** Cuadrar (aprobar) el cierre de una sucursal, con el esperado del sistema. */
 cashCloseRouter.patch('/:id/reconcile', requireStaff, requireRole('ADMIN'), async (req, res) => {
-  const { notes } = reconcileSchema.parse(req.body ?? {});
+  const b = reconcileSchema.parse(req.body ?? {});
   const close = await prisma.cashClose.findUnique({ where: { id: req.params.id } });
   if (!close) return res.status(404).json({ error: 'Cierre no encontrado' });
+
+  const expected = {
+    expectedCash: b.expectedCash ?? close.expectedCash,
+    expectedCard: b.expectedCard ?? close.expectedCard,
+    expectedTransfer: b.expectedTransfer ?? close.expectedTransfer,
+    expectedAzul: b.expectedAzul ?? close.expectedAzul,
+  };
   const diff = (close.countedCash + close.countedCard + close.countedTransfer + close.countedAzul)
-    - (close.expectedCash + close.expectedCard + close.expectedTransfer + close.expectedAzul);
+    - (expected.expectedCash + expected.expectedCard + expected.expectedTransfer + expected.expectedAzul);
+
   await prisma.cashClose.update({
     where: { id: close.id },
-    data: { status: 'CUADRADO', reconciledById: req.staff!.sub, reconciledAt: new Date(), notes: notes ?? close.notes },
+    data: { ...expected, status: 'CUADRADO', reconciledById: req.staff!.sub, reconciledAt: new Date(), notes: b.notes ?? close.notes },
   });
-  res.json({ ok: true, message: diff === 0 ? 'Caja cuadrada sin diferencias' : `Cuadrada con ${diff > 0 ? 'sobrante' : 'faltante'} de RD$${Math.abs(diff).toLocaleString('en-US')}` });
+  res.json({ ok: true, diff, message: diff === 0 ? 'Caja cuadrada sin diferencias' : `Cuadrada con ${diff > 0 ? 'sobrante' : 'faltante'} de RD$${Math.abs(diff).toLocaleString('en-US')}` });
 });

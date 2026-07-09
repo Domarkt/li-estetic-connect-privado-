@@ -4,9 +4,9 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Icon } from '../components/icons';
-import { fmtRD, type PortalAppointment, type PortalBranch, type PortalPackages, type PortalProceso } from '../lib/types';
+import { fmtRD, type PortalAppointment, type PortalBranch, type PortalHistoryItem, type PortalPackages, type PortalProceso, type PortalProfile } from '../lib/types';
 
-type Tab = 'proceso' | 'citas' | 'paquetes';
+type Tab = 'proceso' | 'citas' | 'paquetes' | 'perfil';
 
 export default function PatientPortal() {
   const { patient, logout } = useAuth();
@@ -35,13 +35,15 @@ export default function PatientPortal() {
           {tab === 'proceso' && <Proceso />}
           {tab === 'citas' && <Citas />}
           {tab === 'paquetes' && <Paquetes />}
+          {tab === 'perfil' && <Perfil />}
         </div>
 
         <div className="flex border-t border-line bg-card px-3 pb-2.5 pt-1.5">
           {([
-            { key: 'proceso', label: 'Mi Proceso', icon: 'star' },
+            { key: 'proceso', label: 'Proceso', icon: 'star' },
             { key: 'citas', label: 'Citas', icon: 'cal' },
             { key: 'paquetes', label: 'Paquetes', icon: 'box' },
+            { key: 'perfil', label: 'Perfil', icon: 'users' },
           ] as const).map((t) => {
             const on = tab === t.key;
             return (
@@ -171,6 +173,93 @@ function Citas() {
         </div>
         <div className="mt-3 px-1 text-[11.5px] leading-normal text-faint">⚠ Recuerda cancelar con 24h de anticipación. Después de 5 cancelaciones se pierde el tratamiento.</div>
       </div>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-[10px] bg-bg px-3 py-2.5"><div className="text-[11px] font-semibold text-muted">{label}</div><div className="text-[13px] font-bold">{value}</div></div>;
+}
+
+function Perfil() {
+  const toast = useToast();
+  const [p, setP] = useState<PortalProfile | null>(null);
+  const [history, setHistory] = useState<PortalHistoryItem[]>([]);
+
+  const load = useCallback(() => {
+    api.get<PortalProfile>('/portal/profile', 'patient').then(setP).catch(() => {});
+    api.get<PortalHistoryItem[]>('/portal/history', 'patient').then(setHistory).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (!p) return <div className="text-center text-sm text-muted">Cargando…</div>;
+
+  return (
+    <div className="flex animate-fade flex-col gap-4">
+      <div className="rounded-[18px] bg-card p-5 shadow-card">
+        <div className="text-[17px] font-extrabold">{p.firstName} {p.lastName}</div>
+        <div className="text-[12.5px] text-muted">{p.phone}{p.branch ? ` · ${p.branch}` : ''}</div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Info label="Talla" value={p.baseline.tallaCm ? `${p.baseline.tallaCm} cm` : '—'} />
+          <Info label="Peso" value={p.baseline.pesoLb ? `${p.baseline.pesoLb} lb` : '—'} />
+          <Info label="Fototipo" value={p.baseline.fototipo ?? '—'} />
+          <Info label="Paciente desde" value={p.since} />
+        </div>
+        {p.baseline.motivos.length > 0 && (
+          <div className="mt-3"><div className="text-[11px] font-semibold text-muted">Motivo inicial</div><div className="mt-1 flex flex-wrap gap-1.5">{p.baseline.motivos.map((m) => <span key={m} className="rounded-full bg-magenta-soft px-2 py-0.5 text-[11px] font-semibold text-magenta">{m}</span>)}</div></div>
+        )}
+        {p.firstEval && <div className="mt-2 text-[11.5px] text-faint">Primera evaluación: {p.firstEval}</div>}
+      </div>
+
+      {p.treatment && (
+        <div className="rounded-[18px] bg-card p-5 shadow-card">
+          <div className="mb-2 flex items-center justify-between"><div className="text-[13px] font-bold">{p.treatment.name}</div><div className="text-[12.5px] font-semibold text-muted">{p.treatment.done}/{p.treatment.total}</div></div>
+          <div className="h-2 overflow-hidden rounded-md" style={{ background: 'var(--navy-soft)' }}><div className="h-full rounded-md" style={{ width: `${p.treatment.pct}%`, background: 'linear-gradient(90deg,#B31C86,#D4419E)' }} /></div>
+          <div className="mt-2 text-[11.5px] text-muted">Vas midiendo tu avance sesión a sesión 💜</div>
+        </div>
+      )}
+
+      <div>
+        <div className="mx-0.5 mb-2.5 text-sm font-extrabold">Califica tus citas</div>
+        <div className="flex flex-col gap-2.5">
+          {history.map((h) => <RateCard key={h.id} item={h} onDone={(msg) => { toast(msg); load(); }} />)}
+          {history.length === 0 && <div className="rounded-[16px] bg-card p-4 text-center text-sm text-muted shadow-card">Aún no tienes citas atendidas.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RateCard({ item, onDone }: { item: PortalHistoryItem; onDone: (msg: string) => void }) {
+  const [stars, setStars] = useState(item.rating ?? 0);
+  const [comment, setComment] = useState(item.ratingComment ?? '');
+  const [busy, setBusy] = useState(false);
+  const rated = item.rating != null;
+
+  async function send() {
+    if (stars === 0) return;
+    if (stars < 5 && !comment.trim()) { onDone('Escribe qué ocurrió (comentario requerido)'); return; }
+    setBusy(true);
+    try { const r = await api.post<{ message: string }>(`/portal/appointments/${item.id}/rate`, { stars, comment: comment.trim() || undefined }, 'patient'); onDone(r.message); }
+    catch (e) { onDone(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="rounded-[16px] bg-card p-4 shadow-card">
+      <div className="text-[13px] font-bold">{item.service}</div>
+      <div className="mb-2 text-[11.5px] text-muted">{item.date} · {item.therapist}</div>
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} disabled={rated} onClick={() => setStars(n)} className="text-[24px] leading-none disabled:cursor-default" style={{ color: n <= stars ? '#F5B301' : 'var(--line)' }}>★</button>
+        ))}
+      </div>
+      {!rated && stars > 0 && stars < 5 && (
+        <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} placeholder="¿Qué ocurrió? Cuéntanos para mejorar" className="mt-2 w-full resize-none rounded-[10px] border border-line p-2.5 text-[12.5px] outline-none focus:border-magenta" />
+      )}
+      {rated
+        ? <div className="mt-1 text-[11.5px] font-semibold text-ok">✓ Calificada{item.ratingComment ? ` · "${item.ratingComment}"` : ''}</div>
+        : <button onClick={send} disabled={busy || stars === 0} className="mt-2 w-full rounded-[10px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar calificación'}</button>}
     </div>
   );
 }

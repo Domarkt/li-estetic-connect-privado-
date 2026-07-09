@@ -56,6 +56,61 @@ portalRouter.get('/appointments', async (req, res) => {
   })));
 });
 
+/** Perfil del paciente: datos básicos + baseline de la primera evaluación + progreso. */
+portalRouter.get('/profile', async (req, res) => {
+  const patient = await prisma.patient.findUnique({
+    where: { id: req.patient!.patientId },
+    include: { clinicalRecord: true, branch: true, treatments: { where: { active: true }, orderBy: { createdAt: 'desc' }, take: 1 } },
+  });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  const cr = patient.clinicalRecord;
+  const t = patient.treatments[0] ?? null;
+  const parts = patient.name.trim().split(' ');
+  res.json({
+    firstName: parts[0] ?? patient.name,
+    lastName: parts.slice(1).join(' '),
+    phone: patient.phone,
+    branch: patient.branch ? `${patient.branch.name} · ${patient.branch.place}` : null,
+    since: patient.createdAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }),
+    firstEval: cr?.completedAt ? cr.completedAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
+    baseline: {
+      tallaCm: cr?.tallaCm ?? null,
+      pesoLb: cr?.pesoLb ?? null,
+      fototipo: cr?.fototipo ?? null,
+      motivos: cr?.motivos ?? [],
+    },
+    treatment: t ? { name: t.name, total: t.totalSessions, done: t.doneSessions, pct: t.totalSessions ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0 } : null,
+  });
+});
+
+/** Historial de citas atendidas (para calificar). */
+portalRouter.get('/history', async (req, res) => {
+  const appts = await prisma.appointment.findMany({
+    where: { patientId: req.patient!.patientId, startsAt: { lt: new Date() }, status: { not: 'CANCELADA' } },
+    include: { therapist: true }, orderBy: { startsAt: 'desc' }, take: 20,
+  });
+  res.json(appts.map((a) => ({
+    id: a.id,
+    date: a.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+    service: a.serviceName,
+    therapist: a.therapist?.name ?? 'Li Estetic',
+    rating: a.rating,
+    ratingComment: a.ratingComment,
+  })));
+});
+
+const rateSchema = z.object({ stars: z.number().int().min(1).max(5), comment: z.string().optional() });
+
+/** Calificar una cita recibida (si es < 5 estrellas, el comentario es obligatorio). */
+portalRouter.post('/appointments/:id/rate', async (req, res) => {
+  const { stars, comment } = rateSchema.parse(req.body);
+  if (stars < 5 && !comment?.trim()) return res.status(400).json({ error: 'Cuéntanos qué ocurrió (comentario requerido para menos de 5 estrellas)' });
+  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+  if (!appt || appt.patientId !== req.patient!.patientId) return res.status(404).json({ error: 'Cita no encontrada' });
+  await prisma.appointment.update({ where: { id: appt.id }, data: { rating: stars, ratingComment: stars < 5 ? (comment ?? null) : null } });
+  res.json({ ok: true, message: stars === 5 ? '¡Gracias por tu calificación! ⭐' : 'Gracias, tu comentario ayuda a mejorar' });
+});
+
 /** Sucursales con su WhatsApp para solicitar cita (evita agendar directo desde el portal). */
 portalRouter.get('/branches', async (_req, res) => {
   const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
