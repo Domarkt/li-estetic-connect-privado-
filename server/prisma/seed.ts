@@ -41,6 +41,7 @@ async function main() {
       data: {
         code: 'e1', name: 'Estética 1', place: 'Plaza San Vicente, 1er nivel',
         dotColor: '#B31C86', address: 'Plaza San Vicente, 1er nivel, Santo Domingo Este',
+        phone: '(809) 224-6109',
         monthlyGoal: 600000, dailyGoal: 25000, perAsesorGoal: 8333,
       },
     }),
@@ -48,6 +49,7 @@ async function main() {
       data: {
         code: 'e2', name: 'Estética 2', place: 'Plaza Baró, 2do nivel',
         dotColor: '#2C7FB8', address: 'Plaza Baró, 2do nivel, Santo Domingo',
+        phone: '(809) 692-9819',
         monthlyGoal: 500000, dailyGoal: 20833, perAsesorGoal: 6944,
       },
     }),
@@ -55,6 +57,7 @@ async function main() {
       data: {
         code: 'e3', name: 'Estética 3', place: 'Rómulo Betancour, Plaza Oliver Marín, 2do nivel',
         dotColor: '#1F9D6B', address: 'Av. Rómulo Betancourt, Plaza Oliver Marín, 2do nivel',
+        phone: '(809) 363-4725',
         monthlyGoal: 400000, dailyGoal: 16667, perAsesorGoal: 5556,
       },
     }),
