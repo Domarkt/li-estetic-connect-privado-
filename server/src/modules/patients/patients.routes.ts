@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { serializePatient, patientInclude, syncPatientType } from './patients.service.js';
+import { hashPassword } from '../../utils/password.js';
+import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 
 export const patientsRouter = Router();
 
@@ -117,7 +119,7 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
   res.json({
     patient: {
-      id: patient.id, name: patient.name, phone: patient.phone, age: patient.age,
+      id: patient.id, name: patient.name, phone: patient.phone, age: patient.age, email: patient.email,
       birthDate: patient.birthDate, occupation: patient.occupation, address: patient.address,
     },
     ficha: patient.clinicalRecord,
@@ -130,6 +132,7 @@ const step1Schema = z.object({
   age: z.number().int().optional(),
   birthDate: z.string().optional(),
   phone: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
   occupation: z.string().optional(),
   address: z.string().optional(),
   motivos: z.array(z.string()).default([]),
@@ -151,6 +154,7 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
       name: body.name ?? patient.name,
       age: body.age ?? patient.age,
       phone: body.phone ?? patient.phone,
+      email: body.email ? body.email : patient.email,
       birthDate: body.birthDate ? new Date(body.birthDate) : patient.birthDate,
       occupation: body.occupation ?? patient.occupation,
       address: body.address ?? patient.address,
@@ -165,7 +169,43 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
       status: patient.type === 'RECURRENTE' ? undefined : 'PASO1_OK',
     },
   });
-  res.json({ ok: true, message: 'Datos iniciales guardados · ficha enviada a la esteticista' });
+  res.json({ ok: true, message: 'Datos iniciales guardados' });
+});
+
+/**
+ * Enviar la ficha al PACIENTE para que la complete: crea acceso al portal
+ * (si no tiene) y envía el correo con credenciales. La esteticista la validará luego.
+ */
+patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), async (req, res) => {
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { patientAccount: true } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (!patient.email) return res.status(400).json({ error: 'Agrega el correo del paciente en el Paso 1 antes de enviar' });
+
+  // Crea la cuenta del portal si no existe (login = celular; contraseña temporal).
+  const login = (patient.phone || patient.cedula || '').trim();
+  if (!login) return res.status(400).json({ error: 'El paciente necesita celular o cédula para el acceso' });
+
+  let tempPassword: string | undefined;
+  if (!patient.patientAccount) {
+    tempPassword = 'li' + Math.random().toString(36).slice(2, 8);
+    await prisma.patientAccount.create({ data: { patientId: patient.id, login, passwordHash: await hashPassword(tempPassword) } });
+  }
+
+  await prisma.clinicalRecord.update({
+    where: { patientId: patient.id },
+    data: { sentToPatientAt: new Date(), status: patient.type === 'RECURRENTE' ? undefined : 'PASO1_OK' },
+  });
+
+  const mail = await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword });
+  res.json({
+    ok: true,
+    emailSent: mail.sent,
+    access: { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null },
+    message: mail.sent
+      ? `Ficha enviada al correo del paciente (${patient.email})`
+      : `Acceso creado. Comparte con el paciente: usuario ${login}${tempPassword ? ` · contraseña ${tempPassword}` : ''} (correo en modo demo)`,
+  });
 });
 
 const clinicalSchema = z.object({

@@ -56,6 +56,59 @@ portalRouter.get('/appointments', async (req, res) => {
   })));
 });
 
+/** Ficha clínica del paciente (para autocompletar la parte de salud). */
+portalRouter.get('/ficha', async (req, res) => {
+  const record = await prisma.clinicalRecord.findUnique({ where: { patientId: req.patient!.patientId } });
+  res.json({
+    status: record?.status ?? 'PENDIENTE',
+    sentToPatient: !!record?.sentToPatientAt,
+    filled: !!record?.patientFilledAt,
+    completed: record?.status === 'COMPLETA',
+    ficha: record ? {
+      antecedentes: record.antecedentes ?? {},
+      ginecoObst: record.ginecoObst ?? {},
+      quirurgicos: record.quirurgicos ?? {},
+      medicamentos: record.medicamentos ?? {},
+      fototipo: record.fototipo ?? '',
+      tallaCm: record.tallaCm ?? null,
+      pesoLb: record.pesoLb ?? null,
+    } : null,
+  });
+});
+
+const portalFichaSchema = z.object({
+  antecedentes: z.record(z.any()).optional(),
+  ginecoObst: z.record(z.any()).optional(),
+  quirurgicos: z.record(z.any()).optional(),
+  medicamentos: z.record(z.any()).optional(),
+  fototipo: z.string().optional(),
+  tallaCm: z.number().int().optional(),
+  pesoLb: z.number().int().optional(),
+});
+
+/** El paciente guarda/actualiza su parte clínica. La esteticista la validará y finalizará. */
+portalRouter.patch('/ficha', async (req, res) => {
+  const b = portalFichaSchema.parse(req.body);
+  const record = await prisma.clinicalRecord.findUnique({ where: { patientId: req.patient!.patientId } });
+  if (!record) return res.status(404).json({ error: 'Ficha no disponible' });
+  if (record.status === 'COMPLETA') return res.status(409).json({ error: 'Tu ficha ya fue validada por la esteticista' });
+
+  await prisma.clinicalRecord.update({
+    where: { patientId: req.patient!.patientId },
+    data: {
+      antecedentes: b.antecedentes ?? record.antecedentes ?? undefined,
+      ginecoObst: b.ginecoObst ?? record.ginecoObst ?? undefined,
+      quirurgicos: b.quirurgicos ?? record.quirurgicos ?? undefined,
+      medicamentos: b.medicamentos ?? record.medicamentos ?? undefined,
+      fototipo: b.fototipo ?? record.fototipo ?? undefined,
+      tallaCm: b.tallaCm ?? record.tallaCm ?? undefined,
+      pesoLb: b.pesoLb ?? record.pesoLb ?? undefined,
+      patientFilledAt: new Date(),
+    },
+  });
+  res.json({ ok: true, message: 'Ficha enviada a tu esteticista para validarla. ¡Gracias!' });
+});
+
 /** Perfil del paciente: datos básicos + baseline de la primera evaluación + progreso. */
 portalRouter.get('/profile', async (req, res) => {
   const patient = await prisma.patient.findUnique({

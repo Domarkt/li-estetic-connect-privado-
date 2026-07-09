@@ -260,10 +260,12 @@ model ClinicalRecord {
   cancelPolicyAck Boolean @default(false)
   signatureData   String? // firma (base64/svg) — slot
 
-  therapistId String?
-  completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  therapistId    String?
+  sentToPatientAt DateTime? // recepción envió la ficha al paciente para autocompletarla
+  patientFilledAt DateTime? // el paciente completó su parte clínica
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   therapist User?   @relation("TherapistRecords", fields: [therapistId], references: [id])

@@ -11,7 +11,7 @@ interface Props {
   onSaved: () => void;
 }
 
-interface FichaPatient { name?: string; phone?: string; age?: number | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
+interface FichaPatient { name?: string; phone?: string; email?: string | null; age?: number | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
 interface FichaData {
   consultDate?: string | null; motivos?: string[];
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
@@ -36,7 +36,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
   const [busy, setBusy] = useState(false);
 
   // Estado del formulario
-  const [datos, setDatos] = useState({ name: patientName, age: '', birthDate: '', phone: '', occupation: '', address: '', consultDate: '' });
+  const [datos, setDatos] = useState({ name: patientName, age: '', birthDate: '', phone: '', email: '', occupation: '', address: '', consultDate: '' });
   const [motivos, setMotivos] = useState<Set<string>>(new Set());
   const [antecedentes, setAntecedentes] = useState<Record<string, boolean>>({});
   const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', lactancia: false });
@@ -60,6 +60,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
           ...d,
           name: patient.name ?? d.name,
           phone: patient.phone ?? d.phone,
+          email: patient.email ?? d.email,
           age: patient.age != null ? String(patient.age) : d.age,
           occupation: patient.occupation ?? d.occupation,
           address: patient.address ?? d.address,
@@ -98,6 +99,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
       age: datos.age ? Number(datos.age) : undefined,
       birthDate: datos.birthDate || undefined,
       phone: datos.phone || undefined,
+      email: datos.email || undefined,
       occupation: datos.occupation || undefined,
       address: datos.address || undefined,
       motivos: [...motivos],
@@ -199,7 +201,7 @@ const inputCls = 'rounded-[9px] border border-line px-3 py-2.5 text-[13.5px] out
 const lblCls = 'text-xs font-bold text-muted';
 const sectionCls = 'mb-3 text-[13px] font-extrabold uppercase tracking-wide text-navy';
 
-type Datos = { name: string; age: string; birthDate: string; phone: string; occupation: string; address: string; consultDate: string };
+type Datos = { name: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; consultDate: string };
 
 function Step1({ datos, setDatos, motivos, setMotivos }: {
   datos: Datos; setDatos: React.Dispatch<React.SetStateAction<Datos>>;
@@ -215,8 +217,9 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Edad</span><input className={inputCls} value={datos.age} onChange={(e) => set('age', e.target.value)} placeholder="34" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de nacimiento</span><input type="date" className={inputCls} value={datos.birthDate} onChange={(e) => set('birthDate', e.target.value)} /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Celular</span><input className={inputCls} value={datos.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-000-0000" /></label>
+        <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Correo electrónico</span><input type="email" className={inputCls} value={datos.email} onChange={(e) => set('email', e.target.value)} placeholder="paciente@correo.com" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Ocupación</span><input className={inputCls} value={datos.occupation} onChange={(e) => set('occupation', e.target.value)} /></label>
-        <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Dirección</span><input className={inputCls} value={datos.address} onChange={(e) => set('address', e.target.value)} /></label>
+        <label className="col-span-3 flex flex-col gap-1.5"><span className={lblCls}>Dirección</span><input className={inputCls} value={datos.address} onChange={(e) => set('address', e.target.value)} /></label>
       </div>
       <div className={sectionCls}>A · Motivo de la consulta</div>
       <div className="grid grid-cols-3 gap-2.5">

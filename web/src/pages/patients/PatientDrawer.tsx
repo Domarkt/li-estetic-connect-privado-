@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
+import { useToast } from '../../components/Toast';
 import { stop } from '../../components/Modal';
 import { fmtRD, type PatientDetail } from '../../lib/types';
+
+interface SendAccess { portalUrl: string; login: string; tempPassword: string | null }
 
 interface Props {
   patientId: string;
@@ -15,7 +18,10 @@ interface Props {
 
 export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenAddServices, onOpenBill, reloadKey }: Props) {
   const { staff } = useAuth();
+  const toast = useToast();
   const [d, setD] = useState<PatientDetail | null>(null);
+  const [sending, setSending] = useState(false);
+  const [access, setAccess] = useState<SendAccess | null>(null);
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -25,6 +31,17 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const isMasa = staff?.role === 'ESTETICISTA';
   const canBill = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
   const fichaComplete = d?.fichaStatus === 'COMPLETA';
+
+  async function sendToPatient() {
+    setSending(true);
+    try {
+      const r = await api.post<{ message: string; access: SendAccess }>(`/patients/${patientId}/ficha/send-to-patient`);
+      toast(r.message);
+      setAccess(r.access);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error');
+    } finally { setSending(false); }
+  }
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[100] flex justify-end" style={{ background: 'rgba(28,37,64,.42)' }}>
@@ -44,9 +61,30 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
               <div className="flex items-center justify-between rounded-[11px] bg-bg px-4 py-3.5">
                 <div><div className="text-[11.5px] font-semibold text-muted">Ficha clínica</div><div className="mt-0.5 text-[13px] font-bold">{d.fichaLabel}</div></div>
                 <button onClick={() => onOpenFicha({ id: d.id, name: d.name })} className="rounded-[9px] bg-magenta px-4 py-2.5 text-[12.5px] font-bold text-white">
-                  {fichaComplete ? 'Ver ficha' : staff?.role === 'RECEPCIONISTA' ? 'Completar Paso 1' : 'Continuar ficha'}
+                  {fichaComplete ? 'Ver ficha' : staff?.role === 'RECEPCIONISTA' ? 'Completar Paso 1' : 'Continuar/validar ficha'}
                 </button>
               </div>
+
+              {/* Recepción/Admin: enviar la ficha al paciente para que la complete */}
+              {canBill && !fichaComplete && (
+                <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
+                  <div className="mb-2 text-[12px] leading-normal" style={{ color: '#1E5A82' }}>
+                    Envía la ficha al paciente para que complete la parte clínica desde su portal (o ayúdalo tú). La esteticista la validará luego.
+                  </div>
+                  <button onClick={sendToPatient} disabled={sending} className="flex w-full items-center justify-center gap-2 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
+                    {sending ? 'Enviando…' : '✉ Enviar ficha al paciente'}
+                  </button>
+                  {access && (
+                    <div className="mt-2 rounded-[9px] bg-card p-3 text-[12px]">
+                      <div className="font-bold text-navy">Acceso al portal del paciente</div>
+                      <div className="mt-1 text-muted">Portal: <span className="font-semibold text-ink">{access.portalUrl}</span></div>
+                      <div className="text-muted">Usuario: <span className="font-semibold text-ink">{access.login}</span></div>
+                      {access.tempPassword && <div className="text-muted">Contraseña: <span className="font-semibold text-ink">{access.tempPassword}</span></div>}
+                      {!access.tempPassword && <div className="text-faint">Ya tenía acceso · usa su contraseña actual.</div>}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2.5">
                 <Info label="Sucursal" value={d.branchName} />

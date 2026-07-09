@@ -5,6 +5,12 @@ import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Icon } from '../components/icons';
 import { fmtRD, type PortalAppointment, type PortalBranch, type PortalHistoryItem, type PortalPackages, type PortalProceso, type PortalProfile } from '../lib/types';
+import { ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS } from './patients/fichaConstants';
+
+interface PortalFichaState {
+  status: string; sentToPatient: boolean; filled: boolean; completed: boolean;
+  ficha: { antecedentes: Record<string, boolean>; medicamentos: Record<string, boolean>; fototipo: string; tallaCm: number | null; pesoLb: number | null } | null;
+}
 
 type Tab = 'proceso' | 'citas' | 'paquetes' | 'perfil';
 
@@ -181,6 +187,103 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div className="rounded-[10px] bg-bg px-3 py-2.5"><div className="text-[11px] font-semibold text-muted">{label}</div><div className="text-[13px] font-bold">{value}</div></div>;
 }
 
+function MiFicha() {
+  const toast = useToast();
+  const [d, setD] = useState<PortalFichaState | null>(null);
+  const [open, setOpen] = useState(false);
+  const [ant, setAnt] = useState<Record<string, boolean>>({});
+  const [med, setMed] = useState<Record<string, boolean>>({});
+  const [fototipo, setFototipo] = useState('');
+  const [talla, setTalla] = useState('');
+  const [peso, setPeso] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api.get<PortalFichaState>('/portal/ficha', 'patient').then((r) => {
+      setD(r);
+      if (r.ficha) {
+        setAnt(r.ficha.antecedentes || {}); setMed(r.ficha.medicamentos || {});
+        setFototipo(r.ficha.fototipo || ''); setTalla(r.ficha.tallaCm ? String(r.ficha.tallaCm) : ''); setPeso(r.ficha.pesoLb ? String(r.ficha.pesoLb) : '');
+      }
+    }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (!d) return null;
+  if (d.completed) return (
+    <div className="rounded-[16px] border px-4 py-3 text-[12.5px] font-bold" style={{ background: 'var(--ok-soft)', borderColor: '#CDEBDD', color: '#1F7A54' }}>✓ Tu ficha clínica está completa y validada.</div>
+  );
+
+  async function save() {
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string }>('/portal/ficha', {
+        antecedentes: ant, medicamentos: med,
+        fototipo: fototipo || undefined,
+        tallaCm: talla ? Number(talla) : undefined, pesoLb: peso ? Number(peso) : undefined,
+      }, 'patient');
+      toast(r.message); setOpen(false); load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="rounded-[16px] border px-4 py-3.5" style={{ background: 'var(--magenta-soft)', borderColor: '#F0CDE4' }}>
+      <div className="flex items-center justify-between">
+        <div className="text-[13.5px] font-extrabold text-magenta-d">📋 Completa tu ficha clínica</div>
+        <button onClick={() => setOpen(!open)} className="rounded-[9px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">{open ? 'Cerrar' : d.filled ? 'Editar' : 'Completar'}</button>
+      </div>
+      <div className="mt-1 text-[11.5px]" style={{ color: 'var(--magenta-d)' }}>
+        {d.filled ? 'Ya la enviaste · la esteticista la validará contigo. Puedes editarla.' : 'Ayúdanos con tu historial de salud antes de tu cita.'}
+      </div>
+
+      {open && (
+        <div className="mt-3 flex flex-col gap-3">
+          <FichaGroup title="¿Tienes alguno de estos antecedentes?" items={ANTECEDENTES} state={ant} setState={setAnt} />
+          <FichaGroup title="¿Tomas alguno de estos medicamentos?" items={MEDICAMENTOS} state={med} setState={setMed} />
+          <div className="rounded-[12px] bg-card p-3">
+            <div className="mb-2 text-[12px] font-bold text-navy">Fototipo de piel</div>
+            <div className="flex gap-1.5">
+              {FOTOTIPOS.map((k) => (
+                <button key={k} onClick={() => setFototipo(k)} className="flex-1 rounded-lg border py-2 text-[13px] font-extrabold" style={{ borderColor: fototipo === k ? 'var(--magenta)' : 'var(--line)', background: fototipo === k ? 'var(--magenta-soft)' : '#fff', color: fototipo === k ? 'var(--magenta)' : 'var(--ink)' }}>{k}</button>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <label className="flex-1"><span className="mb-1 block text-[11px] font-bold text-muted">Talla (cm)</span><input value={talla} onChange={(e) => setTalla(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              <label className="flex-1"><span className="mb-1 block text-[11px] font-bold text-muted">Peso (lb)</span><input value={peso} onChange={(e) => setPeso(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+            </div>
+          </div>
+          <button onClick={save} disabled={busy} className="rounded-[11px] bg-magenta py-3 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Enviar a mi esteticista'}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FichaGroup({ title, items, state, setState }: { title: string; items: string[]; state: Record<string, boolean>; setState: (s: Record<string, boolean>) => void }) {
+  return (
+    <div className="rounded-[12px] bg-card p-3">
+      <div className="mb-2 text-[12px] font-bold text-navy">{title}</div>
+      <div className="flex flex-col gap-1">
+        {items.map((it) => (
+          <div key={it} className="flex items-center justify-between border-b border-line-2 py-1.5">
+            <span className="text-[12.5px]">{it}</span>
+            <div className="flex gap-1.5">
+              {[true, false].map((v) => (
+                <button key={String(v)} onClick={() => setState({ ...state, [it]: v })}
+                  className="rounded-md px-2.5 py-1 text-[11px] font-bold"
+                  style={{ background: state[it] === v ? (v ? 'var(--magenta)' : 'var(--navy)') : 'var(--bg)', color: state[it] === v ? '#fff' : 'var(--muted)' }}>
+                  {v ? 'Sí' : 'No'}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Perfil() {
   const toast = useToast();
   const [p, setP] = useState<PortalProfile | null>(null);
@@ -196,6 +299,7 @@ function Perfil() {
 
   return (
     <div className="flex animate-fade flex-col gap-4">
+      <MiFicha />
       <div className="rounded-[18px] bg-card p-5 shadow-card">
         <div className="text-[17px] font-extrabold">{p.firstName} {p.lastName}</div>
         <div className="text-[12.5px] text-muted">{p.phone}{p.branch ? ` · ${p.branch}` : ''}</div>
