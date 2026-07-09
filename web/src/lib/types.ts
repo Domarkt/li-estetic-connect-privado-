@@ -104,6 +104,8 @@ export interface Appointment {
   googleSynced: boolean;
   fichaComplete: boolean;
   balance: number;
+  code: string | null;
+  checkedIn: boolean;
 }
 
 export interface AgendaResponse {
@@ -124,6 +126,7 @@ export interface InvoiceRow {
   concept: string; method: string; total: number; status: string;
 }
 export interface BillingResponse {
+  date?: string;
   stats: { label: string; value: number }[];
   invoices: InvoiceRow[];
 }
@@ -188,10 +191,10 @@ export interface IntegrationsView {
 // ── Portal del paciente ──
 export interface PortalProceso {
   treatment: { name: string; total: number; done: number; pct: number } | null;
-  nextAppointment: { date: string; day: string; month: string; time: string; service: string; therapist: string; branch: string } | null;
+  nextAppointment: { date: string; day: string; month: string; time: string; service: string; therapist: string; branch: string; code: string | null; checkedIn: boolean } | null;
   tips: string;
 }
-export interface PortalAppointment { id: string; date: string; service: string; therapist: string }
+export interface PortalAppointment { id: string; date: string; service: string; therapist: string; code: string | null; checkedIn: boolean }
 export interface PortalPackages {
   active: { name: string; total: number; done: number; remaining: number; pct: number; expiresAt: string | null } | null;
   shop: { id: string; name: string; sessions: number; price: number }[];

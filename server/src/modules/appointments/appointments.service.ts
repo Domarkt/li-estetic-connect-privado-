@@ -8,6 +8,14 @@ const STATUS_META: Record<AppointmentStatus, { label: string; color: string }> =
   REAGENDADA: { label: 'Reagendada', color: '#2C7FB8' },
 };
 
+/** Código de turno legible (sin caracteres ambiguos) para que el paciente lo presente. */
+export function genApptCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
 export const apptInclude = {
   patient: { include: { clinicalRecord: true, treatments: true } },
   therapist: true,
@@ -47,6 +55,9 @@ export function serializeAppt(
     fichaComplete,
     // Saldo pendiente: si > 0, el paciente debe pagar antes de ser atendido.
     balance,
+    // Código de turno + si ya fue validado en cabina.
+    code: a.code,
+    checkedIn: !!a.codeUsedAt,
   };
 }
 

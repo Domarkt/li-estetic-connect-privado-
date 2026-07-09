@@ -37,31 +37,36 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fija el monto y, por defecto, lo carga TODO en Efectivo (se puede repartir luego).
+  function setAmountDefault(v: string) {
+    setAmount(v);
+    const num = parseInt((v || '').replace(/[^0-9]/g, ''), 10) || 0;
+    setSplit({ EFECTIVO: num > 0 ? String(num) : '', TRANSFERENCIA: '', TARJETA: '', AZUL: '' });
+  }
+
   function applyPatient(p?: BillPatient) {
     if (!p) return;
     setSelected(p.id);
     if (p.pendingCharges.length) {
       setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
-      setAmount(String(p.pendingTotal)); setChargeIds(p.pendingCharges.map((c) => c.id));
+      setAmountDefault(String(p.pendingTotal)); setChargeIds(p.pendingCharges.map((c) => c.id));
       setTreatmentId(null); setPayKind('TOTAL');
     } else if (p.treatment && p.treatment.balance > 0) {
       setConcept(`Saldo ${p.treatment.name}`); setTreatmentId(p.treatment.id);
-      setPayKind('SALDO'); setAmount(String(p.treatment.balance)); setChargeIds([]);
+      setPayKind('SALDO'); setAmountDefault(String(p.treatment.balance)); setChargeIds([]);
     } else {
       setConcept(p.plan !== 'Sin paquete' ? `Paquete ${p.plan}` : '');
-      setAmount(p.treatment ? String(p.treatment.price) : ''); setTreatmentId(p.treatment?.id ?? null);
+      setAmountDefault(p.treatment ? String(p.treatment.price) : ''); setTreatmentId(p.treatment?.id ?? null);
       setPayKind('TOTAL'); setChargeIds([]);
     }
-    setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', AZUL: '' });
   }
 
   function setKind(k: PayKind) {
     setPayKind(k);
     if (!t) return;
-    if (k === 'SALDO') setAmount(String(t.balance));
-    else if (k === 'TOTAL') setAmount(String(t.price));
-    else setAmount(''); // abono: monto libre
-    setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', AZUL: '' });
+    if (k === 'SALDO') setAmountDefault(String(t.balance));
+    else if (k === 'TOTAL') setAmountDefault(String(t.price));
+    else setAmountDefault(''); // abono: monto libre
   }
 
   const amt = parseInt((amount || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -153,7 +158,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
             </div>
 
             <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Concepto</span><input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Servicio o paquete" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
-            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Monto total (RD$) · ITBIS 18% incluido</span><input value={amount} onChange={(e) => { setAmount(e.target.value); setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', AZUL: '' }); }} placeholder="18000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] font-bold outline-none focus:border-magenta" /></label>
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Monto total (RD$) · ITBIS 18% incluido</span><input value={amount} onChange={(e) => setAmountDefault(e.target.value)} placeholder="18000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] font-bold outline-none focus:border-magenta" /></label>
 
             {/* Pago dividido por método */}
             <div>

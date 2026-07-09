@@ -185,13 +185,14 @@ async function main() {
     { patient: 'Laura Peralta', branch: 'e3', therapist: 'Katherine Gómez', service: 'Transformación Total · sesión 3', h: 15, m: 30, type: 'RECURRENTE', status: 'CONFIRMADA' },
     { patient: 'Carmen Santos', branch: 'e1', therapist: 'Yerlin Peña', service: 'Limpieza facial', h: 16, m: 0, type: 'RECURRENTE', status: 'SIN_CONFIRMAR' },
   ] as const;
+  const apptCode = () => { const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({ length: 6 }, () => c[Math.floor(Math.random() * c.length)]).join(''); };
   for (const a of apptSeed) {
     await prisma.appointment.create({
       data: {
         branchId: byCode[a.branch], patientId: patientIds[a.patient],
         therapistId: therapists[a.therapist]?.id ?? null,
         serviceName: a.service, startsAt: at(a.h, a.m), durationMin: 60,
-        patientType: a.type, status: a.status,
+        patientType: a.type, status: a.status, code: apptCode(),
       },
     });
   }

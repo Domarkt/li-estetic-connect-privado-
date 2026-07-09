@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
+import { useBranch } from '../../layout/BranchContext';
 import { fmtRD, type BillingResponse, type Receipt } from '../../lib/types';
 import BillModal from './BillModal';
 import ReceiptModal from './ReceiptModal';
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const METHOD_CHIP: Record<string, { bg: string; fg: string }> = {
   Efectivo: { bg: 'var(--ok-soft)', fg: 'var(--ok)' },
@@ -12,14 +16,25 @@ const METHOD_CHIP: Record<string, { bg: string; fg: string }> = {
 };
 
 export default function BillingPage() {
+  const { staff } = useAuth();
+  const { activeBranch } = useBranch();
   const [data, setData] = useState<BillingResponse>({ stats: [], invoices: [] });
+  const [date, setDate] = useState(todayISO());
   const [billOpen, setBillOpen] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
+  const isToday = date === todayISO();
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const branchQ = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
+
   const load = useCallback(() => {
-    api.get<BillingResponse>('/invoices').then(setData).catch(() => {});
-  }, []);
+    api.get<BillingResponse>(`/invoices?date=${date}${branchQ}`).then(setData).catch(() => {});
+  }, [date, branchQ]);
   useEffect(() => { load(); }, [load]);
+
+  function shiftDate(days: number) {
+    const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
+  }
 
   async function reprint(id: string) {
     const r = await api.get<Receipt>(`/invoices/${id}/receipt`);
@@ -28,6 +43,15 @@ export default function BillingPage() {
 
   return (
     <div className="animate-fade">
+      {/* Navegación por fecha (calendario) */}
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        <button onClick={() => shiftDate(-1)} className="h-9 w-9 rounded-lg border border-line bg-card font-bold text-muted hover:border-magenta">‹</button>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-line bg-card px-3 py-2 text-[13px] font-semibold" />
+        <button onClick={() => shiftDate(1)} className="h-9 w-9 rounded-lg border border-line bg-card font-bold text-muted hover:border-magenta">›</button>
+        {!isToday && <button onClick={() => setDate(todayISO())} className="rounded-lg border border-line bg-card px-3 py-2 text-[12px] font-bold text-muted hover:border-magenta">Hoy</button>}
+        <span className="ml-1 text-[13px] font-semibold capitalize text-muted">{dateLabel}</span>
+      </div>
+
       <div className="mb-[18px] flex gap-3.5">
         {data.stats.map((s) => (
           <div key={s.label} className="flex-1 rounded-xl border border-line bg-card px-[18px] py-4 shadow-card">
@@ -38,7 +62,7 @@ export default function BillingPage() {
       </div>
 
       <div className="mb-3.5 flex items-center justify-between">
-        <div className="text-base font-extrabold">Recibos recientes</div>
+        <div className="text-base font-extrabold">Recibos {isToday ? 'de hoy' : 'del día'}</div>
         <button onClick={() => setBillOpen(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Nuevo cobro</button>
       </div>
 

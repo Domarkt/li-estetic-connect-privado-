@@ -327,6 +327,8 @@ model Appointment {
   patientType   PatientType       @default(RECURRENTE) // marcado al agendar
   sessionNo     Int? // sesión N del tratamiento
   notes         String?
+  code          String?           @unique // código único de turno (lo valida la esteticista en cabina)
+  codeUsedAt    DateTime? // cuándo se validó el código (turno abierto); evita reuso
   googleEventId String? // sync Google Calendar (Fase 3)
   reminderSentAt DateTime?
   createdAt     DateTime          @default(now())

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
-import { serializeAppt, apptInclude, dayRange } from './appointments.service.js';
+import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
 
@@ -108,7 +108,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   const appt = await prisma.appointment.create({
     data: {
       branchId: patient.branchId, patientId: patient.id, therapistId: b.therapistId ?? null,
-      serviceName, catalogItemId,
+      serviceName, catalogItemId, code: genApptCode(),
       startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
     },
     include: apptInclude,
@@ -125,6 +125,30 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   } catch { /* la cita se crea aunque falle la sync */ }
 
   res.status(201).json({ ...serializeAppt(appt), message: 'Cita agendada y confirmación enviada por WhatsApp' });
+});
+
+const checkinSchema = z.object({ code: z.string().min(4) });
+
+/**
+ * Abrir turno en cabina: la esteticista valida el código único del paciente.
+ * No reutilizable (una vez usado, marca codeUsedAt). Aislado por sucursal.
+ */
+appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), branchScope, async (req, res) => {
+  const { code } = checkinSchema.parse(req.body);
+  const appt = await prisma.appointment.findUnique({
+    where: { code: code.trim().toUpperCase() }, include: apptInclude,
+  });
+  if (!appt) return res.status(404).json({ error: 'Código inválido · no corresponde a ninguna cita' });
+  if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'La cita es de otra sucursal' });
+  if (appt.codeUsedAt) {
+    return res.status(409).json({ error: `Este código ya fue usado (turno abierto ${appt.codeUsedAt.toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })})` });
+  }
+  if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita está cancelada' });
+
+  const updated = await prisma.appointment.update({
+    where: { id: appt.id }, data: { codeUsedAt: new Date(), status: 'CONFIRMADA' }, include: apptInclude,
+  });
+  res.json({ ok: true, message: `Turno abierto: ${appt.patient.name} · ${appt.serviceName}`, appointment: serializeAppt(updated) });
 });
 
 const patchSchema = z.object({

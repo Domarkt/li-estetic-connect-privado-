@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requirePatient } from '../../middleware/auth.js';
+import { genApptCode } from '../appointments/appointments.service.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -32,6 +33,8 @@ portalRouter.get('/proceso', async (req, res) => {
       service: nextAppt.serviceName,
       therapist: nextAppt.therapist?.name ?? 'Por asignar',
       branch: nextAppt.branch ? `${nextAppt.branch.name} · ${nextAppt.branch.place}` : '',
+      code: nextAppt.code,
+      checkedIn: !!nextAppt.codeUsedAt,
     } : null,
     tips: CARE_TIPS,
   });
@@ -48,6 +51,8 @@ portalRouter.get('/appointments', async (req, res) => {
     date: a.startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     service: a.serviceName,
     therapist: a.therapist?.name ?? 'Por asignar',
+    code: a.code,
+    checkedIn: !!a.codeUsedAt,
   })));
 });
 
@@ -59,13 +64,13 @@ portalRouter.post('/appointments', async (req, res) => {
   const patient = await prisma.patient.findUnique({ where: { id: req.patient!.patientId } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
 
-  await prisma.appointment.create({
+  const created = await prisma.appointment.create({
     data: {
-      branchId: patient.branchId, patientId: patient.id, serviceName: b.serviceName,
+      branchId: patient.branchId, patientId: patient.id, serviceName: b.serviceName, code: genApptCode(),
       startsAt: new Date(`${b.date}T${b.time}:00`), patientType: patient.type, status: 'SIN_CONFIRMAR',
     },
   });
-  res.status(201).json({ ok: true, message: 'Solicitud de cita enviada · recepción la confirmará' });
+  res.status(201).json({ ok: true, code: created.code, message: `Solicitud enviada · tu código de turno es ${created.code}` });
 });
 
 const rescheduleSchema = z.object({ date: z.string(), time: z.string() });

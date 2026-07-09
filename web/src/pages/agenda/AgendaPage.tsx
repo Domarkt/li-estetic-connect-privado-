@@ -21,6 +21,7 @@ export default function AgendaPage() {
   const [view, setView] = useState<'dia' | 'mes'>('dia');
   const [date, setDate] = useState(todayISO());
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
+  const [checkinOpen, setCheckinOpen] = useState(false);
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
@@ -81,6 +82,11 @@ export default function AgendaPage() {
           </div>
         )}
         <div className="flex-1" />
+        {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && (
+          <button onClick={() => setCheckinOpen(true)} className="flex items-center gap-1.5 rounded-xl border border-line bg-card px-[18px] py-2 text-[13.5px] font-bold text-navy hover:border-magenta">
+            🔓 Abrir turno
+          </button>
+        )}
         {canSchedule && (
           <button onClick={() => setSchedOpen(true)} className="flex items-center gap-1.5 rounded-xl bg-magenta px-[18px] py-2 text-[13.5px] font-bold text-white">
             <span className="text-[17px]">+</span> Agendar cita
@@ -127,6 +133,7 @@ export default function AgendaPage() {
                   ? <span className="rounded-full bg-magenta-soft px-2 py-0.5 text-[10px] font-bold text-magenta">Cliente nuevo</span>
                   : <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10px] font-bold text-muted">Recurrente</span>}
                 <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: a.statusColor + '1a', color: a.statusColor }}>{a.statusLabel}</span>
+                {a.checkedIn && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>🔓 Turno abierto</span>}
               </div>
               <div className="mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist} · {a.branchName}</div>
               {a.balance > 0 && (
@@ -154,6 +161,49 @@ export default function AgendaPage() {
       {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
+      {checkinOpen && <CheckinModal onClose={() => setCheckinOpen(false)} onDone={load} />}
+    </div>
+  );
+}
+
+function CheckinModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function validate() {
+    if (code.trim().length < 4) { toast('Ingresa el código del turno'); return; }
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.post<{ message: string }>('/appointments/checkin', { code: code.trim() });
+      setResult({ ok: true, text: r.message });
+      toast(r.message);
+      onDone();
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : 'Error' });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-center justify-center p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Abrir turno en cabina</div><div className="text-[12.5px] text-muted">Valida el código del paciente antes de atender</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3 px-6 py-5">
+          <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && validate()}
+            placeholder="Código del turno (ej. K7X2QP)" className="rounded-[10px] border border-line px-4 py-3 text-center text-[18px] font-extrabold tracking-[.3em] outline-none focus:border-magenta" />
+          {result && (
+            <div className="rounded-[10px] px-4 py-3 text-[13px] font-bold" style={result.ok ? { background: 'var(--ok-soft)', color: 'var(--ok)' } : { background: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {result.ok ? '✓ ' : '⚠ '}{result.text}
+            </div>
+          )}
+          <div className="text-[11.5px] text-faint">El código es único por cita y no se puede reutilizar. Así se evita que otra persona use el turno.</div>
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
+          <button onClick={validate} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Validando…' : 'Validar y abrir'}</button>
+        </div>
+      </div>
     </div>
   );
 }

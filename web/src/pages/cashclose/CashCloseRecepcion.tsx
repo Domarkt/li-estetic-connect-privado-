@@ -35,6 +35,10 @@ export default function CashCloseRecepcion() {
   const grandTotal = cashTotal + cardTotal + n(transfer) + n(azul);
   const locked = status === 'CUADRADO';
 
+  function nuevoCuadre() {
+    setQty({}); setVouchers(['']); setTransfer(''); setAzul(''); setNotes('');
+  }
+
   async function submit() {
     setBusy(true);
     try {
@@ -53,8 +57,11 @@ export default function CashCloseRecepcion() {
 
   return (
     <div className="animate-fade">
-      <div className="mb-4 rounded-base border px-4 py-3 text-[12.5px]" style={{ background: 'var(--warn-soft)', borderColor: '#F0D9A8', color: '#7A5A12' }}>
-        🔒 <b>Conteo ciego:</b> ingresa lo que hay físicamente en caja. No verás el total esperado; administración validará faltantes o sobrantes.
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex-1 rounded-base border px-4 py-3 text-[12.5px]" style={{ background: 'var(--warn-soft)', borderColor: '#F0D9A8', color: '#7A5A12' }}>
+          🔒 <b>Conteo ciego:</b> ingresa lo que hay físicamente en caja. No verás el total esperado; administración validará faltantes o sobrantes.
+        </div>
+        <button onClick={nuevoCuadre} disabled={locked} className="flex-none rounded-[10px] border border-line bg-card px-4 py-3 text-[13px] font-bold text-navy hover:border-magenta disabled:opacity-50">↻ Nuevo cuadre</button>
       </div>
 
       {status && (

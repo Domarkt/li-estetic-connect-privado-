@@ -86,6 +86,13 @@ function Proceso() {
             <div className="flex h-[52px] w-[52px] flex-none flex-col items-center justify-center rounded-[14px] bg-magenta-soft text-magenta"><div className="text-[18px] font-extrabold leading-none">{d.nextAppointment.day}</div><div className="text-[10px] font-bold">{d.nextAppointment.month}</div></div>
             <div className="flex-1"><div className="text-[15px] font-extrabold">{d.nextAppointment.time}</div><div className="text-[12.5px] text-muted">{d.nextAppointment.service} · {d.nextAppointment.therapist}</div><div className="text-xs text-faint">{d.nextAppointment.branch}</div></div>
           </div>
+          {d.nextAppointment.code && (
+            <div className="mt-3 rounded-[12px] border border-dashed px-3.5 py-2.5 text-center" style={{ borderColor: 'var(--magenta)', background: 'var(--magenta-soft)' }}>
+              <div className="text-[10.5px] font-bold uppercase tracking-wide text-magenta">Tu código de turno</div>
+              <div className="text-[22px] font-extrabold tracking-[.3em] text-magenta">{d.nextAppointment.code}</div>
+              <div className="text-[10.5px] text-muted">{d.nextAppointment.checkedIn ? '✓ Turno ya abierto' : 'Muéstralo en cabina para abrir tu turno'}</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -144,7 +151,14 @@ function Citas() {
           {appts.map((a) => (
             <div key={a.id} className="rounded-[16px] bg-card p-4 shadow-card">
               <div className="text-sm font-extrabold capitalize">{a.date}</div>
-              <div className="mb-3 mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist}</div>
+              <div className="mb-2 mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist}</div>
+              {a.code && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg bg-magenta-soft px-2.5 py-1.5">
+                  <span className="text-[10.5px] font-bold uppercase text-magenta">Código</span>
+                  <span className="text-[15px] font-extrabold tracking-[.2em] text-magenta">{a.code}</span>
+                  {a.checkedIn && <span className="ml-auto text-[10.5px] font-bold text-ok">✓ abierto</span>}
+                </div>
+              )}
               <div className="flex gap-2.5">
                 <button onClick={() => reschedule(a.id)} className="flex-1 rounded-[9px] py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Reagendar</button>
                 <button onClick={() => cancel(a.id)} className="flex-1 rounded-[9px] py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Cancelar</button>

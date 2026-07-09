@@ -13,22 +13,33 @@ const billers = ['ADMIN', 'RECEPCIONISTA'] as const;
 
 /** Recibos recientes (aislados por sucursal) + estadísticas del día. */
 invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
-  const where = req.scopeBranchId ? { branchId: req.scopeBranchId } : {};
+  // Navegación por fecha: ?date=YYYY-MM-DD (por defecto, hoy).
+  const dateStr = (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+  const start = new Date(dateStr + 'T00:00:00');
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const isToday = dateStr === new Date().toISOString().slice(0, 10);
+
+  const baseWhere = req.scopeBranchId ? { branchId: req.scopeBranchId } : {};
   const invoices = await prisma.invoice.findMany({
-    where, include: invoiceInclude, orderBy: { issuedAt: 'desc' }, take: 50,
+    where: { ...baseWhere, issuedAt: { gte: start, lt: end } },
+    include: invoiceInclude, orderBy: { issuedAt: 'desc' },
   });
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const todays = invoices.filter((i) => i.issuedAt >= startOfDay && i.status === 'PAGADA');
-  const total = todays.reduce((s, i) => s + i.total, 0);
-  const cash = todays.filter((i) => i.method === 'EFECTIVO').reduce((s, i) => s + i.total, 0);
+  const paid = invoices.filter((i) => i.status === 'PAGADA');
+  const total = paid.reduce((s, i) => s + i.total, 0);
+  const cash = paid.reduce((s, i) => {
+    const pays = (i.payments ?? null) as { method: string; amount: number }[] | null;
+    if (Array.isArray(pays) && pays.length) return s + pays.filter((p) => p.method === 'EFECTIVO').reduce((a, p) => a + p.amount, 0);
+    return s + (i.method === 'EFECTIVO' ? i.total : 0);
+  }, 0);
+  const suf = isToday ? 'hoy' : 'del día';
 
   res.json({
+    date: dateStr,
     stats: [
-      { label: 'Cobrado hoy', value: total },
-      { label: 'Recibos hoy', value: todays.length },
-      { label: 'Efectivo hoy', value: cash },
+      { label: `Cobrado ${suf}`, value: total },
+      { label: `Recibos ${suf}`, value: paid.length },
+      { label: `Efectivo ${suf}`, value: cash },
       { label: 'Otros métodos', value: total - cash },
     ],
     invoices: invoices.map(serializeInvoiceRow),
