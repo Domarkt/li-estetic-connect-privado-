@@ -195,6 +195,7 @@ export interface PortalProceso {
   tips: string;
 }
 export interface PortalAppointment { id: string; date: string; service: string; therapist: string; code: string | null; checkedIn: boolean }
+export interface PortalBranch { id: string; name: string; place: string; phone: string; waNumber: string }
 export interface PortalPackages {
   active: { name: string; total: number; done: number; remaining: number; pct: number; expiresAt: string | null } | null;
   shop: { id: string; name: string; sessions: number; price: number }[];

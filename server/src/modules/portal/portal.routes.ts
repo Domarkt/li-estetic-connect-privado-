@@ -56,6 +56,16 @@ portalRouter.get('/appointments', async (req, res) => {
   })));
 });
 
+/** Sucursales con su WhatsApp para solicitar cita (evita agendar directo desde el portal). */
+portalRouter.get('/branches', async (_req, res) => {
+  const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
+  res.json(branches.map((b) => {
+    const digits = (b.phone || '').replace(/\D/g, '');
+    const wa = digits.length === 10 ? '1' + digits : digits; // RD → +1
+    return { id: b.id, name: b.name, place: b.place, phone: b.phone, waNumber: wa };
+  }));
+});
+
 const bookSchema = z.object({ serviceName: z.string().min(1), date: z.string(), time: z.string() });
 
 /** Solicitar/agendar cita desde el portal (queda SIN_CONFIRMAR para que recepción confirme). */

@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Icon } from '../components/icons';
-import { fmtRD, type PortalAppointment, type PortalPackages, type PortalProceso } from '../lib/types';
+import { fmtRD, type PortalAppointment, type PortalBranch, type PortalPackages, type PortalProceso } from '../lib/types';
 
 type Tab = 'proceso' | 'citas' | 'paquetes';
 
@@ -107,41 +107,40 @@ function Proceso() {
 function Citas() {
   const toast = useToast();
   const [appts, setAppts] = useState<PortalAppointment[]>([]);
-  const [service, setService] = useState('Reducción de medidas');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState('10:00');
+  const [branches, setBranches] = useState<PortalBranch[]>([]);
 
   const load = useCallback(() => { api.get<PortalAppointment[]>('/portal/appointments', 'patient').then(setAppts).catch(() => {}); }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    api.get<PortalBranch[]>('/portal/branches', 'patient').then(setBranches).catch(() => {});
+  }, [load]);
 
-  async function book() {
-    const r = await api.post<{ message: string }>('/portal/appointments', { serviceName: service, date, time }, 'patient');
-    toast(r.message); load();
-  }
   async function cancel(id: string) {
     const r = await api.del<{ message: string }>(`/portal/appointments/${id}`, 'patient');
     toast(r.message); load();
   }
-  async function reschedule(id: string) {
-    const r = await api.patch<{ message: string }>(`/portal/appointments/${id}`, { date, time }, 'patient');
-    toast(r.message); load();
+  function waLink(b: PortalBranch, msg: string) {
+    return `https://wa.me/${b.waNumber}?text=${encodeURIComponent(msg)}`;
   }
 
   return (
     <div className="flex animate-fade flex-col gap-4">
+      {/* Solicitar cita por WhatsApp (evita conflictos de agenda) */}
       <div className="rounded-[18px] bg-card p-5 shadow-card">
-        <div className="mb-3.5 text-[15px] font-extrabold">Agendar nueva cita</div>
+        <div className="mb-1 text-[15px] font-extrabold">Solicita tu cita por WhatsApp</div>
+        <div className="mb-3.5 text-[12px] text-muted">Escríbele a la sucursal donde quieres tu cita y recepción te la confirma.</div>
         <div className="flex flex-col gap-2.5">
-          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio</span>
-            <select value={service} onChange={(e) => setService(e.target.value)} className="rounded-[10px] border border-line bg-card p-3 text-[13.5px]">
-              <option>Reducción de medidas</option><option>Radiofrecuencia corporal</option><option>Masaje reductor</option><option>Limpieza facial profunda</option>
-            </select>
-          </label>
-          <div className="flex gap-2.5">
-            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-[10px] border border-line bg-card p-3 text-[13.5px]" /></label>
-            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Hora</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-[10px] border border-line bg-card p-3 text-[13.5px]" /></label>
-          </div>
-          <button onClick={book} className="mt-1 rounded-[11px] bg-magenta p-3.5 text-sm font-bold text-white">Solicitar cita</button>
+          {branches.map((b) => (
+            <a key={b.id} href={waLink(b, `Hola ${b.name}, quiero solicitar una cita. Mi nombre es `)} target="_blank" rel="noreferrer"
+              className="flex items-center gap-3 rounded-[13px] border border-line px-4 py-3 no-underline transition hover:border-magenta">
+              <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-white" style={{ background: '#25D366' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.1-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.5-6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5c.1-.1.1-.3 0-.5l-.7-1.6c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.7.7-.9 1.6-.6 2.7.4 1.4 1.4 2.7 3.2 3.9 2.3 1.5 3.4 1.3 4 1.2.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1z"/></svg>
+              </span>
+              <div className="flex-1"><div className="text-[13.5px] font-bold">{b.name}</div><div className="text-[11.5px] text-muted">{b.phone} · {b.place}</div></div>
+              <span className="text-[12px] font-bold text-magenta">Escribir →</span>
+            </a>
+          ))}
+          {branches.length === 0 && <div className="text-[12.5px] text-muted">Cargando sucursales…</div>}
         </div>
       </div>
 
@@ -160,7 +159,10 @@ function Citas() {
                 </div>
               )}
               <div className="flex gap-2.5">
-                <button onClick={() => reschedule(a.id)} className="flex-1 rounded-[9px] py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Reagendar</button>
+                {branches[0] && (
+                  <a href={waLink(branches[0], `Hola, quiero reagendar mi cita del ${a.date} (${a.service}).`)} target="_blank" rel="noreferrer"
+                    className="flex-1 rounded-[9px] py-2.5 text-center text-[12.5px] font-bold no-underline" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Reagendar por WhatsApp</a>
+                )}
                 <button onClick={() => cancel(a.id)} className="flex-1 rounded-[9px] py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Cancelar</button>
               </div>
             </div>

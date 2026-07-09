@@ -105,6 +105,30 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   const serviceName = b.isFollowUp ? 'Seguimiento de tratamiento' : b.serviceName;
   const catalogItemId = b.isFollowUp ? null : (b.catalogItemId ?? null);
   const startsAt = new Date(`${b.date}T${b.time}:00`);
+
+  // Regla: un CLIENTE NUEVO necesita ≥40 min de separación (requiere ficha/valoración).
+  // Se valida contra la misma esteticista (si hay) o contra otros clientes nuevos de la sucursal.
+  if (patient.type === 'NUEVO') {
+    const GAP = 40 * 60 * 1000;
+    const conflict = await prisma.appointment.findFirst({
+      where: {
+        startsAt: { gt: new Date(startsAt.getTime() - GAP), lt: new Date(startsAt.getTime() + GAP) },
+        status: { not: 'CANCELADA' },
+        ...(b.therapistId
+          ? { therapistId: b.therapistId }
+          : { branchId: patient.branchId, patientType: 'NUEVO' }),
+      },
+      include: { patient: true, therapist: true },
+    });
+    if (conflict) {
+      const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+      const quien = b.therapistId ? (conflict.therapist?.name ?? 'la esteticista') : 'otro cliente nuevo';
+      return res.status(409).json({
+        error: `Un cliente nuevo requiere 40 min libres. Hay una cita (${quien}) a las ${h}. Elige un horario con al menos 40 min de diferencia.`,
+      });
+    }
+  }
+
   const appt = await prisma.appointment.create({
     data: {
       branchId: patient.branchId, patientId: patient.id, therapistId: b.therapistId ?? null,
