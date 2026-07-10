@@ -2,7 +2,9 @@
 // Multi-sucursal con aislamiento por branchId. Cubre todas las fases del handoff.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native = dev local; linux-musl-openssl-3.0.x = contenedor node:20-alpine (Render)
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
