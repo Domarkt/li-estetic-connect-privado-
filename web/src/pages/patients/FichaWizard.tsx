@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
+import { Portal } from '../../components/Modal';
 import { MOTIVOS, ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './fichaConstants';
 
 interface Props {
@@ -144,7 +145,9 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+    <Portal>
+    <div className="fixed inset-0 z-[110] overflow-y-auto" style={{ background: 'rgba(28,37,64,.5)' }}>
+     <div className="flex min-h-full items-start justify-center p-4 sm:p-7">
       <div className="flex max-h-[94vh] w-[820px] max-w-full flex-col overflow-hidden rounded-[18px] bg-card animate-pop"
         style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         {/* Header */}
@@ -193,7 +196,9 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
           </button>
         </div>
       </div>
+     </div>
     </div>
+    </Portal>
   );
 }
 

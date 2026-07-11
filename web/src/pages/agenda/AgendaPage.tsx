@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
+import { Portal } from '../../components/Modal';
 import { fmtRD, type AgendaResponse, type Appointment, type CalendarStatus } from '../../lib/types';
 import ScheduleModal from './ScheduleModal';
 import FichaWizard from '../patients/FichaWizard';
@@ -215,8 +216,9 @@ function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; on
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-center justify-center p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
-      <div onClick={(e) => e.stopPropagation()} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+    <Portal>
+    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="my-auto w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Abrir turno en cabina</div><div className="text-[12.5px] text-muted">{appt ? `${appt.patient} · ${appt.time} · valida su código` : 'Valida el código del paciente antes de atender'}</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
         <div className="flex flex-col gap-3 px-6 py-5">
           <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && validate()}
@@ -234,6 +236,7 @@ function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; on
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -266,8 +269,9 @@ function RemindModal({ appt, onClose, onSent }: { appt: Appointment; onClose: ()
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-center justify-center p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
-      <div onClick={(e) => e.stopPropagation()} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+    <Portal>
+    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="my-auto w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Recordar cita</div><div className="text-[12.5px] text-muted">{appt.patient} · {appt.time}</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
         <div className="flex flex-col gap-3 px-6 py-5">
           <div className="text-xs font-bold text-muted">¿Por qué vía quieres recordar?</div>
@@ -289,6 +293,7 @@ function RemindModal({ appt, onClose, onSent }: { appt: Appointment; onClose: ()
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

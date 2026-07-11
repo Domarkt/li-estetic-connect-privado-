@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
-import { stop } from '../../components/Modal';
+import { Portal, stop } from '../../components/Modal';
 import { fmtRD, type PatientDetail } from '../../lib/types';
 
 interface SendAccess { portalUrl: string; login: string; tempPassword: string | null }
@@ -46,6 +46,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   }
 
   return (
+    <Portal>
     <div onClick={onClose} className="fixed inset-0 z-[100] flex justify-end" style={{ background: 'rgba(28,37,64,.42)' }}>
       <div onClick={stop} className="h-screen w-[460px] max-w-full overflow-y-auto bg-card animate-slideup" style={{ boxShadow: '-8px 0 40px rgba(0,0,0,.2)' }}>
         {!d ? (
@@ -204,6 +205,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
         )}
       </div>
     </div>
+    </Portal>
   );
 }
 
