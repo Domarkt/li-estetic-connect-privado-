@@ -45,6 +45,8 @@ export interface PatientRow {
   type: PatientType;
   fichaStatus: FichaStatus;
   fichaLabel: string;
+  fichaSent: boolean;
+  fichaFilled: boolean;
   plan: string;
   progLabel: string;
   progPct: number;

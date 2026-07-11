@@ -60,8 +60,21 @@ button {
   font-family: inherit;
 }
 
-/* Impresión del recibo: solo se imprime #li-receipt */
+/* Impresión del recibo: solo se imprime #li-receipt, sin que los contenedores lo recorten. */
 @media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  /* Los modales/overlays usan overflow y max-height que cortarían el recibo al imprimir. */
+  * {
+    overflow: visible !important;
+    max-height: none !important;
+    box-shadow: none !important;
+  }
   body * {
     visibility: hidden;
   }
@@ -73,7 +86,12 @@ button {
     position: absolute;
     left: 0;
     top: 0;
-    box-shadow: none !important;
+    margin: 0 auto;
     border: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 12mm;
   }
 }

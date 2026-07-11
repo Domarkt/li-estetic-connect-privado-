@@ -31,6 +31,8 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const isMasa = staff?.role === 'ESTETICISTA';
   const canBill = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
   const fichaComplete = d?.fichaStatus === 'COMPLETA';
+  const fichaFilled = !!d?.fichaFilled; // el paciente ya completó su parte
+  const paso1Done = d?.fichaStatus !== 'PENDIENTE';
 
   async function sendToPatient() {
     setSending(true);
@@ -61,18 +63,27 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
               <div className="flex items-center justify-between rounded-[11px] bg-bg px-4 py-3.5">
                 <div><div className="text-[11.5px] font-semibold text-muted">Ficha clínica</div><div className="mt-0.5 text-[13px] font-bold">{d.fichaLabel}</div></div>
                 <button onClick={() => onOpenFicha({ id: d.id, name: d.name })} className="rounded-[9px] bg-magenta px-4 py-2.5 text-[12.5px] font-bold text-white">
-                  {fichaComplete ? 'Ver ficha' : staff?.role === 'RECEPCIONISTA' ? 'Completar Paso 1' : 'Continuar/validar ficha'}
+                  {fichaComplete ? 'Ver ficha' : staff?.role === 'RECEPCIONISTA' ? (paso1Done ? 'Ver / editar datos' : 'Completar Paso 1') : 'Continuar/validar ficha'}
                 </button>
               </div>
 
-              {/* Recepción/Admin: enviar la ficha al paciente para que la complete */}
-              {canBill && !fichaComplete && (
+              {/* El paciente ya completó su parte: recepción no necesita reenviar. */}
+              {canBill && !fichaComplete && fichaFilled && (
+                <div className="rounded-[11px] border px-4 py-3 text-[12px] font-semibold" style={{ background: 'var(--ok-soft)', borderColor: '#CDEBDD', color: '#1F7A54' }}>
+                  ✓ El paciente completó su ficha. Pendiente de que la esteticista la valide.
+                </div>
+              )}
+
+              {/* Recepción/Admin: enviar la ficha al paciente para que la complete (solo si aún no la llenó) */}
+              {canBill && !fichaComplete && !fichaFilled && (
                 <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
                   <div className="mb-2 text-[12px] leading-normal" style={{ color: '#1E5A82' }}>
-                    Envía la ficha al paciente para que complete la parte clínica desde su portal (o ayúdalo tú). La esteticista la validará luego.
+                    {d.fichaSent
+                      ? 'Ficha enviada · esperando que el paciente la complete desde su portal. Puedes reenviarla.'
+                      : 'Envía la ficha al paciente para que complete la parte clínica desde su portal (o ayúdalo tú). La esteticista la validará luego.'}
                   </div>
                   <button onClick={sendToPatient} disabled={sending} className="flex w-full items-center justify-center gap-2 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
-                    {sending ? 'Enviando…' : '✉ Enviar ficha al paciente'}
+                    {sending ? 'Enviando…' : d.fichaSent ? '✉ Reenviar ficha al paciente' : '✉ Enviar ficha al paciente'}
                   </button>
                   {access && (
                     <div className="mt-2 rounded-[9px] bg-card p-3 text-[12px]">

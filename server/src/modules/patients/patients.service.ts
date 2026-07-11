@@ -37,7 +37,11 @@ export function serializePatient(
     avatarColor: p.avatarColor,
     type: p.type, // NUEVO | RECURRENTE
     fichaStatus: p.clinicalRecord?.status ?? 'PENDIENTE',
-    fichaLabel: FICHA_LABEL[p.clinicalRecord?.status ?? 'PENDIENTE'],
+    fichaLabel: p.clinicalRecord?.patientFilledAt && p.clinicalRecord.status !== 'COMPLETA'
+      ? 'Recibida · validar con esteticista'
+      : FICHA_LABEL[p.clinicalRecord?.status ?? 'PENDIENTE'],
+    fichaSent: !!p.clinicalRecord?.sentToPatientAt,
+    fichaFilled: !!p.clinicalRecord?.patientFilledAt,
     plan: treatment?.name ?? 'Sin paquete',
     progLabel: treatment ? `${treatment.doneSessions}/${treatment.totalSessions}` : '—',
     progPct,

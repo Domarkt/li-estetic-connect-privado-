@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Icon } from '../components/icons';
 import { fmtRD, type PortalAppointment, type PortalBranch, type PortalHistoryItem, type PortalPackages, type PortalProceso, type PortalProfile } from '../lib/types';
-import { ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS } from './patients/fichaConstants';
+import { ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './patients/fichaConstants';
 
 interface PortalFichaState {
   status: string; sentToPatient: boolean; filled: boolean; completed: boolean;
@@ -17,7 +17,7 @@ type Tab = 'proceso' | 'citas' | 'paquetes' | 'perfil';
 export default function PatientPortal() {
   const { patient, logout } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('proceso');
+  const [tab, setTab] = useState<Tab>('perfil');
 
   if (!patient) return null;
   const firstName = patient.name.split(' ')[0];
@@ -46,10 +46,10 @@ export default function PatientPortal() {
 
         <div className="flex border-t border-line bg-card px-3 pb-2.5 pt-1.5">
           {([
-            { key: 'proceso', label: 'Proceso', icon: 'star' },
+            { key: 'perfil', label: 'Mi Ficha', icon: 'users' },
             { key: 'citas', label: 'Citas', icon: 'cal' },
+            { key: 'proceso', label: 'Proceso', icon: 'star' },
             { key: 'paquetes', label: 'Paquetes', icon: 'box' },
-            { key: 'perfil', label: 'Perfil', icon: 'users' },
           ] as const).map((t) => {
             const on = tab === t.key;
             return (
@@ -133,25 +133,6 @@ function Citas() {
 
   return (
     <div className="flex animate-fade flex-col gap-4">
-      {/* Solicitar cita por WhatsApp (evita conflictos de agenda) */}
-      <div className="rounded-[18px] bg-card p-5 shadow-card">
-        <div className="mb-1 text-[15px] font-extrabold">Solicita tu cita por WhatsApp</div>
-        <div className="mb-3.5 text-[12px] text-muted">Escríbele a la sucursal donde quieres tu cita y recepción te la confirma.</div>
-        <div className="flex flex-col gap-2.5">
-          {branches.map((b) => (
-            <a key={b.id} href={waLink(b, `Hola ${b.name}, quiero solicitar una cita. Mi nombre es `)} target="_blank" rel="noreferrer"
-              className="flex items-center gap-3 rounded-[13px] border border-line px-4 py-3 no-underline transition hover:border-magenta">
-              <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-white" style={{ background: '#25D366' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.1-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.5-6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5c.1-.1.1-.3 0-.5l-.7-1.6c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.7.7-.9 1.6-.6 2.7.4 1.4 1.4 2.7 3.2 3.9 2.3 1.5 3.4 1.3 4 1.2.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1z"/></svg>
-              </span>
-              <div className="flex-1"><div className="text-[13.5px] font-bold">{b.name}</div><div className="text-[11.5px] text-muted">{b.phone} · {b.place}</div></div>
-              <span className="text-[12px] font-bold text-magenta">Escribir →</span>
-            </a>
-          ))}
-          {branches.length === 0 && <div className="text-[12.5px] text-muted">Cargando sucursales…</div>}
-        </div>
-      </div>
-
       <div>
         <div className="mx-0.5 mb-2.5 text-sm font-extrabold">Mis próximas citas</div>
         <div className="flex flex-col gap-2.5">
@@ -178,6 +159,25 @@ function Citas() {
           {appts.length === 0 && <div className="rounded-[16px] bg-card p-4 text-center text-sm text-muted shadow-card">No tienes citas próximas.</div>}
         </div>
         <div className="mt-3 px-1 text-[11.5px] leading-normal text-faint">⚠ Recuerda cancelar con 24h de anticipación. Después de 5 cancelaciones se pierde el tratamiento.</div>
+      </div>
+
+      {/* Solicitar una NUEVA cita por WhatsApp (recepción la confirma en agenda) */}
+      <div className="rounded-[18px] bg-card p-5 shadow-card">
+        <div className="mb-1 text-[15px] font-extrabold">¿Necesitas otra cita?</div>
+        <div className="mb-3.5 text-[12px] text-muted">Escríbele por WhatsApp a la sucursal y recepción te la agenda y confirma.</div>
+        <div className="flex flex-col gap-2.5">
+          {branches.map((b) => (
+            <a key={b.id} href={waLink(b, `Hola ${b.name}, quiero solicitar una cita. Mi nombre es `)} target="_blank" rel="noreferrer"
+              className="flex items-center gap-3 rounded-[13px] border border-line px-4 py-3 no-underline transition hover:border-magenta">
+              <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full text-white" style={{ background: '#25D366' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.1-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.5-6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5c.1-.1.1-.3 0-.5l-.7-1.6c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.7.7-.9 1.6-.6 2.7.4 1.4 1.4 2.7 3.2 3.9 2.3 1.5 3.4 1.3 4 1.2.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1z"/></svg>
+              </span>
+              <div className="flex-1"><div className="text-[13.5px] font-bold">{b.name}</div><div className="text-[11.5px] text-muted">{b.phone} · {b.place}</div></div>
+              <span className="text-[12px] font-bold text-magenta">Escribir →</span>
+            </a>
+          ))}
+          {branches.length === 0 && <div className="text-[12.5px] text-muted">Cargando sucursales…</div>}
+        </div>
       </div>
     </div>
   );
@@ -242,11 +242,14 @@ function MiFicha() {
           <FichaGroup title="¿Tienes alguno de estos antecedentes?" items={ANTECEDENTES} state={ant} setState={setAnt} />
           <FichaGroup title="¿Tomas alguno de estos medicamentos?" items={MEDICAMENTOS} state={med} setState={setMed} />
           <div className="rounded-[12px] bg-card p-3">
-            <div className="mb-2 text-[12px] font-bold text-navy">Fototipo de piel</div>
+            <div className="mb-2 text-[12px] font-bold text-navy">Fototipo de piel <span className="font-semibold text-muted">(tipo de piel)</span></div>
             <div className="flex gap-1.5">
               {FOTOTIPOS.map((k) => (
-                <button key={k} onClick={() => setFototipo(k)} className="flex-1 rounded-lg border py-2 text-[13px] font-extrabold" style={{ borderColor: fototipo === k ? 'var(--magenta)' : 'var(--line)', background: fototipo === k ? 'var(--magenta-soft)' : '#fff', color: fototipo === k ? 'var(--magenta)' : 'var(--ink)' }}>{k}</button>
+                <button key={k} onClick={() => setFototipo(k)} title={FOTOTIPO_DESC[k]} className="flex-1 rounded-lg border py-2 text-[13px] font-extrabold" style={{ borderColor: fototipo === k ? 'var(--magenta)' : 'var(--line)', background: fototipo === k ? 'var(--magenta-soft)' : '#fff', color: fototipo === k ? 'var(--magenta)' : 'var(--ink)' }}>{k}</button>
               ))}
+            </div>
+            <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] leading-snug" style={{ background: 'var(--bg)', color: fototipo ? 'var(--ink)' : 'var(--muted)' }}>
+              {fototipo ? <><b>Tipo {fototipo}:</b> {FOTOTIPO_DESC[fototipo]}</> : 'Toca cada número para ver la descripción y elegir tu tipo de piel.'}
             </div>
             <div className="mt-2 flex gap-2">
               <label className="flex-1"><span className="mb-1 block text-[11px] font-bold text-muted">Talla (cm)</span><input value={talla} onChange={(e) => setTalla(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>

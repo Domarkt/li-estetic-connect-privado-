@@ -10,13 +10,16 @@ portalRouter.use(requirePatient);
 
 const CARE_TIPS = 'Toma abundante agua, evita alimentos con sodio y camina 20 min hoy para potenciar tus resultados.';
 
+/** Inicio del día de hoy: las citas de hoy siguen visibles aunque su hora ya pasó. */
+function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+
 /** Mi Proceso: tratamiento activo, progreso, próxima cita y tips. */
 portalRouter.get('/proceso', async (req, res) => {
   const patientId = req.patient!.patientId;
   const [treatment, nextAppt] = await Promise.all([
     prisma.treatment.findFirst({ where: { patientId, active: true }, orderBy: { createdAt: 'desc' } }),
     prisma.appointment.findFirst({
-      where: { patientId, startsAt: { gte: new Date() }, status: { not: 'CANCELADA' } },
+      where: { patientId, startsAt: { gte: startOfToday() }, status: { not: 'CANCELADA' } },
       include: { therapist: true, branch: true }, orderBy: { startsAt: 'asc' },
     }),
   ]);
@@ -44,7 +47,7 @@ portalRouter.get('/proceso', async (req, res) => {
 /** Mis citas próximas. */
 portalRouter.get('/appointments', async (req, res) => {
   const appts = await prisma.appointment.findMany({
-    where: { patientId: req.patient!.patientId, status: { not: 'CANCELADA' }, startsAt: { gte: new Date() } },
+    where: { patientId: req.patient!.patientId, status: { not: 'CANCELADA' }, startsAt: { gte: startOfToday() } },
     include: { therapist: true }, orderBy: { startsAt: 'asc' },
   });
   res.json(appts.map((a) => ({

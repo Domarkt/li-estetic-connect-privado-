@@ -22,6 +22,7 @@ export default function AgendaPage() {
   const [date, setDate] = useState(todayISO());
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
+  const [checkinFor, setCheckinFor] = useState<Appointment | null>(null);
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
@@ -145,6 +146,13 @@ export default function AgendaPage() {
                 </div>
               )}
             </div>
+            {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && !a.checkedIn && (
+              <button onClick={() => setCheckinFor(a)}
+                className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
+                style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
+                🔓 Abrir turno
+              </button>
+            )}
             {isMasa && (
               <button onClick={() => setFicha({ id: a.patientId, name: a.patient })}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold"
@@ -164,12 +172,12 @@ export default function AgendaPage() {
       {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
-      {checkinOpen && <CheckinModal onClose={() => setCheckinOpen(false)} onDone={load} />}
+      {(checkinOpen || checkinFor) && <CheckinModal appt={checkinFor} onClose={() => { setCheckinOpen(false); setCheckinFor(null); }} onDone={load} />}
     </div>
   );
 }
 
-function CheckinModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -191,7 +199,7 @@ function CheckinModal({ onClose, onDone }: { onClose: () => void; onDone: () => 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[110] flex items-center justify-center p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
       <div onClick={(e) => e.stopPropagation()} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
-        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Abrir turno en cabina</div><div className="text-[12.5px] text-muted">Valida el código del paciente antes de atender</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Abrir turno en cabina</div><div className="text-[12.5px] text-muted">{appt ? `${appt.patient} · ${appt.time} · valida su código` : 'Valida el código del paciente antes de atender'}</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
         <div className="flex flex-col gap-3 px-6 py-5">
           <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && validate()}
             placeholder="Código del turno (ej. K7X2QP)" className="rounded-[10px] border border-line px-4 py-3 text-center text-[18px] font-extrabold tracking-[.3em] outline-none focus:border-magenta" />

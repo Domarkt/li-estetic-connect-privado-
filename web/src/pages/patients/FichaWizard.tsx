@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
-import { MOTIVOS, ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS } from './fichaConstants';
+import { MOTIVOS, ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './fichaConstants';
 
 interface Props {
   patientId: string;
@@ -144,8 +144,8 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
-      <div className="flex max-h-[92vh] w-[820px] max-w-full flex-col overflow-hidden rounded-[18px] bg-card animate-pop"
+    <div className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div className="flex max-h-[94vh] w-[820px] max-w-full flex-col overflow-hidden rounded-[18px] bg-card animate-pop"
         style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         {/* Header */}
         <div className="flex items-center gap-3.5 border-b border-line px-[26px] py-5">
@@ -174,7 +174,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-[26px] py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-[26px] py-6">
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
           {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} />}
@@ -305,11 +305,14 @@ function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setP
             {FOTOTIPOS.map((k) => {
               const on = fototipo === k;
               return (
-                <button key={k} onClick={() => setFototipo(k)}
+                <button key={k} onClick={() => setFototipo(k)} title={FOTOTIPO_DESC[k]}
                   className="flex-1 rounded-[10px] border-[1.5px] py-3 text-[15px] font-extrabold"
                   style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--ink)' }}>{k}</button>
               );
             })}
+          </div>
+          <div className="mt-2 rounded-[9px] px-3 py-2 text-[11.5px] leading-snug" style={{ background: 'var(--bg)', color: fototipo ? 'var(--ink)' : 'var(--muted)' }}>
+            {fototipo ? <><b>Fototipo {fototipo}:</b> {FOTOTIPO_DESC[fototipo]}</> : 'Pasa el cursor o toca cada opción para ver la descripción y elegir el tipo de piel.'}
           </div>
         </div>
         <div className="flex flex-col justify-end gap-3">
