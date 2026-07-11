@@ -283,7 +283,7 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
 const chargeSchema = z.object({ catalogItemIds: z.array(z.string()).min(1) });
 
 /** Esteticista carga paquetes/combos a la ficha y los envía a recepción. */
-patientsRouter.post('/:id/charges', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), async (req, res) => {
+patientsRouter.post('/:id/charges', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), async (req, res) => {
   const { catalogItemIds } = chargeSchema.parse(req.body);
   const patient = await prisma.patient.findUnique({ where: { id: req.params.id } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });

@@ -4,7 +4,7 @@ import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type CatalogItem } from '../../lib/types';
 
-export default function AddServicesModal({ patientId, onClose, onSaved }: { patientId: string; onClose: () => void; onSaved: () => void }) {
+export default function AddServicesModal({ patientId, canBillNow, onClose, onSaved, afterAdd }: { patientId: string; canBillNow?: boolean; onClose: () => void; onSaved: () => void; afterAdd?: (patientId: string) => void }) {
   const toast = useToast();
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [cart, setCart] = useState<Set<string>>(new Set());
@@ -12,20 +12,22 @@ export default function AddServicesModal({ patientId, onClose, onSaved }: { pati
 
   useEffect(() => {
     api.get<CatalogItem[]>('/catalog').then((all) =>
-      setItems(all.filter((i) => i.kind === 'PAQUETE' || i.kind === 'COMBO' || i.kind === 'SERVICIO')),
+      setItems(all.filter((i) => i.kind === 'PAQUETE' || i.kind === 'COMBO' || i.kind === 'SERVICIO' || i.kind === 'PRODUCTO')),
     );
   }, []);
 
   const toggle = (id: string) => { const n = new Set(cart); n.has(id) ? n.delete(id) : n.add(id); setCart(n); };
 
   async function send() {
-    if (!cart.size) { toast('Selecciona al menos un servicio'); return; }
+    if (!cart.size) { toast('Selecciona al menos un servicio o producto'); return; }
     setBusy(true);
     try {
       const r = await api.post<{ message: string }>(`/patients/${patientId}/charges`, { catalogItemIds: [...cart] });
       toast(r.message);
       onSaved();
       onClose();
+      // Recepción/Admin: pasa directo a cobrar para asegurar el pago antes de que el cliente se vaya.
+      if (canBillNow && afterAdd) afterAdd(patientId);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error');
     } finally {
@@ -37,8 +39,8 @@ export default function AddServicesModal({ patientId, onClose, onSaved }: { pati
     <Overlay onClose={onClose} z={120}>
       <div onClick={stop} className="flex max-h-[92vh] w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="border-b border-line px-6 py-5">
-          <div className="text-base font-extrabold">Agregar paquetes / combos</div>
-          <div className="mt-0.5 text-[12.5px] text-muted">Selecciona lo que eligió el paciente · se enviará a recepción para facturar</div>
+          <div className="text-base font-extrabold">Agregar servicios / productos</div>
+          <div className="mt-0.5 text-[12.5px] text-muted">{canBillNow ? 'Selecciona lo que eligió el paciente · pasarás a cobrar de inmediato' : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar'}</div>
         </div>
         <div className="flex flex-col gap-2 overflow-y-auto px-6 py-4">
           {items.map((it) => {
@@ -57,7 +59,7 @@ export default function AddServicesModal({ patientId, onClose, onSaved }: { pati
         <div className="flex items-center gap-2.5 border-t border-line px-6 py-4">
           <div className="flex-1 text-[12.5px] font-semibold text-muted">{cart.size} seleccionado(s)</div>
           <button onClick={onClose} className="rounded-[10px] border border-line bg-card px-4 py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-          <button onClick={send} disabled={busy} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Enviar a recepción →</button>
+          <button onClick={send} disabled={busy} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{canBillNow ? 'Agregar y cobrar →' : 'Enviar a recepción →'}</button>
         </div>
       </div>
     </Overlay>

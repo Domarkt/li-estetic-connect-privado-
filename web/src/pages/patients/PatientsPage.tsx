@@ -91,7 +91,7 @@ export default function PatientsPage() {
           onOpenBill={(id) => { setDetailId(null); setBillId(id); }} />
       )}
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={refresh} />}
-      {addSvc && <AddServicesModal patientId={addSvc} onClose={() => setAddSvc(null)} onSaved={refresh} />}
+      {addSvc && <AddServicesModal patientId={addSvc} canBillNow={canCreate} afterAdd={(id) => setBillId(id)} onClose={() => setAddSvc(null)} onSaved={refresh} />}
       {newOpen && <NewPatientModal onClose={() => setNewOpen(false)} onCreated={(p) => { refresh(); setFicha({ id: p.id, name: p.name }); }} />}
       {billId && <BillModal preselectId={billId} onClose={() => setBillId(null)} onEmitted={(r) => { setReceipt(r); refresh(); }} />}
       {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />}
