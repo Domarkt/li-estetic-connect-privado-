@@ -198,13 +198,18 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
   });
 
   const mail = await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword });
+  const failNote = mail.mode === 'live'
+    ? '(no se pudo enviar el correo, comparte los datos manualmente)'
+    : '(correo en modo demo)';
   res.json({
     ok: true,
     emailSent: mail.sent,
+    mailMode: mail.mode,
+    mailError: mail.error,
     access: { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null },
     message: mail.sent
       ? `Ficha enviada al correo del paciente (${patient.email})`
-      : `Acceso creado. Comparte con el paciente: usuario ${login}${tempPassword ? ` · contraseña ${tempPassword}` : ''} (correo en modo demo)`,
+      : `Acceso creado. Comparte con el paciente: usuario ${login}${tempPassword ? ` · contraseña ${tempPassword}` : ''} ${failNote}`,
   });
 });
 
