@@ -5,6 +5,7 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
+import { notify } from '../notifications/notifications.service.js';
 
 export const appointmentsRouter = Router();
 
@@ -147,6 +148,18 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     });
     if (eventId) await prisma.appointment.update({ where: { id: appt.id }, data: { googleEventId: eventId } });
   } catch { /* la cita se crea aunque falle la sync */ }
+
+  // Alerta interna a la esteticista asignada para que atienda al paciente.
+  if (appt.therapistId) {
+    const hora = startsAt.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    await notify({
+      userId: appt.therapistId,
+      type: 'NEW_APPOINTMENT',
+      title: 'Nueva cita asignada',
+      body: `${patient.name} · ${serviceName} · ${hora}`,
+      link: '/app/agenda',
+    });
+  }
 
   res.status(201).json({ ...serializeAppt(appt), message: 'Cita agendada y confirmación enviada por WhatsApp' });
 });

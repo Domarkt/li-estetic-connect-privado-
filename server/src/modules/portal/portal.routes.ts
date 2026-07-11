@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requirePatient } from '../../middleware/auth.js';
 import { genApptCode } from '../appointments/appointments.service.js';
+import { notifyBranchTherapists } from '../notifications/notifications.service.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -106,6 +107,21 @@ portalRouter.patch('/ficha', async (req, res) => {
       patientFilledAt: new Date(),
     },
   });
+
+  // Aviso a las esteticistas de la sucursal: la ficha está lista para validar.
+  const patient = await prisma.patient.findUnique({
+    where: { id: req.patient!.patientId },
+    select: { name: true, branchId: true },
+  });
+  if (patient) {
+    await notifyBranchTherapists(patient.branchId, {
+      type: 'FICHA_FILLED',
+      title: 'Ficha lista para validar',
+      body: `${patient.name} completó su ficha clínica desde el portal.`,
+      link: '/app/pacientes',
+    });
+  }
+
   res.json({ ok: true, message: 'Ficha enviada a tu esteticista para validarla. ¡Gracias!' });
 });
 

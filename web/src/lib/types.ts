@@ -212,6 +212,10 @@ export interface TeamCollaborator { id: string; name: string; role: string; bran
 export interface SystemUser { id: string; name: string; email: string; role: string; roleKey: Role; branch: string; branchId: string | null; avatarColor: string; active: boolean }
 export interface TeamResponse { collaborators: TeamCollaborator[]; systemUsers: SystemUser[] }
 
+// ── Notificaciones ──
+export interface NotificationItem { id: string; type: string; title: string; body: string; link: string | null; read: boolean; createdAt: string }
+export interface NotificationsResponse { unread: number; items: NotificationItem[] }
+
 // ── Cierre de caja ──
 export interface CashCloseToday {
   denominations: number[]; // denominaciones disponibles (RD$)

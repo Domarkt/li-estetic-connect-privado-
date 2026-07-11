@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useBranch } from './BranchContext';
 import { Icon, NAV_ICON } from '../components/icons';
 import { ROLE_LABEL, type Role } from '../lib/types';
+import NotificationBell from './NotificationBell';
 
 interface NavItem { key: string; label: string; badge?: number }
 
@@ -139,6 +140,8 @@ export default function AppShell() {
               })}
             </div>
           )}
+
+          <NotificationBell />
 
           <div className="flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2.5 text-[13px] font-semibold capitalize text-muted">
             <Icon name="calDay" size={15} />

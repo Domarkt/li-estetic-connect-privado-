@@ -5,6 +5,7 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import { serializePatient, patientInclude, syncPatientType } from './patients.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
+import { notifyBranchTherapists } from '../notifications/notifications.service.js';
 
 export const patientsRouter = Router();
 
@@ -198,6 +199,15 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
   });
 
   const mail = await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword });
+
+  // Aviso a las esteticistas de la sucursal: hay un nuevo paciente para atender.
+  await notifyBranchTherapists(patient.branchId, {
+    type: 'FICHA_SENT',
+    title: 'Nuevo paciente en proceso',
+    body: `${patient.name} recibió su acceso al portal para completar la ficha.`,
+    link: '/app/pacientes',
+  });
+
   const failNote = mail.mode === 'live'
     ? '(no se pudo enviar el correo, comparte los datos manualmente)'
     : '(correo en modo demo)';
