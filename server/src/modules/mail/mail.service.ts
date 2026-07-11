@@ -1,16 +1,41 @@
 import nodemailer from 'nodemailer';
 
+const BREVO_KEY = process.env.BREVO_API_KEY;
 const HOST = process.env.SMTP_HOST;
 const USER = process.env.SMTP_USER;
 const PASS = process.env.SMTP_PASS;
 const FROM = process.env.MAIL_FROM ?? 'Li Estetic Center <no-reply@liestetic.do>';
 const PORTAL_URL = process.env.PORTAL_URL ?? (process.env.CORS_ORIGIN ?? 'http://localhost:5173') + '/portal/login';
 
-export const mailConfigured = () => Boolean(HOST && USER && PASS);
+// Correo configurado si hay API de Brevo (HTTP, funciona en hosts que bloquean SMTP) o SMTP directo.
+export const mailConfigured = () => Boolean(BREVO_KEY || (HOST && USER && PASS));
+
+/** Separa "Nombre <correo>" en { name, email } para la API de Brevo. */
+function parseFrom(): { email: string; name?: string } {
+  const m = FROM.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (m) return { name: m[1] || undefined, email: m[2] };
+  return { email: FROM.trim() };
+}
+
+/** Envío vía API HTTP de Brevo (puerto 443, no usa SMTP). */
+async function sendViaBrevo(to: string, subject: string, html: string): Promise<MailResult> {
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': BREVO_KEY!, 'Content-Type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ sender: parseFrom(), to: [{ email: to }], subject, htmlContent: html }),
+    });
+    if (res.ok) return { sent: true, mode: 'live' };
+    const body = await res.text().catch(() => '');
+    return { sent: false, mode: 'live', error: `Brevo ${res.status}: ${body.slice(0, 200)}` };
+  } catch (e) {
+    return { sent: false, mode: 'live', error: e instanceof Error ? e.message : 'error' };
+  }
+}
 
 let transporter: nodemailer.Transporter | null = null;
 function getTransport() {
-  if (!mailConfigured()) return null;
+  if (!(HOST && USER && PASS)) return null;
   if (!transporter) {
     transporter = nodemailer.createTransport({
       host: HOST, port: Number(process.env.SMTP_PORT ?? 587),
@@ -19,6 +44,19 @@ function getTransport() {
     });
   }
   return transporter;
+}
+
+/** Envía un correo por el canal disponible: Brevo (HTTP) → SMTP → demo. */
+async function deliver(to: string, subject: string, html: string): Promise<MailResult> {
+  if (BREVO_KEY) return sendViaBrevo(to, subject, html);
+  const t = getTransport();
+  if (!t) return { sent: false, mode: 'demo' };
+  try {
+    await t.sendMail({ from: FROM, to, subject, html });
+    return { sent: true, mode: 'live' };
+  } catch (e) {
+    return { sent: false, mode: 'live', error: e instanceof Error ? e.message : 'error' };
+  }
 }
 
 export interface MailResult { sent: boolean; mode: 'live' | 'demo'; error?: string }
@@ -43,14 +81,7 @@ export async function sendPatientAccess(to: string, opts: { name: string; login:
       </div>
     </div>`;
 
-  const t = getTransport();
-  if (!t) return { sent: false, mode: 'demo' }; // sin SMTP: recepción comparte las credenciales manualmente
-  try {
-    await t.sendMail({ from: FROM, to, subject: 'Completa tu ficha clínica · Li Estetic Center', html });
-    return { sent: true, mode: 'live' };
-  } catch (e) {
-    return { sent: false, mode: 'live', error: e instanceof Error ? e.message : 'error' };
-  }
+  return deliver(to, 'Completa tu ficha clínica · Li Estetic Center', html);
 }
 
 export { PORTAL_URL };
