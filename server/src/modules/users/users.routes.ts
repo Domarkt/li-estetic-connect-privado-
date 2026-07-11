@@ -44,8 +44,8 @@ usersRouter.get('/team', requireStaff, requireRole('ADMIN'), branchScope, async 
     .sort((a, b) => b.points - a.points);
 
   const systemUsers = users.map((u) => ({
-    id: u.id, name: u.name, email: u.email, role: ROLE_LABEL[u.role],
-    branch: u.branch?.name ?? 'Todas', avatarColor: u.avatarColor, active: u.active,
+    id: u.id, name: u.name, email: u.email, role: ROLE_LABEL[u.role], roleKey: u.role,
+    branch: u.branch?.name ?? 'Todas', branchId: u.branchId, avatarColor: u.avatarColor, active: u.active,
   }));
 
   res.json({ collaborators, systemUsers });
@@ -87,14 +87,60 @@ usersRouter.post('/', requireStaff, requireRole('ADMIN'), async (req, res) => {
   });
 });
 
-const updateSchema = z.object({ active: z.boolean().optional(), password: z.string().min(6).optional() });
+const updateSchema = z.object({
+  name: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
+  branchId: z.string().nullish(),
+  active: z.boolean().optional(),
+  password: z.string().min(6).optional(),
+});
 
-/** Actualizar colaborador: activar/desactivar o resetear contraseña (Admin). */
+/** Actualizar colaborador: nombre, correo, rol, sucursal, estado o contraseña (Admin). */
 usersRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) => {
   const b = updateSchema.parse(req.body);
-  const data: { active?: boolean; passwordHash?: string } = {};
+  const current = await prisma.user.findUnique({ where: { id: req.params.id }, include: { therapistProfile: true } });
+  if (!current) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+  const data: Record<string, unknown> = {};
+  if (b.name !== undefined) data.name = b.name.trim();
+  if (b.email !== undefined) {
+    const email = b.email.toLowerCase();
+    if (email !== current.email) {
+      const clash = await prisma.user.findUnique({ where: { email } });
+      if (clash) return res.status(409).json({ error: 'Ya existe un usuario con ese correo' });
+    }
+    data.email = email;
+  }
   if (b.active !== undefined) data.active = b.active;
   if (b.password) data.passwordHash = await hashPassword(b.password);
+
+  const role = b.role ?? current.role;
+  if (b.role !== undefined) data.role = b.role;
+  if (b.role !== undefined || b.branchId !== undefined) {
+    // ADMIN ve todas (branchId null); Recepción/Esteticista requieren sucursal.
+    const branchId = role === 'ADMIN' ? null : (b.branchId ?? current.branchId);
+    if (role !== 'ADMIN' && !branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
+    data.branchId = branchId;
+  }
+  // Al volverse esteticista se crea su perfil de desempeño si aún no existe.
+  if (role === 'ESTETICISTA' && !current.therapistProfile) {
+    data.therapistProfile = { create: {} };
+  }
+
   const user = await prisma.user.update({ where: { id: req.params.id }, data });
   res.json({ ok: true, id: user.id, active: user.active, message: b.password ? 'Contraseña actualizada' : 'Usuario actualizado' });
+});
+
+/** Eliminar colaborador (Admin). Historial (citas/facturas) se conserva sin vínculo. */
+usersRouter.delete('/:id', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  if (req.params.id === req.staff!.sub) return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
+  const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+  if (target.role === 'ADMIN') {
+    const admins = await prisma.user.count({ where: { role: 'ADMIN', active: true } });
+    if (admins <= 1) return res.status(400).json({ error: 'Debe quedar al menos un administrador activo' });
+  }
+  await prisma.user.delete({ where: { id: req.params.id } });
+  res.json({ ok: true, message: 'Usuario eliminado' });
 });
