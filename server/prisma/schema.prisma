@@ -157,12 +157,32 @@ model CashClose {
   submittedById  String?
   reconciledById String?
   reconciledAt   DateTime?
+  // Resolución del descuadre por el administrador
+  adminNote      String? // comentario: a qué se debe la diferencia
+  resolution     String? // NONE | REAL_OK | FALTANTE_DESCONTAR | SOBRANTE_DEPOSITAR | AJUSTE_METODO
+  deductUserId   String? // usuario al que se le descuenta el faltante real
+  deductAmount   Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id])
 
   @@unique([branchId, day])
+}
+
+// Expediente de descuentos al personal (faltantes reales de caja, etc.)
+model StaffDeduction {
+  id          String   @id @default(cuid())
+  userId      String
+  branchId    String
+  amount      Int
+  reason      String
+  cashCloseId String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -191,6 +211,7 @@ model User {
   therapistProfile TherapistProfile?
   chargeItems     ChargeItem[]   @relation("ChargeItemCreatedBy")
   notifications   Notification[]
+  deductions      StaffDeduction[]
 }
 
 // Alertas internas para el personal (aviso a la esteticista, ficha lista, etc.)
@@ -350,6 +371,9 @@ model Appointment {
   notes         String?
   code          String?           @unique // código único de turno (lo valida la esteticista en cabina)
   codeUsedAt    DateTime? // cuándo se validó el código (turno abierto); evita reuso
+  serviceStartedAt DateTime? // inicia al abrir turno (contador, oculto para la esteticista)
+  serviceEndedAt   DateTime? // "Proceso terminado"
+  serviceDurationSec Int? // duración calculada del servicio
   rating        Int? // calificación del paciente (1-5)
   ratingComment String? // comentario si la calificación es < 5
   googleEventId String? // sync Google Calendar (Fase 3)

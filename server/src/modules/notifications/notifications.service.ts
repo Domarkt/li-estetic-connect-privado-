@@ -22,15 +22,25 @@ export async function notifyBranchTherapists(
   branchId: string,
   n: Omit<NotifyInput, 'userId'>,
 ): Promise<void> {
+  await notifyRole('ESTETICISTA', n, branchId);
+}
+
+/**
+ * Notifica a todos los usuarios activos de un rol. ADMIN se notifica global
+ * (branchId null = ve todas); los demás roles se filtran por sucursal.
+ */
+export async function notifyRole(
+  role: 'ADMIN' | 'RECEPCIONISTA' | 'ESTETICISTA',
+  n: Omit<NotifyInput, 'userId'>,
+  branchId?: string,
+): Promise<void> {
   try {
-    const therapists = await prisma.user.findMany({
-      where: { role: 'ESTETICISTA', active: true, branchId },
+    const users = await prisma.user.findMany({
+      where: { role, active: true, ...(role !== 'ADMIN' && branchId ? { branchId } : {}) },
       select: { id: true },
     });
-    if (therapists.length === 0) return;
-    await prisma.notification.createMany({
-      data: therapists.map((t) => ({ ...n, userId: t.id })),
-    });
+    if (users.length === 0) return;
+    await prisma.notification.createMany({ data: users.map((u) => ({ ...n, userId: u.id })) });
   } catch {
     /* no-op */
   }

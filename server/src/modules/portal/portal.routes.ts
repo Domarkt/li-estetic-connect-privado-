@@ -168,6 +168,7 @@ portalRouter.get('/history', async (req, res) => {
     therapist: a.therapist?.name ?? 'Li Estetic',
     rating: a.rating,
     ratingComment: a.ratingComment,
+    durationMin: a.serviceDurationSec != null ? Math.round(a.serviceDurationSec / 60) : null,
   })));
 });
 

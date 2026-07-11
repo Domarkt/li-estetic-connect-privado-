@@ -21,6 +21,13 @@ export default function CashCloseAdmin() {
   const [date, setDate] = useState(todayISO());
   const [data, setData] = useState<CashCloseAdminView | null>(null);
   const [edits, setEdits] = useState<ExpectedEdits>({});
+  // Resolución del descuadre por sucursal: comentario + tipo + monto a descontar.
+  const [res, setRes] = useState<Record<string, { note: string; resolution: string; deduct: string }>>({});
+  const setResField = (bid: string, k: 'note' | 'resolution' | 'deduct', v: string) =>
+    setRes((p) => {
+      const prev = p[bid] ?? { note: '', resolution: '', deduct: '' };
+      return { ...p, [bid]: { ...prev, [k]: v } };
+    });
 
   const load = useCallback(() => {
     const b = activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
@@ -37,13 +44,18 @@ export default function CashCloseAdmin() {
   const num = (s: string) => parseInt((s || '').replace(/[^0-9]/g, ''), 10) || 0;
   const expOf = (branchId: string, method: string) => num(edits[branchId]?.[method] ?? '');
 
-  async function reconcile(closeId: string, branchId: string, branchName: string) {
+  async function reconcile(closeId: string, branchId: string, branchName: string, deductUserId?: string) {
+    const r0 = res[branchId] ?? { note: '', resolution: '', deduct: '' };
     try {
       const r = await api.patch<{ message: string }>(`/cashclose/${closeId}/reconcile`, {
         expectedCash: expOf(branchId, 'EFECTIVO'),
         expectedCard: expOf(branchId, 'TARJETA'),
         expectedTransfer: expOf(branchId, 'TRANSFERENCIA'),
         expectedAzul: expOf(branchId, 'AZUL'),
+        adminNote: r0.note || undefined,
+        resolution: r0.resolution || undefined,
+        deductUserId: r0.resolution === 'FALTANTE_DESCONTAR' ? deductUserId : undefined,
+        deductAmount: r0.resolution === 'FALTANTE_DESCONTAR' ? num(r0.deduct) : undefined,
       });
       toast(`${branchName}: ${r.message}`); load();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
@@ -105,13 +117,40 @@ export default function CashCloseAdmin() {
               {b.cardVouchers && b.cardVouchers.length > 0 && (
                 <div className="mt-2 text-[11.5px] text-muted">Vouchers recibidos: {b.cardVouchers.map((v) => fmtRD(v)).join(' · ')}</div>
               )}
-              {b.notes && <div className="mt-1 text-[11.5px] text-muted">Nota: {b.notes}</div>}
+              {b.notes && <div className="mt-1 text-[11.5px] text-muted">Nota de recepción: {b.notes}</div>}
+
+              {/* Resolución del descuadre (solo si hay diferencia y aún no está cuadrada) */}
+              {!locked && b.status === 'ENVIADO' && totalDiff != null && totalDiff !== 0 && (
+                <div className="mt-3 rounded-[11px] border px-3.5 py-3" style={{ background: totalDiff < 0 ? 'var(--danger-soft)' : 'var(--warn-soft)', borderColor: totalDiff < 0 ? '#F0C9C4' : '#F0D9A8' }}>
+                  <div className="mb-2 text-[12px] font-extrabold" style={{ color: totalDiff < 0 ? 'var(--danger)' : 'var(--warn)' }}>
+                    {totalDiff < 0 ? `Faltante de ${fmtRD(Math.abs(totalDiff))}` : `Sobrante de ${fmtRD(totalDiff)}`} · ¿a qué se debe?
+                  </div>
+                  <textarea rows={2} value={res[b.branchId]?.note ?? ''} onChange={(e) => setResField(b.branchId, 'note', e.target.value)}
+                    placeholder="Comentario: motivo del descuadre, si es real, en qué método (efectivo/tarjeta/transferencia)…"
+                    className="mb-2 w-full resize-none rounded-lg border border-line p-2.5 text-[12.5px] outline-none focus:border-magenta" />
+                  <select value={res[b.branchId]?.resolution ?? ''} onChange={(e) => setResField(b.branchId, 'resolution', e.target.value)}
+                    className="mb-2 w-full rounded-lg border border-line bg-card px-2.5 py-2 text-[12.5px]">
+                    <option value="">Selecciona resolución…</option>
+                    <option value="REAL_OK">Diferencia justificada (no es real)</option>
+                    {totalDiff < 0 && <option value="FALTANTE_DESCONTAR">Faltante real · descontar a {b.submittedBy?.name ?? 'recepción'}</option>}
+                    {totalDiff > 0 && <option value="SOBRANTE_DEPOSITAR">Sobrante real · depositar a cuenta de la estética</option>}
+                    <option value="AJUSTE_METODO">Ajuste de método (transferencia/tarjeta mal clasificada)</option>
+                  </select>
+                  {res[b.branchId]?.resolution === 'FALTANTE_DESCONTAR' && (
+                    <label className="flex items-center gap-2 text-[12px] font-semibold text-danger">
+                      Monto a descontar RD$
+                      <input value={res[b.branchId]?.deduct ?? String(Math.abs(totalDiff))} onChange={(e) => setResField(b.branchId, 'deduct', e.target.value)}
+                        className="w-28 rounded-md border border-line px-2 py-1 text-[12.5px] outline-none focus:border-magenta" />
+                    </label>
+                  )}
+                </div>
+              )}
 
               <div className="mt-4 flex items-center justify-between">
                 {locked
-                  ? <span className="text-[12.5px] font-bold text-ok">Cuadrada ✓</span>
+                  ? <span className="text-[12.5px] font-bold text-ok">Cuadrada ✓{b.adminNote ? ` · ${b.adminNote}` : ''}</span>
                   : <span className="text-[12.5px] text-muted">{b.status === 'PENDIENTE' ? 'Recepción aún no envía el cierre' : 'Ingresa el sistema y valida'}</span>}
-                <button disabled={b.status !== 'ENVIADO' || !b.closeId} onClick={() => b.closeId && reconcile(b.closeId, b.branchId, b.branchName)}
+                <button disabled={b.status !== 'ENVIADO' || !b.closeId} onClick={() => b.closeId && reconcile(b.closeId, b.branchId, b.branchName, b.submittedBy?.id)}
                   className="rounded-[10px] bg-navy px-5 py-2.5 text-[13px] font-bold text-white disabled:opacity-40">
                   Validar y cuadrar
                 </button>

@@ -22,8 +22,15 @@ export const apptInclude = {
   branch: true,
 } satisfies Prisma.AppointmentInclude;
 
+function durationLabel(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}h ${m % 60}min` : `${m}min`;
+}
+
 export function serializeAppt(
   a: Prisma.AppointmentGetPayload<{ include: typeof apptInclude }>,
+  opts?: { includeDuration?: boolean },
 ) {
   const meta = STATUS_META[a.status];
   const fichaComplete = a.patient.clinicalRecord?.status === 'COMPLETA';
@@ -58,6 +65,12 @@ export function serializeAppt(
     // Código de turno + si ya fue validado en cabina.
     code: a.code,
     checkedIn: !!a.codeUsedAt,
+    // Proceso de atención abierto (turno abierto y aún sin cerrar). La duración solo se expone al admin.
+    inService: !!a.serviceStartedAt && !a.serviceEndedAt,
+    finished: !!a.serviceEndedAt,
+    ...(opts?.includeDuration && a.serviceDurationSec != null
+      ? { durationLabel: durationLabel(a.serviceDurationSec) }
+      : {}),
   };
 }
 

@@ -21,7 +21,9 @@ appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
     ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
   };
   const appts = await prisma.appointment.findMany({ where, include: apptInclude, orderBy: { startsAt: 'asc' } });
-  const rows = appts.map(serializeAppt);
+  // La duración del servicio solo la ve el administrador (no la esteticista).
+  const includeDuration = req.staff!.role === 'ADMIN';
+  const rows = appts.map((a) => serializeAppt(a, { includeDuration }));
   res.json({
     appointments: rows,
     counters: {
@@ -231,9 +233,29 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
   if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita está cancelada' });
 
   const updated = await prisma.appointment.update({
-    where: { id: appt.id }, data: { codeUsedAt: new Date(), status: 'CONFIRMADA' }, include: apptInclude,
+    where: { id: appt.id },
+    // Inicia el contador de atención (oculto para la esteticista).
+    data: { codeUsedAt: new Date(), serviceStartedAt: new Date(), status: 'CONFIRMADA' },
+    include: apptInclude,
   });
   res.json({ ok: true, message: `Turno abierto: ${appt.patient.name} · ${appt.serviceName}`, appointment: serializeAppt(updated) });
+});
+
+/** Proceso terminado: cierra el contador de atención y marca la cita como completada. */
+appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), branchScope, async (req, res) => {
+  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: apptInclude });
+  if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
+  if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
+  if (!appt.serviceStartedAt) return res.status(409).json({ error: 'El turno no ha sido abierto todavía' });
+  if (appt.serviceEndedAt) return res.status(409).json({ error: 'El proceso ya fue cerrado' });
+
+  const endedAt = new Date();
+  const durationSec = Math.max(0, Math.round((endedAt.getTime() - appt.serviceStartedAt.getTime()) / 1000));
+  await prisma.appointment.update({
+    where: { id: appt.id },
+    data: { serviceEndedAt: endedAt, serviceDurationSec: durationSec, status: 'COMPLETADA' },
+  });
+  res.json({ ok: true, message: 'Proceso terminado. ¡Gracias!' });
 });
 
 const patchSchema = z.object({

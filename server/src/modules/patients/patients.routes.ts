@@ -5,7 +5,7 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import { serializePatient, patientInclude, syncPatientType } from './patients.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
-import { notifyBranchTherapists } from '../notifications/notifications.service.js';
+import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 
 export const patientsRouter = Router();
 
@@ -296,5 +296,15 @@ patientsRouter.post('/:id/charges', requireStaff, requireRole('ADMIN', 'ESTETICI
       name: it.name, price: it.price, createdById: req.staff!.sub,
     })),
   });
+  // Si la esteticista cargó servicios, avisa a recepción para que facture.
+  if (req.staff!.role === 'ESTETICISTA' && items.length) {
+    await notifyRole('RECEPCIONISTA', {
+      type: 'GENERAL',
+      title: 'Servicios para facturar',
+      body: `${patient.name}: ${items.map((i) => i.name).join(', ')}`,
+      link: '/app/pacientes',
+    }, patient.branchId);
+  }
+
   res.status(201).json({ ok: true, count: items.length, message: 'Servicios cargados y enviados a recepción para facturar ✓' });
 });

@@ -54,6 +54,15 @@ export default function AgendaPage() {
     }
   }, [load, toast]);
 
+  async function finishService(a: Appointment) {
+    if (!window.confirm(`¿Marcar como terminado el proceso de ${a.patient}?`)) return;
+    try {
+      const r = await api.post<{ message: string }>(`/appointments/${a.id}/finish`);
+      toast(r.message);
+      load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+  }
+
   async function connect() {
     try {
       const r = await api.post<{ redirect?: string; message?: string }>('/calendar/connect');
@@ -152,6 +161,15 @@ export default function AgendaPage() {
                 style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
                 🔓 Abrir turno
               </button>
+            )}
+            {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && a.inService && (
+              <button onClick={() => finishService(a)}
+                className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--navy)' }}>
+                ✓ Proceso terminado
+              </button>
+            )}
+            {a.finished && a.durationLabel && (
+              <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }} title="Tiempo de atención (solo visible para administración)">⏱ {a.durationLabel}</span>
             )}
             {isMasa && (
               <button onClick={() => setFicha({ id: a.patientId, name: a.patient })}

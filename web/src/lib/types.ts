@@ -108,6 +108,9 @@ export interface Appointment {
   balance: number;
   code: string | null;
   checkedIn: boolean;
+  inService: boolean;
+  finished: boolean;
+  durationLabel?: string; // solo visible para admin
 }
 
 export interface AgendaResponse {
@@ -204,7 +207,7 @@ export interface PortalProfile {
   baseline: { tallaCm: number | null; pesoLb: number | null; fototipo: string | null; motivos: string[] };
   treatment: { name: string; total: number; done: number; pct: number } | null;
 }
-export interface PortalHistoryItem { id: string; date: string; service: string; therapist: string; rating: number | null; ratingComment: string | null }
+export interface PortalHistoryItem { id: string; date: string; service: string; therapist: string; rating: number | null; ratingComment: string | null; durationMin: number | null }
 export interface PortalPackages {
   active: { name: string; total: number; done: number; remaining: number; pct: number; expiresAt: string | null } | null;
   shop: { id: string; name: string; sessions: number; price: number }[];
@@ -233,5 +236,9 @@ export interface CashCloseAdminRow {
   methods: { method: string; expected: number; counted: number | null; diff: number | null }[];
   totalExpected: number; totalCounted: number | null; totalDiff: number | null;
   cardVouchers: number[] | null; notes: string | null;
+  adminNote: string | null;
+  resolution: string | null;
+  deductAmount: number;
+  submittedBy: { id: string; name: string } | null;
 }
 export interface CashCloseAdminView { date: string; branches: CashCloseAdminRow[] }

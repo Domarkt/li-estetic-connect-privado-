@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
+import { notify, notifyRole } from '../notifications/notifications.service.js';
 
 export const cashCloseRouter = Router();
 
@@ -92,6 +93,14 @@ cashCloseRouter.post('/', requireStaff, requireRole('RECEPCIONISTA', 'ADMIN'), b
     create: { branchId, day: start, ...data },
     update: data,
   });
+  // Alerta al administrador: hay un cierre por cuadrar.
+  const br = await prisma.branch.findUnique({ where: { id: branchId }, select: { name: true } });
+  await notifyRole('ADMIN', {
+    type: 'GENERAL',
+    title: 'Cierre de caja para cuadrar',
+    body: `${br?.name ?? 'Sucursal'} envió su conteo del día.`,
+    link: '/app/cierre',
+  });
   // Respuesta ciega: solo confirma el envío.
   res.status(201).json({ ok: true, message: 'Cierre enviado a administración para su cuadre', countedCash, countedCard });
 });
@@ -123,6 +132,10 @@ cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, re
     const totalCounted = counted ? methods.reduce((s, m) => s + (m.counted ?? 0), 0) : null;
     const totalDiff = totalCounted != null ? totalCounted - totalExpected : null;
 
+    const submitter = close?.submittedById
+      ? await prisma.user.findUnique({ where: { id: close.submittedById }, select: { id: true, name: true } })
+      : null;
+
     return {
       closeId: close?.id ?? null,
       branchId: br.id, branchName: br.name, dotColor: br.dotColor,
@@ -132,6 +145,10 @@ cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, re
       cardVouchers: close?.cardVouchers ?? null,
       notes: close?.notes ?? null,
       reconciledAt: close?.reconciledAt ?? null,
+      adminNote: close?.adminNote ?? null,
+      resolution: close?.resolution ?? null,
+      deductAmount: close?.deductAmount ?? 0,
+      submittedBy: submitter,
     };
   }));
 
@@ -145,9 +162,14 @@ const reconcileSchema = z.object({
   expectedCard: z.number().int().nonnegative().optional(),
   expectedTransfer: z.number().int().nonnegative().optional(),
   expectedAzul: z.number().int().nonnegative().optional(),
+  // Resolución del descuadre.
+  adminNote: z.string().optional(),
+  resolution: z.enum(['NONE', 'REAL_OK', 'FALTANTE_DESCONTAR', 'SOBRANTE_DEPOSITAR', 'AJUSTE_METODO']).optional(),
+  deductUserId: z.string().optional(),
+  deductAmount: z.number().int().nonnegative().optional(),
 });
 
-/** Cuadrar (aprobar) el cierre de una sucursal, con el esperado del sistema. */
+/** Cuadrar (aprobar) el cierre de una sucursal, con el esperado del sistema y resolución del descuadre. */
 cashCloseRouter.patch('/:id/reconcile', requireStaff, requireRole('ADMIN'), async (req, res) => {
   const b = reconcileSchema.parse(req.body ?? {});
   const close = await prisma.cashClose.findUnique({ where: { id: req.params.id } });
@@ -162,9 +184,40 @@ cashCloseRouter.patch('/:id/reconcile', requireStaff, requireRole('ADMIN'), asyn
   const diff = (close.countedCash + close.countedCard + close.countedTransfer + close.countedAzul)
     - (expected.expectedCash + expected.expectedCard + expected.expectedTransfer + expected.expectedAzul);
 
+  // Faltante real: se descuenta al usuario y se registra en su expediente.
+  const deductUserId = b.deductUserId ?? close.submittedById ?? null;
+  const doDeduct = b.resolution === 'FALTANTE_DESCONTAR' && deductUserId && (b.deductAmount ?? 0) > 0;
+  if (doDeduct) {
+    await prisma.staffDeduction.create({
+      data: {
+        userId: deductUserId!, branchId: close.branchId, amount: b.deductAmount!,
+        reason: `Faltante de caja ${close.day.toLocaleDateString('es-DO')}${b.adminNote ? ` · ${b.adminNote}` : ''}`,
+        cashCloseId: close.id,
+      },
+    });
+    await notify({
+      userId: deductUserId!, type: 'GENERAL',
+      title: 'Descuento por faltante de caja',
+      body: `Se registró un faltante de RD$${b.deductAmount!.toLocaleString('en-US')} en tu expediente.`,
+      link: '/app/cierre',
+    });
+  }
+
   await prisma.cashClose.update({
     where: { id: close.id },
-    data: { ...expected, status: 'CUADRADO', reconciledById: req.staff!.sub, reconciledAt: new Date(), notes: b.notes ?? close.notes },
+    data: {
+      ...expected, status: 'CUADRADO', reconciledById: req.staff!.sub, reconciledAt: new Date(),
+      notes: b.notes ?? close.notes,
+      adminNote: b.adminNote ?? close.adminNote,
+      resolution: b.resolution ?? close.resolution,
+      deductUserId: doDeduct ? deductUserId : close.deductUserId,
+      deductAmount: doDeduct ? b.deductAmount! : close.deductAmount,
+    },
   });
-  res.json({ ok: true, diff, message: diff === 0 ? 'Caja cuadrada sin diferencias' : `Cuadrada con ${diff > 0 ? 'sobrante' : 'faltante'} de RD$${Math.abs(diff).toLocaleString('en-US')}` });
+  res.json({
+    ok: true, diff,
+    message: diff === 0
+      ? 'Caja cuadrada sin diferencias'
+      : `Cuadrada con ${diff > 0 ? 'sobrante' : 'faltante'} de RD$${Math.abs(diff).toLocaleString('en-US')}${doDeduct ? ' · descontado al usuario' : ''}`,
+  });
 });

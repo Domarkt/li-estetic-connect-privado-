@@ -355,7 +355,7 @@ function RateCard({ item, onDone }: { item: PortalHistoryItem; onDone: (msg: str
   return (
     <div className="rounded-[16px] bg-card p-4 shadow-card">
       <div className="text-[13px] font-bold">{item.service}</div>
-      <div className="mb-2 text-[11.5px] text-muted">{item.date} · {item.therapist}</div>
+      <div className="mb-2 text-[11.5px] text-muted">{item.date} · {item.therapist}{item.durationMin != null ? ` · ⏱ ${item.durationMin} min` : ''}</div>
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} disabled={rated} onClick={() => setStars(n)} className="text-[24px] leading-none disabled:cursor-default" style={{ color: n <= stars ? '#F5B301' : 'var(--line)' }}>★</button>
