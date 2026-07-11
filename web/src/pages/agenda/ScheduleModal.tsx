@@ -31,9 +31,19 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [date, setDate] = useState(todayStr());
   const [time, setTime] = useState('10:00');
   const [busy, setBusy] = useState(false);
+  const [loadingP, setLoadingP] = useState(true);
+  const [errP, setErrP] = useState(false);
+  const [pQuery, setPQuery] = useState('');
+
+  function loadPatients() {
+    setLoadingP(true); setErrP(false);
+    api.get<PatientRow[]>(`/patients?q=${branchQuery}`)
+      .then((p) => { setPatients(p); setLoadingP(false); if (p[0]) setPatientId(p[0].id); })
+      .catch(() => { setLoadingP(false); setErrP(true); });
+  }
 
   useEffect(() => {
-    api.get<PatientRow[]>(`/patients?q=${branchQuery}`).then((p) => { setPatients(p); if (p[0]) setPatientId(p[0].id); });
+    loadPatients();
     api.get<CatalogItem[]>('/catalog').then((c) => { const s = c.filter((i) => i.kind !== 'PRODUCTO'); setServices(s); if (s[0]) setServiceId(s[0].id); });
     api.get<Therapist[]>(`/users/therapists${branchQuery ? '?' + branchQuery.slice(1) : ''}`).then((t) => { setTherapists(t); if (t[0] && staff?.role !== 'ESTETICISTA') setTherapistId(t[0].id); });
     if (staff?.role === 'ESTETICISTA') setTherapistId(staff.id);
@@ -119,11 +129,26 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
               )}
             </>
           ) : (
-            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Paciente</span>
-              <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-                {patients.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.phone}</option>)}
-              </select>
-            </label>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">Paciente recurrente</span>
+              <input value={pQuery} onChange={(e) => setPQuery(e.target.value)} placeholder="🔍 Buscar por nombre o teléfono…"
+                className="rounded-[9px] border border-line px-3.5 py-2.5 text-[13.5px] outline-none focus:border-magenta" />
+              <div className="flex max-h-[150px] flex-col gap-1 overflow-y-auto rounded-[9px] border border-line-2 p-1.5">
+                {loadingP && <div className="px-2 py-3 text-center text-[12.5px] text-muted">Cargando pacientes…</div>}
+                {errP && <button onClick={loadPatients} className="px-2 py-3 text-center text-[12.5px] font-bold text-magenta">No se pudieron cargar. Reintentar</button>}
+                {!loadingP && !errP && patients.length === 0 && <div className="px-2 py-3 text-center text-[12.5px] text-muted">No hay pacientes. Usa "Cliente nuevo".</div>}
+                {patients.filter((p) => { const q = pQuery.trim().toLowerCase(); return !q || p.name.toLowerCase().includes(q) || (p.phone ?? '').includes(q); }).map((p) => {
+                  const on = patientId === p.id;
+                  return (
+                    <div key={p.id} onClick={() => setPatientId(p.id)} className="flex cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-2 text-[13px]" style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
+                      <span className="flex-1 font-semibold">{p.name}</span>
+                      <span className="text-[11.5px] text-muted">{p.phone}</span>
+                      {on && <span className="font-extrabold text-magenta">✓</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio / paquete</span>

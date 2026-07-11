@@ -24,18 +24,30 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [split, setSplit] = useState<Record<PaymentMethod, string>>({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', AZUL: '' });
   const [step, setStep] = useState<'form' | 'review'>('form');
   const [busy, setBusy] = useState(false);
+  const [pQuery, setPQuery] = useState('');
+  const [loadingP, setLoadingP] = useState(true);
+  const [errP, setErrP] = useState(false);
 
   const current = patients.find((p) => p.id === selected) ?? null;
   const t = current?.treatment ?? null;
   const hasBalance = !!t && t.balance > 0;
 
-  useEffect(() => {
+  function loadPatients() {
+    setLoadingP(true); setErrP(false);
     api.get<BillPatient[]>('/invoices/patients').then((ps) => {
-      setPatients(ps);
+      setPatients(ps); setLoadingP(false);
       if (preselectId) applyPatient(ps.find((p) => p.id === preselectId));
-    });
+    }).catch(() => { setLoadingP(false); setErrP(true); });
+  }
+  useEffect(() => {
+    loadPatients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const filteredPatients = patients.filter((p) => {
+    const q = pQuery.trim().toLowerCase();
+    return !q || p.name.toLowerCase().includes(q) || (p.phone ?? '').includes(q);
+  });
 
   // Fija el monto y, por defecto, lo carga TODO en Efectivo (se puede repartir luego).
   function setAmountDefault(v: string) {
@@ -121,8 +133,19 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           <div className="flex flex-col gap-3.5 overflow-y-auto px-6 py-5">
             <div>
               <span className="mb-1.5 block text-xs font-bold text-muted">Seleccionar paciente</span>
-              <div className="flex max-h-[130px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
-                {patients.map((p) => {
+              <input value={pQuery} onChange={(e) => setPQuery(e.target.value)} placeholder="🔍 Buscar por nombre o teléfono…"
+                className="mb-1.5 w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
+              <div className="flex max-h-[150px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
+                {loadingP && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Cargando pacientes…</div>}
+                {errP && (
+                  <button onClick={loadPatients} className="px-2.5 py-3 text-center text-[12.5px] font-bold text-magenta">
+                    No se pudieron cargar los pacientes. Toca para reintentar.
+                  </button>
+                )}
+                {!loadingP && !errP && filteredPatients.length === 0 && (
+                  <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">{patients.length === 0 ? 'No hay pacientes en esta sucursal todavía.' : 'Ningún paciente coincide con la búsqueda.'}</div>
+                )}
+                {filteredPatients.map((p) => {
                   const on = selected === p.id;
                   const initials = p.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
                   return (
@@ -134,6 +157,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                   );
                 })}
               </div>
+              {current && <div className="mt-1.5 text-[12px] font-semibold text-magenta">Paciente: {current.name}</div>}
             </div>
 
             {/* Tipo de pago */}
