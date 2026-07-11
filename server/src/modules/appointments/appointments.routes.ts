@@ -5,7 +5,9 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
-import { notify } from '../notifications/notifications.service.js';
+import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
+import { sendAppointmentAccess, PORTAL_URL } from '../mail/mail.service.js';
+import { hashPassword } from '../../utils/password.js';
 
 export const appointmentsRouter = Router();
 
@@ -64,7 +66,13 @@ appointmentsRouter.get('/calendar', requireStaff, branchScope, async (req, res) 
 const createSchema = z.object({
   // Puede venir un paciente existente O los datos de uno nuevo (cliente nuevo).
   patientId: z.string().nullish(),
-  newPatient: z.object({ name: z.string().min(1), phone: z.string().min(1) }).nullish(),
+  newPatient: z.object({
+    name: z.string().min(1),
+    phone: z.string().min(1),
+    email: z.string().email().optional().or(z.literal('')),
+    birthDate: z.string().optional(),
+    address: z.string().optional(),
+  }).nullish(),
   patientType: z.enum(['NUEVO', 'RECURRENTE']).default('RECURRENTE'),
   serviceName: z.string().min(1),
   catalogItemId: z.string().nullish(),
@@ -88,11 +96,17 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     const branchId = req.staff!.role === 'ADMIN' ? b.branchId : req.staff!.branchId;
     if (!branchId) return res.status(400).json({ error: 'Sucursal requerida para el paciente nuevo' });
     if (!assertBranchAccess(req, branchId)) return res.status(403).json({ error: 'Sucursal no permitida' });
+    const np = b.newPatient;
+    const hasStep1 = !!(np.email || np.birthDate || np.address);
     patient = await prisma.patient.create({
       data: {
-        branchId, name: b.newPatient.name, phone: b.newPatient.phone, type: 'NUEVO',
+        branchId, name: np.name, phone: np.phone, type: 'NUEVO',
+        email: np.email ? np.email : null,
+        birthDate: np.birthDate ? new Date(np.birthDate) : null,
+        address: np.address ?? null,
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-        clinicalRecord: { create: { status: 'PENDIENTE' } },
+        // Si recepción ya capturó datos del Paso 1, la ficha queda lista para la parte clínica.
+        clinicalRecord: { create: { status: hasStep1 ? 'PASO1_OK' : 'PENDIENTE', consultDate: new Date() } },
       },
     });
   } else {
@@ -161,7 +175,41 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     });
   }
 
-  res.status(201).json({ ...serializeAppt(appt), message: 'Cita agendada y confirmación enviada por WhatsApp' });
+  // Cliente nuevo con correo: crea su acceso al portal y le envía la confirmación con el código + acceso para completar la ficha.
+  let emailSent = false;
+  let access: { portalUrl: string; login: string; tempPassword: string | null } | undefined;
+  if (b.newPatient && patient.email) {
+    const login = (patient.phone || patient.cedula || '').trim();
+    if (login) {
+      const existing = await prisma.patientAccount.findFirst({ where: { patientId: patient.id } });
+      let tempPassword: string | undefined;
+      if (!existing) {
+        tempPassword = 'li' + Math.random().toString(36).slice(2, 8);
+        await prisma.patientAccount.create({ data: { patientId: patient.id, login, passwordHash: await hashPassword(tempPassword) } });
+      }
+      await prisma.clinicalRecord.updateMany({ where: { patientId: patient.id }, data: { sentToPatientAt: new Date() } });
+      const fecha = startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+      const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+      const mail = await sendAppointmentAccess(patient.email, {
+        name: patient.name, login, password: tempPassword,
+        service: serviceName, date: fecha, time: hora, code: appt.code ?? '',
+      });
+      emailSent = mail.sent;
+      access = { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null };
+    }
+    // Aviso a las esteticistas de la sucursal: hay un nuevo paciente para atender.
+    await notifyBranchTherapists(patient.branchId, {
+      type: 'FICHA_SENT',
+      title: 'Nuevo paciente agendado',
+      body: `${patient.name} · ${serviceName}. ${patient.email ? 'Recibió acceso para completar su ficha.' : ''}`.trim(),
+      link: '/app/pacientes',
+    });
+  }
+
+  const message = b.newPatient && patient.email
+    ? (emailSent ? `Cita agendada · confirmación y acceso enviados a ${patient.email}` : `Cita agendada · acceso creado (comparte los datos con el paciente)`)
+    : 'Cita agendada y confirmada';
+  res.status(201).json({ ...serializeAppt(appt), emailSent, access, message });
 });
 
 const checkinSchema = z.object({ code: z.string().min(4) });

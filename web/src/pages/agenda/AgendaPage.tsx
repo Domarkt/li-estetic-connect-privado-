@@ -54,10 +54,13 @@ export default function AgendaPage() {
   }, [load, toast]);
 
   async function connect() {
-    const r = await api.post<{ redirect?: string; message?: string }>('/calendar/connect');
-    if (r.redirect) { window.location.href = r.redirect; return; }
-    toast(r.message ?? 'Google Calendar conectado');
-    load();
+    try {
+      const r = await api.post<{ redirect?: string; message?: string }>('/calendar/connect');
+      if (r.redirect) { window.location.href = r.redirect; return; } // OAuth real de Google
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'No se pudo conectar Google Calendar');
+    }
   }
 
   return (
@@ -102,7 +105,7 @@ export default function AgendaPage() {
         <div className="mb-3.5 flex items-center gap-3 rounded-xl border px-4 py-3" style={{ background: 'var(--ok-soft)', borderColor: '#CDEBDD' }}>
           <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md bg-white text-[13px] font-extrabold" style={{ color: '#1F9D6B' }}>G</span>
           <div className="flex-1 text-[13px] font-bold" style={{ color: '#1F7A54' }}>
-            Google Calendar conectado · las citas se sincronizan automáticamente{cal.mode === 'demo' ? ' (modo demo)' : ''}
+            Google Calendar conectado · las citas se sincronizan automáticamente
           </div>
           <span className="text-[11.5px] font-bold text-ok">● Activo</span>
         </div>

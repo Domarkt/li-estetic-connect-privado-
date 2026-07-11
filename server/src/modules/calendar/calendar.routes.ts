@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireStaff } from '../../middleware/auth.js';
 import { env } from '../../config/env.js';
 import {
-  googleConfigured, buildAuthUrl, exchangeCode, demoConnect, getConnection, disconnect,
+  googleConfigured, buildAuthUrl, exchangeCode, getConnection, disconnect,
 } from './calendar.service.js';
 
 export const calendarRouter = Router();
@@ -10,24 +10,23 @@ export const calendarRouter = Router();
 /** Estado de la conexión del usuario actual. */
 calendarRouter.get('/status', requireStaff, async (req, res) => {
   const conn = await getConnection('user', req.staff!.sub);
+  const real = !!conn && conn.accessToken !== 'demo';
   res.json({
-    connected: !!conn,
-    mode: conn?.accessToken === 'demo' ? 'demo' : conn ? 'google' : null,
+    connected: real,
+    mode: real ? 'google' : null,
     googleConfigured: googleConfigured(),
   });
 });
 
-/**
- * Conectar. Si hay credenciales de Google, devuelve la URL de OAuth para redirigir;
- * si no, hace una conexión "demo" (para poder usar la app sin credenciales).
- */
+/** Conectar. Requiere credenciales de Google (OAuth real); no hay modo demo. */
 calendarRouter.post('/connect', requireStaff, async (req, res) => {
-  if (googleConfigured()) {
-    const url = buildAuthUrl(`user:${req.staff!.sub}`);
-    return res.json({ redirect: url });
+  if (!googleConfigured()) {
+    return res.status(400).json({
+      error: 'Google Calendar no está configurado. Agrega GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en el servidor para conectar.',
+    });
   }
-  await demoConnect('user', req.staff!.sub);
-  res.json({ connected: true, mode: 'demo', message: 'Google Calendar conectado correctamente' });
+  const url = buildAuthUrl(`user:${req.staff!.sub}`);
+  res.json({ redirect: url });
 });
 
 /** Callback de OAuth de Google. */

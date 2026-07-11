@@ -20,6 +20,9 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [patientId, setPatientId] = useState('');
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newBirth, setNewBirth] = useState('');
+  const [newAddress, setNewAddress] = useState('');
   const [branchId, setBranchId] = useState(staff?.role === 'ADMIN' ? (branches[0]?.id ?? '') : (staff?.branchId ?? ''));
   const [services, setServices] = useState<CatalogItem[]>([]);
   const [serviceId, setServiceId] = useState('');
@@ -53,7 +56,12 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
       };
       if (isNew) {
         if (!newName.trim() || !newPhone.trim()) { toast('Nombre y celular del paciente nuevo requeridos'); setBusy(false); return; }
-        payload.newPatient = { name: newName.trim(), phone: newPhone.trim() };
+        payload.newPatient = {
+          name: newName.trim(), phone: newPhone.trim(),
+          email: newEmail.trim() || undefined,
+          birthDate: newBirth || undefined,
+          address: newAddress.trim() || undefined,
+        };
         if (staff?.role === 'ADMIN') payload.branchId = branchId;
       } else {
         if (!patientId) { toast('Selecciona un paciente'); setBusy(false); return; }
@@ -93,10 +101,15 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
           {isNew ? (
             <>
               <div className="rounded-[10px] border px-3.5 py-2.5 text-xs font-semibold" style={{ background: 'var(--magenta-soft)', borderColor: '#F0CDE4', color: 'var(--magenta-d)' }}>
-                ✎ Cliente nuevo: se registrará al agendar y deberá llenar la ficha clínica en su primera cita.
+                ✎ Paso 1 de la ficha. Con el correo, el paciente recibirá la confirmación con su código y el acceso al portal para completar la ficha; la esteticista queda notificada.
               </div>
               <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre del nuevo paciente</span><input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nombre y apellidos" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
-              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Celular</span><input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="809-000-0000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              <div className="flex gap-3">
+                <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Celular</span><input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="809-000-0000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+                <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha de nacimiento</span><input type="date" value={newBirth} onChange={(e) => setNewBirth(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              </div>
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Correo electrónico <span className="font-semibold text-faint">(para enviarle acceso + código)</span></span><input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="paciente@correo.com" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Dirección</span><input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Calle, sector, ciudad" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
               {staff?.role === 'ADMIN' && (
                 <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sucursal</span>
                   <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]">
