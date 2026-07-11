@@ -181,9 +181,10 @@ export interface BranchGoal { id: string; code: string; name: string; place: str
 export interface PointsRule { id: string; label: string; points: number; isEarn: boolean; active: boolean; sortOrder: number }
 export interface RewardItem { id: string; label: string; cost: number; icon: string; active: boolean }
 
+export interface ChannelField { name: string; label: string; placeholder: string; secret?: boolean }
 export interface IntegrationsView {
-  channels: { key: string; label: string; color: string; steps: string[]; credentialsConfigured: boolean; connected: boolean; mode: string | null }[];
-  calendars: { branchId: string; name: string; place: string; dotColor: string; connected: boolean; mode: string | null }[];
+  channels: { key: string; label: string; color: string; steps: string[]; fields: ChannelField[]; connected: boolean; account: string | null }[];
+  calendars: { branchId: string; name: string; place: string; dotColor: string; connected: boolean }[];
   googleConfigured: boolean;
   calendarGuide: string[];
 }

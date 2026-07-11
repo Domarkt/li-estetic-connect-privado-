@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole } from '../../middleware/auth.js';
-import { googleConfigured, buildAuthUrl, demoConnect, getConnection, disconnect as calDisconnect } from '../calendar/calendar.service.js';
+import { googleConfigured, buildAuthUrl, getConnection, disconnect as calDisconnect } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, sendWhatsAppTemplate } from '../messaging/whatsapp.service.js';
 
 export const configRouter = Router();
@@ -97,14 +97,27 @@ configRouter.delete('/rewards/:id', async (req, res) => {
 
 // ── Integraciones de mensajería + Calendar por sucursal ──
 
-const CHANNELS = [
+interface ChannelField { name: string; label: string; placeholder: string; secret?: boolean }
+interface ChannelDef {
+  key: string; label: string; color: string; env: string;
+  fields: ChannelField[];
+  account: (meta: Record<string, string>) => string;
+  steps: string[];
+}
+
+const CHANNELS: ChannelDef[] = [
   {
     key: 'whatsapp', label: 'WhatsApp Business', color: '#25D366',
     env: 'WHATSAPP_TOKEN',
+    fields: [
+      { name: 'phoneId', label: 'Phone Number ID', placeholder: 'p. ej. 123456789012345' },
+      { name: 'token', label: 'Token de acceso', placeholder: 'EAAG...', secret: true },
+    ],
+    account: (m) => `Phone ID ${m.phoneId}`,
     steps: [
       'Crea una app en Meta for Developers y agrega el producto "WhatsApp".',
       'Verifica tu número de negocio y obtén el Phone Number ID + token permanente.',
-      'Copia el token en WHATSAPP_TOKEN del archivo .env del servidor.',
+      'Pega aquí el Phone Number ID y el token, y guarda para conectar.',
       'Configura el webhook: URL /api/messaging/webhook/whatsapp y token de verificación.',
       'Prueba enviando un mensaje al número — aparecerá en la bandeja de la sucursal.',
     ],
@@ -112,10 +125,15 @@ const CHANNELS = [
   {
     key: 'meta', label: 'Instagram + Messenger (Meta)', color: '#E1306C',
     env: 'META_APP_SECRET',
+    fields: [
+      { name: 'pageId', label: 'Page ID (Facebook)', placeholder: 'p. ej. 102938475610' },
+      { name: 'token', label: 'Token de página', placeholder: 'EAAG...', secret: true },
+    ],
+    account: (m) => `Página ${m.pageId}`,
     steps: [
       'En Meta for Developers agrega los productos "Instagram" y "Messenger".',
       'Vincula la página de Facebook y la cuenta de Instagram del negocio.',
-      'Genera el token de página y colócalo junto a META_APP_SECRET en .env.',
+      'Genera el token de página y pégalo aquí junto al Page ID.',
       'Suscribe el webhook /api/messaging/webhook/instagram y /messenger.',
       'Los DM de Instagram y Messenger llegarán a la bandeja unificada.',
     ],
@@ -123,10 +141,15 @@ const CHANNELS = [
   {
     key: 'tiktok', label: 'TikTok Messaging', color: '#1C2540',
     env: 'TIKTOK_APP_SECRET',
+    fields: [
+      { name: 'accountId', label: 'Business Account ID', placeholder: 'p. ej. 7012345678' },
+      { name: 'token', label: 'Token de acceso', placeholder: 'act...', secret: true },
+    ],
+    account: (m) => `Cuenta ${m.accountId}`,
     steps: [
       'Solicita acceso a la API de mensajería en TikTok for Developers.',
-      'Crea la app y obtén el App Secret y el token de acceso.',
-      'Coloca las credenciales en TIKTOK_APP_SECRET del .env.',
+      'Crea la app y obtén el Business Account ID y el token de acceso.',
+      'Pega aquí el Account ID y el token, y guarda para conectar.',
       'Registra el webhook /api/messaging/webhook/tiktok.',
       'Los mensajes de TikTok entrarán filtrados por sucursal.',
     ],
@@ -141,18 +164,21 @@ configRouter.get('/integrations', async (_req, res) => {
   ]);
   const channels = CHANNELS.map((c) => {
     const conn = connections.find((x) => x.kind === c.key && x.scopeId === 'global');
+    const meta = (conn?.meta ?? {}) as Record<string, string>;
+    // Conectado solo si existe la conexión Y todas sus credenciales reales (sin restos demo).
+    const connected = conn?.status === 'CONNECTED' && c.fields.every((f) => typeof meta[f.name] === 'string' && meta[f.name]!.trim() !== '');
     return {
-      key: c.key, label: c.label, color: c.color, steps: c.steps,
-      credentialsConfigured: Boolean(process.env[c.env]),
-      connected: conn?.status === 'CONNECTED',
-      mode: conn?.mode ?? null,
+      key: c.key, label: c.label, color: c.color, steps: c.steps, fields: c.fields,
+      connected,
+      account: connected ? c.account(meta) : null,
     };
   });
 
   const calendars = await Promise.all(
     branches.map(async (b) => {
       const conn = await getConnection('branch', b.id);
-      return { branchId: b.id, name: b.name, place: b.place, dotColor: b.dotColor, connected: !!conn, mode: conn?.accessToken === 'demo' ? 'demo' : conn ? 'google' : null };
+      const real = !!conn && conn.accessToken !== 'demo';
+      return { branchId: b.id, name: b.name, place: b.place, dotColor: b.dotColor, connected: real };
     }),
   );
 
@@ -165,24 +191,27 @@ configRouter.get('/integrations', async (_req, res) => {
   ] });
 });
 
-/** Conectar/desconectar un canal de mensajería. WhatsApp acepta credenciales de prueba. */
+/** Conectar un canal de mensajería con credenciales reales (sin modo demo). */
 configRouter.post('/integrations/:kind/connect', async (req, res) => {
-  const kind = req.params.kind;
-  if (!CHANNELS.some((c) => c.key === kind)) return res.status(404).json({ error: 'Canal desconocido' });
-  const envKey = CHANNELS.find((c) => c.key === kind)!.env;
+  const channel = CHANNELS.find((c) => c.key === req.params.kind);
+  if (!channel) return res.status(404).json({ error: 'Canal desconocido' });
 
-  // WhatsApp: si envían phoneId + token (número de prueba), se guardan para el envío real.
-  let meta: { phoneId?: string; token?: string } | undefined;
-  if (kind === 'whatsapp' && req.body?.phoneId && req.body?.token) {
-    meta = { phoneId: String(req.body.phoneId), token: String(req.body.token) };
+  // Todas las credenciales del canal son obligatorias: no hay conexión "demo".
+  const meta: Record<string, string> = {};
+  for (const f of channel.fields) {
+    const v = req.body?.[f.name];
+    if (typeof v !== 'string' || !v.trim()) {
+      return res.status(400).json({ error: `Falta "${f.label}" para conectar ${channel.label}` });
+    }
+    meta[f.name] = v.trim();
   }
-  const mode = process.env[envKey] || meta ? 'live' : 'demo';
+
   await prisma.integration.upsert({
-    where: { kind_scopeId: { kind, scopeId: 'global' } },
-    create: { kind, scopeId: 'global', status: 'CONNECTED', mode, meta: meta ?? undefined },
-    update: { status: 'CONNECTED', mode, ...(meta ? { meta } : {}) },
+    where: { kind_scopeId: { kind: channel.key, scopeId: 'global' } },
+    create: { kind: channel.key, scopeId: 'global', status: 'CONNECTED', mode: 'live', meta },
+    update: { status: 'CONNECTED', mode: 'live', meta },
   });
-  res.json({ ok: true, mode, message: mode === 'live' ? 'Canal conectado (modo real)' : 'Canal conectado en modo demo (agrega las credenciales para producción)' });
+  res.json({ ok: true, account: channel.account(meta), message: `${channel.label} conectado · ${channel.account(meta)}` });
 });
 
 const testSchema = z.object({ to: z.string().min(1), useTemplate: z.boolean().optional() });
@@ -205,9 +234,12 @@ configRouter.post('/calendar/:branchId/connect', async (req, res) => {
   const branchId = req.params.branchId;
   const branch = await prisma.branch.findUnique({ where: { id: branchId } });
   if (!branch) return res.status(404).json({ error: 'Sucursal no encontrada' });
-  if (googleConfigured()) return res.json({ redirect: buildAuthUrl(`branch:${branchId}`) });
-  await demoConnect('branch', branchId);
-  res.json({ ok: true, mode: 'demo', message: `Calendario de ${branch.name} conectado (demo)` });
+  if (!googleConfigured()) {
+    return res.status(400).json({
+      error: 'Google Calendar no está configurado. Agrega GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en el servidor para poder conectar.',
+    });
+  }
+  res.json({ redirect: buildAuthUrl(`branch:${branchId}`) });
 });
 configRouter.post('/calendar/:branchId/disconnect', async (req, res) => {
   await calDisconnect('branch', req.params.branchId);
