@@ -27,11 +27,16 @@ if (isProd) {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL requerido en producción');
 }
 
+// CORS_ORIGIN acepta uno o varios orígenes separados por coma (Netlify, Cloudflare Pages, etc.).
+const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 export const env = {
   isProd,
   port: Number(process.env.PORT ?? 4000),
-  // En prod, CORS_ORIGIN es obligatorio (no permitimos "*").
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  // Compat: primer origen (usado como base por defecto en algunos lugares).
+  corsOrigin: corsOrigins[0],
+  corsOrigins,
   jwtSecret,
   jwtPatientSecret,
   jwtExpires: process.env.JWT_EXPIRES ?? '12h',

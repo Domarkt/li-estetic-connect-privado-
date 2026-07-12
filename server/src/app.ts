@@ -30,7 +30,7 @@ export function createApp() {
 
   // Cabeceras de seguridad. La API es JSON (no sirve HTML), así CSP no aplica aquí.
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-  app.use(cors({ origin: env.corsOrigin, credentials: true }));
+  app.use(cors({ origin: env.corsOrigins, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 

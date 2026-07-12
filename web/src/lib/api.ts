@@ -1,6 +1,10 @@
 const STAFF_KEY = 'li_staff_token';
 const PATIENT_KEY = 'li_patient_token';
 
+// Base del API. Vacío = mismas rutas relativas (Netlify con proxy). En hosts sin
+// proxy (Cloudflare Pages) se define VITE_API_URL con la URL del backend en Render.
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+
 export const tokenStore = {
   getStaff: () => localStorage.getItem(STAFF_KEY),
   setStaff: (t: string) => localStorage.setItem(STAFF_KEY, t),
@@ -35,7 +39,7 @@ async function request<T>(
     if (t) headers.Authorization = `Bearer ${t}`;
   }
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}/api${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
