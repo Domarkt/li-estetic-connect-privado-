@@ -118,6 +118,7 @@ model Branch {
   dotColor  String // color de marca de la sucursal
   address   String // dirección impresa en el recibo
   phone     String   @default("809-000-0000")
+  email     String? // correo de la sucursal (contacto + reply-to de los correos a pacientes)
   // Metas (parametrizables por Admin — Fase 6)
   monthlyGoal    Int  @default(0)
   dailyGoal      Int  @default(0)

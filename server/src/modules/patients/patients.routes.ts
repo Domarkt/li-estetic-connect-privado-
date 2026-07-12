@@ -178,7 +178,7 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
  * (si no tiene) y envía el correo con credenciales. La esteticista la validará luego.
  */
 patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), async (req, res) => {
-  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { patientAccount: true } });
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { patientAccount: true, branch: true } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
   if (!patient.email) return res.status(400).json({ error: 'Agrega el correo del paciente en el Paso 1 antes de enviar' });
@@ -198,7 +198,7 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
     data: { sentToPatientAt: new Date(), status: patient.type === 'RECURRENTE' ? undefined : 'PASO1_OK' },
   });
 
-  const mail = await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword });
+  const mail = await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword, replyTo: patient.branch.email ?? undefined });
 
   // Aviso a las esteticistas de la sucursal: hay un nuevo paciente para atender.
   await notifyBranchTherapists(patient.branchId, {

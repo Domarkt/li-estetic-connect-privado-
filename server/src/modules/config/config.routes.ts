@@ -15,7 +15,7 @@ configRouter.get('/branch-goals', async (_req, res) => {
   const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
   res.json(branches.map((b) => ({
     id: b.id, code: b.code, name: b.name, place: b.place, dotColor: b.dotColor,
-    address: b.address, phone: b.phone,
+    address: b.address, phone: b.phone, email: b.email,
     monthlyGoal: b.monthlyGoal, dailyGoal: b.dailyGoal, perAsesorGoal: b.perAsesorGoal,
   })));
 });
@@ -25,12 +25,16 @@ const branchSchema = z.object({
   place: z.string().min(1),
   address: z.string().min(1),
   phone: z.string().min(1),
+  email: z.string().email().optional().or(z.literal('')),
 });
 
 /** Editar datos del negocio por sucursal (nombre, dirección, teléfono → recibo). */
 configRouter.patch('/branches/:id', async (req, res) => {
   const data = branchSchema.parse(req.body);
-  const b = await prisma.branch.update({ where: { id: req.params.id }, data });
+  const b = await prisma.branch.update({
+    where: { id: req.params.id },
+    data: { ...data, email: data.email ? data.email : null },
+  });
   res.json({ ok: true, id: b.id, message: `Datos de ${b.name} actualizados` });
 });
 

@@ -195,6 +195,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
       const mail = await sendAppointmentAccess(patient.email, {
         name: patient.name, login, password: tempPassword,
         service: serviceName, date: fecha, time: hora, code: appt.code ?? '',
+        replyTo: appt.branch.email ?? undefined,
       });
       emailSent = mail.sent;
       access = { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null };

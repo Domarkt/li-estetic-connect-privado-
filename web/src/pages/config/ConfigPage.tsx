@@ -42,7 +42,7 @@ function BusinessTab() {
 
   function set(id: string, k: keyof BranchGoal, v: string) { setBranches((g) => g.map((b) => b.id === id ? { ...b, [k]: v } : b)); }
   async function save(b: BranchGoal) {
-    await api.patch(`/config/branches/${b.id}`, { name: b.name, place: b.place, address: b.address, phone: b.phone });
+    await api.patch(`/config/branches/${b.id}`, { name: b.name, place: b.place, address: b.address, phone: b.phone, email: b.email ?? '' });
     toast(`Datos de ${b.name} guardados`);
   }
 
@@ -58,7 +58,8 @@ function BusinessTab() {
             <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Nombre</span><input className={inp} value={b.name} onChange={(e) => set(b.id, 'name', e.target.value)} /></label>
             <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Ubicación (plaza/nivel)</span><input className={inp} value={b.place} onChange={(e) => set(b.id, 'place', e.target.value)} /></label>
             <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Dirección (recibo)</span><input className={inp} value={b.address} onChange={(e) => set(b.id, 'address', e.target.value)} /></label>
-            <label className="mb-3.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Teléfono</span><input className={inp} value={b.phone} onChange={(e) => set(b.id, 'phone', e.target.value)} /></label>
+            <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Teléfono</span><input className={inp} value={b.phone} onChange={(e) => set(b.id, 'phone', e.target.value)} /></label>
+            <label className="mb-3.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Correo de la sucursal</span><input className={inp} value={b.email ?? ''} onChange={(e) => set(b.id, 'email', e.target.value)} placeholder="sucursal@gmail.com" /></label>
             <button onClick={() => save(b)} className="w-full rounded-[10px] bg-magenta py-2.5 text-[13px] font-bold text-white">Guardar datos</button>
           </div>
         ))}

@@ -18,12 +18,12 @@ function parseFrom(): { email: string; name?: string } {
 }
 
 /** Envío vía API HTTP de Brevo (puerto 443, no usa SMTP). */
-async function sendViaBrevo(to: string, subject: string, html: string): Promise<MailResult> {
+async function sendViaBrevo(to: string, subject: string, html: string, replyTo?: string): Promise<MailResult> {
   try {
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: { 'api-key': BREVO_KEY!, 'Content-Type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ sender: parseFrom(), to: [{ email: to }], subject, htmlContent: html }),
+      body: JSON.stringify({ sender: parseFrom(), to: [{ email: to }], subject, htmlContent: html, ...(replyTo ? { replyTo: { email: replyTo } } : {}) }),
     });
     if (res.ok) return { sent: true, mode: 'live' };
     const body = await res.text().catch(() => '');
@@ -46,13 +46,13 @@ function getTransport() {
   return transporter;
 }
 
-/** Envía un correo por el canal disponible: Brevo (HTTP) → SMTP → demo. */
-async function deliver(to: string, subject: string, html: string): Promise<MailResult> {
-  if (BREVO_KEY) return sendViaBrevo(to, subject, html);
+/** Envía un correo por el canal disponible: Brevo (HTTP) → SMTP → demo. replyTo = correo de la sucursal. */
+async function deliver(to: string, subject: string, html: string, replyTo?: string): Promise<MailResult> {
+  if (BREVO_KEY) return sendViaBrevo(to, subject, html, replyTo);
   const t = getTransport();
   if (!t) return { sent: false, mode: 'demo' };
   try {
-    await t.sendMail({ from: FROM, to, subject, html });
+    await t.sendMail({ from: FROM, to, subject, html, ...(replyTo ? { replyTo } : {}) });
     return { sent: true, mode: 'live' };
   } catch (e) {
     return { sent: false, mode: 'live', error: e instanceof Error ? e.message : 'error' };
@@ -62,7 +62,7 @@ async function deliver(to: string, subject: string, html: string): Promise<MailR
 export interface MailResult { sent: boolean; mode: 'live' | 'demo'; error?: string }
 
 /** Envía el correo de acceso al portal para que el paciente complete su ficha. */
-export async function sendPatientAccess(to: string, opts: { name: string; login: string; password?: string }): Promise<MailResult> {
+export async function sendPatientAccess(to: string, opts: { name: string; login: string; password?: string; replyTo?: string }): Promise<MailResult> {
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
       <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
@@ -81,13 +81,13 @@ export async function sendPatientAccess(to: string, opts: { name: string; login:
       </div>
     </div>`;
 
-  return deliver(to, 'Completa tu ficha clínica · Li Estetic Center', html);
+  return deliver(to, 'Completa tu ficha clínica · Li Estetic Center', html, opts.replyTo);
 }
 
 /** Confirmación de cita para cliente nuevo: código de la cita + acceso al portal para completar la ficha. */
 export async function sendAppointmentAccess(
   to: string,
-  opts: { name: string; login: string; password?: string; service: string; date: string; time: string; code: string },
+  opts: { name: string; login: string; password?: string; service: string; date: string; time: string; code: string; replyTo?: string },
 ): Promise<MailResult> {
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
@@ -111,7 +111,7 @@ export async function sendAppointmentAccess(
         <p>Tu esteticista validará la ficha contigo. ¡Te esperamos!</p>
       </div>
     </div>`;
-  return deliver(to, `Tu cita en Li Estetic Center · código ${opts.code}`, html);
+  return deliver(to, `Tu cita en Li Estetic Center · código ${opts.code}`, html, opts.replyTo);
 }
 
 export { PORTAL_URL };

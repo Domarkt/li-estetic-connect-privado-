@@ -75,6 +75,7 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     branchPlace: i.branch.place,
     branchAddress: i.branch.address,
     branchPhone: i.branch.phone,
+    branchEmail: i.branch.email,
     rnc: RNC,
     date: i.issuedAt.toLocaleString('es-DO', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     patient: i.patient?.name ?? 'Cliente',

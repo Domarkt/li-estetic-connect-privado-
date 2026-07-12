@@ -43,6 +43,7 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
               <div style={{ fontWeight: 800, fontSize: 15 }}>LI ESTETIC CENTER</div>
               <div style={{ fontSize: 11, color: '#6A7089' }}>{receipt.branchName} · {receipt.branchAddress}</div>
               <div style={{ fontSize: 11, color: '#6A7089' }}>RNC {receipt.rnc} · Tel. {receipt.branchPhone}</div>
+              {receipt.branchEmail && <div style={{ fontSize: 11, color: '#6A7089' }}>{receipt.branchEmail}</div>}
               {receipt.ncf && <div style={{ fontSize: 11, color: '#6A7089' }}>NCF (e-CF): {receipt.ncf}</div>}
             </div>
             <Row k="Recibo No." v={receipt.id} />

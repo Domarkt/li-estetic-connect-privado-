@@ -145,7 +145,7 @@ export interface BillPatient {
 }
 export interface Receipt {
   id: string; ncf: string | null;
-  branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; rnc: string;
+  branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; branchEmail?: string | null; rnc: string;
   date: string; patient: string; concept: string;
   items: { name: string; qty: number; total: number }[];
   subtotal: number; itbis: number; total: number; method: string;
@@ -182,7 +182,7 @@ export interface CommissionsView {
 export interface PointsRules { earn: { label: string; pts: string }[]; deduct: { label: string; pts: string }[] }
 
 // ── Configuración ──
-export interface BranchGoal { id: string; code: string; name: string; place: string; dotColor: string; address: string; phone: string; monthlyGoal: number; dailyGoal: number; perAsesorGoal: number }
+export interface BranchGoal { id: string; code: string; name: string; place: string; dotColor: string; address: string; phone: string; email: string | null; monthlyGoal: number; dailyGoal: number; perAsesorGoal: number }
 export interface PointsRule { id: string; label: string; points: number; isEarn: boolean; active: boolean; sortOrder: number }
 export interface RewardItem { id: string; label: string; cost: number; icon: string; active: boolean }
 
