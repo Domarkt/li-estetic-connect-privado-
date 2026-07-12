@@ -156,14 +156,14 @@ export default function AgendaPage() {
                 </div>
               )}
             </div>
-            {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && !a.checkedIn && (
+            {!a.checkedIn && (
               <button onClick={() => setCheckinFor(a)}
                 className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
                 style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
                 🔓 Abrir turno
               </button>
             )}
-            {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && a.inService && (
+            {a.inService && (
               <button onClick={() => finishService(a)}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--navy)' }}>
                 ✓ Cerrar turno

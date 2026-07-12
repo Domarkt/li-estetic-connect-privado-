@@ -177,10 +177,11 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     });
   }
 
-  // Cliente nuevo con correo: crea su acceso al portal y le envía la confirmación con el código + acceso para completar la ficha.
+  // Confirmación de cita por correo a CUALQUIER paciente con correo (nuevo o recurrente):
+  // incluye el código del turno + acceso al portal (crea la cuenta si aún no existe).
   let emailSent = false;
   let access: { portalUrl: string; login: string; tempPassword: string | null } | undefined;
-  if (b.newPatient && patient.email) {
+  if (patient.email) {
     const login = (patient.phone || patient.cedula || '').trim();
     if (login) {
       const existing = await prisma.patientAccount.findFirst({ where: { patientId: patient.id } });
@@ -189,7 +190,8 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
         tempPassword = 'li' + Math.random().toString(36).slice(2, 8);
         await prisma.patientAccount.create({ data: { patientId: patient.id, login, passwordHash: await hashPassword(tempPassword) } });
       }
-      await prisma.clinicalRecord.updateMany({ where: { patientId: patient.id }, data: { sentToPatientAt: new Date() } });
+      // Solo marca "enviada al paciente" cuando es cliente nuevo (aún debe llenar la ficha).
+      if (b.newPatient) await prisma.clinicalRecord.updateMany({ where: { patientId: patient.id }, data: { sentToPatientAt: new Date() } });
       const fecha = startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
       const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
       const mail = await sendAppointmentAccess(patient.email, {
@@ -200,7 +202,10 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
       emailSent = mail.sent;
       access = { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null };
     }
-    // Aviso a las esteticistas de la sucursal: hay un nuevo paciente para atender.
+  }
+
+  // Cliente nuevo: aviso a las esteticistas de la sucursal.
+  if (b.newPatient) {
     await notifyBranchTherapists(patient.branchId, {
       type: 'FICHA_SENT',
       title: 'Nuevo paciente agendado',
@@ -209,8 +214,8 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     });
   }
 
-  const message = b.newPatient && patient.email
-    ? (emailSent ? `Cita agendada · confirmación y acceso enviados a ${patient.email}` : `Cita agendada · acceso creado (comparte los datos con el paciente)`)
+  const message = patient.email
+    ? (emailSent ? `Cita agendada · confirmación enviada a ${patient.email}` : `Cita agendada · no se pudo enviar el correo`)
     : 'Cita agendada y confirmada';
   res.status(201).json({ ...serializeAppt(appt), emailSent, access, message });
 });
@@ -221,7 +226,7 @@ const checkinSchema = z.object({ code: z.string().min(4) });
  * Abrir turno en cabina: la esteticista valida el código único del paciente.
  * No reutilizable (una vez usado, marca codeUsedAt). Aislado por sucursal.
  */
-appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), branchScope, async (req, res) => {
+appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), branchScope, async (req, res) => {
   const { code } = checkinSchema.parse(req.body);
   const appt = await prisma.appointment.findUnique({
     where: { code: code.trim().toUpperCase() }, include: apptInclude,
@@ -243,7 +248,7 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
 });
 
 /** Proceso terminado: cierra el contador de atención y marca la cita como completada. */
-appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), branchScope, async (req, res) => {
+appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), branchScope, async (req, res) => {
   const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: apptInclude });
   if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });

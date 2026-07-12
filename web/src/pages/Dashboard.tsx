@@ -1,21 +1,26 @@
 import { useBranch } from '../layout/BranchContext';
+import { useAuth } from '../auth/AuthContext';
 
-// Vista General (admin) — shell con KPIs de ejemplo. Los datos reales llegan en fases posteriores.
+// Vista General — shell con KPIs de ejemplo. Los datos reales llegan en fases posteriores.
+// `money: true` = solo lo ve el administrador (recepción/esteticista no ven ventas ni comisiones).
 const KPIS = [
-  { label: 'Ventas del mes', value: 'RD$630k', sub: 'Consolidado 3 sucursales', delta: '+12%' },
+  { label: 'Ventas del mes', value: 'RD$630k', sub: 'Consolidado 3 sucursales', delta: '+12%', money: true },
   { label: 'Citas hoy', value: '28', sub: '19 confirmadas', delta: '+4' },
   { label: 'Pacientes activos', value: '142', sub: 'con tratamiento en curso', delta: '+8' },
-  { label: 'Comisiones mes', value: 'RD$54k', sub: 'equipo completo', delta: '8% + bonos' },
+  { label: 'Comisiones mes', value: 'RD$54k', sub: 'equipo completo', delta: '8% + bonos', money: true },
 ];
 
 export default function Dashboard() {
   const { active } = useBranch();
+  const { staff } = useAuth();
   const scope = active ? active.name : 'Todas las sucursales';
+  // Solo el administrador ve KPIs de dinero (ventas, comisiones).
+  const kpis = staff?.role === 'ADMIN' ? KPIS : KPIS.filter((k) => !k.money);
 
   return (
     <div className="flex animate-fade flex-col gap-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {KPIS.map((k) => (
+        {kpis.map((k) => (
           <div key={k.label} className="rounded-base border border-line bg-card p-[18px] shadow-card">
             <div className="flex items-start justify-between">
               <div className="text-[12.5px] font-semibold text-muted">{k.label}</div>
