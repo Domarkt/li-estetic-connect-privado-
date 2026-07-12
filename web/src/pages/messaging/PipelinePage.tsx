@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
+import { Portal } from '../../components/Modal';
 import type { PipelineColumn, PipelineLead, PipelineStage } from '../../lib/types';
+
+interface MenuState { leadId: string; leadName: string; stage: PipelineStage; x: number; y: number }
 
 export default function PipelinePage() {
   const toast = useToast();
   const [columns, setColumns] = useState<PipelineColumn[]>([]);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<PipelineStage | null>(null);
 
@@ -16,7 +19,7 @@ export default function PipelinePage() {
   useEffect(() => { load(); }, [load]);
 
   async function move(leadId: string, stage: PipelineStage, name?: string) {
-    setMenuId(null);
+    setMenu(null);
     // Optimista
     setColumns((cols) => {
       let lead: PipelineLead | undefined;
@@ -36,8 +39,11 @@ export default function PipelinePage() {
     }
   }
 
+  const otherStages = menu ? columns.filter((c) => c.stage !== menu.stage) : [];
+
   return (
-    <div className="flex animate-fade gap-3.5 overflow-x-auto pb-2" onClick={() => setMenuId(null)}>
+    <>
+    <div className="flex animate-fade gap-3.5 overflow-x-auto pb-2" onClick={() => setMenu(null)}>
       {columns.map((col) => (
         <div key={col.stage}
           onDragOver={(e) => { e.preventDefault(); setOverStage(col.stage); }}
@@ -60,21 +66,15 @@ export default function PipelinePage() {
                     {ld.channelBadge && <span className="rounded px-1.5 py-0.5 text-[9px] font-extrabold text-white" style={{ background: ld.channelColor ?? '#999' }}>{ld.channelBadge}</span>}
                     <div className="text-[13px] font-bold">{ld.name}</div>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === ld.id ? null : ld.id); }}
+                  <button onClick={(e) => {
+                    e.stopPropagation();
+                    if (menu?.leadId === ld.id) { setMenu(null); return; }
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setMenu({ leadId: ld.id, leadName: ld.name, stage: col.stage, x: r.right, y: r.bottom });
+                  }}
                     className="flex h-6 w-6 flex-none items-center justify-center rounded-md bg-bg text-sm font-extrabold leading-none text-muted">⋯</button>
                 </div>
                 <div className="mt-1 text-[12px] leading-snug text-muted">{ld.summary}</div>
-
-                {menuId === ld.id && (
-                  <div onClick={(e) => e.stopPropagation()} className="absolute right-2 top-9 z-30 min-w-[180px] overflow-hidden rounded-[10px] border border-line bg-card animate-pop" style={{ boxShadow: '0 8px 30px rgba(28,37,64,.18)' }}>
-                    <div className="px-3 pb-1 pt-2.5 text-[10.5px] font-bold uppercase tracking-wide text-faint">Mover a</div>
-                    {columns.filter((c) => c.stage !== col.stage).map((c) => (
-                      <button key={c.stage} onClick={() => move(ld.id, c.stage, ld.name)} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold hover:bg-bg">
-                        <span className="h-2 w-2 flex-none rounded-full" style={{ background: c.color }} />{c.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
             {col.leads.length === 0 && <div className="rounded-lg border border-dashed border-line py-6 text-center text-[11.5px] text-faint">Vacío</div>}
@@ -82,5 +82,22 @@ export default function PipelinePage() {
         </div>
       ))}
     </div>
+
+    {menu && (
+      <Portal>
+        {/* Capa para cerrar al hacer clic fuera */}
+        <div className="fixed inset-0 z-[200]" onClick={() => setMenu(null)} />
+        <div className="fixed z-[201] min-w-[190px] overflow-hidden rounded-[10px] border border-line bg-card animate-pop"
+          style={{ boxShadow: '0 8px 30px rgba(28,37,64,.18)', top: Math.min(menu.y + 4, window.innerHeight - 8 - 44 * (otherStages.length + 1)), left: Math.min(menu.x, window.innerWidth - 210) }}>
+          <div className="px-3 pb-1 pt-2.5 text-[10.5px] font-bold uppercase tracking-wide text-faint">Mover a</div>
+          {otherStages.map((c) => (
+            <button key={c.stage} onClick={() => move(menu.leadId, c.stage, menu.leadName)} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold hover:bg-bg">
+              <span className="h-2 w-2 flex-none rounded-full" style={{ background: c.color }} />{c.label}
+            </button>
+          ))}
+        </div>
+      </Portal>
+    )}
+    </>
   );
 }

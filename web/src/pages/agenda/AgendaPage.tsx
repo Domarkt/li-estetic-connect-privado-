@@ -56,7 +56,7 @@ export default function AgendaPage() {
   }, [load, toast]);
 
   async function finishService(a: Appointment) {
-    if (!window.confirm(`¿Marcar como terminado el proceso de ${a.patient}?`)) return;
+    if (!window.confirm(`¿Cerrar el turno de ${a.patient}? Quedarás libre para el siguiente paciente y ${a.patient} podrá calificar el servicio.`)) return;
     try {
       const r = await api.post<{ message: string }>(`/appointments/${a.id}/finish`);
       toast(r.message);
@@ -166,7 +166,7 @@ export default function AgendaPage() {
             {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && a.inService && (
               <button onClick={() => finishService(a)}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--navy)' }}>
-                ✓ Proceso terminado
+                ✓ Cerrar turno
               </button>
             )}
             {a.finished && a.durationLabel && (

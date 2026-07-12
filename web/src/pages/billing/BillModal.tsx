@@ -31,6 +31,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const current = patients.find((p) => p.id === selected) ?? null;
   const t = current?.treatment ?? null;
   const hasBalance = !!t && t.balance > 0;
+  const hasCharges = chargeIds.length > 0; // servicios pendientes por cobrar
 
   function loadPatients() {
     setLoadingP(true); setErrP(false);
@@ -75,10 +76,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   function setKind(k: PayKind) {
     setPayKind(k);
-    if (!t) return;
-    if (k === 'SALDO') setAmountDefault(String(t.balance));
-    else if (k === 'TOTAL') setAmountDefault(String(t.price));
-    else setAmountDefault(''); // abono: monto libre
+    if (t) {
+      if (k === 'SALDO') setAmountDefault(String(t.balance));
+      else if (k === 'TOTAL') setAmountDefault(String(t.price));
+      else setAmountDefault(''); // abono: monto libre
+    } else if (hasCharges) {
+      if (k === 'TOTAL') setAmountDefault(String(current?.pendingTotal ?? 0));
+      else setAmountDefault(''); // abono a servicios: monto libre
+    }
   }
 
   const amt = parseInt((amount || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -112,7 +117,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
       const r = await api.post<{ receipt: Receipt; message: string }>('/invoices', {
         patientId: selected ?? undefined, concept: concept.trim(),
         payments: paymentsList, treatmentId: treatmentId ?? undefined,
-        paymentKind: treatmentId ? payKind : 'TOTAL',
+        paymentKind: (treatmentId || chargeIds.length) ? payKind : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
       });
       toast(r.message); onEmitted(r.receipt); onClose();
@@ -166,7 +171,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               <div className="flex gap-2">
                 {(['TOTAL', 'ABONO', 'SALDO'] as const).map((k) => {
                   const on = payKind === k;
-                  const disabled = (k === 'ABONO' || k === 'SALDO') && !hasBalance;
+                  // Abono disponible con tratamiento o con servicios pendientes; saldo solo con tratamiento.
+                  const disabled = (k === 'SALDO' && !hasBalance) || (k === 'ABONO' && !hasBalance && !hasCharges);
                   return (
                     <button key={k} onClick={() => !disabled && setKind(k)} disabled={disabled}
                       className="flex-1 rounded-[9px] border py-2 text-[11.5px] font-bold disabled:opacity-40"
@@ -178,6 +184,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               </div>
               {t && (payKind === 'ABONO' || payKind === 'SALDO') && (
                 <div className="mt-2 rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Saldo actual: <b style={{ color: 'var(--danger)' }}>{fmtRD(t.balance)}</b> de {fmtRD(t.price)}. Tras el pago quedaría <b>{fmtRD(balanceAfter)}</b>.</div>
+              )}
+              {!t && hasCharges && payKind === 'ABONO' && (
+                <div className="mt-2 rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Total servicios: <b>{fmtRD(current?.pendingTotal ?? 0)}</b>. Abono de <b>{fmtRD(amt)}</b> · queda pendiente <b style={{ color: 'var(--danger)' }}>{fmtRD(Math.max(0, (current?.pendingTotal ?? 0) - amt))}</b>.</div>
               )}
             </div>
 

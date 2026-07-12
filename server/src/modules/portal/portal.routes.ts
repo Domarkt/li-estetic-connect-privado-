@@ -158,7 +158,11 @@ portalRouter.get('/profile', async (req, res) => {
 /** Historial de citas atendidas (para calificar). */
 portalRouter.get('/history', async (req, res) => {
   const appts = await prisma.appointment.findMany({
-    where: { patientId: req.patient!.patientId, startsAt: { lt: new Date() }, status: { not: 'CANCELADA' } },
+    where: {
+      patientId: req.patient!.patientId, status: { not: 'CANCELADA' },
+      // Ya atendida: turno cerrado por la esteticista, o su fecha ya pasó.
+      OR: [{ serviceEndedAt: { not: null } }, { startsAt: { lt: new Date() } }],
+    },
     include: { therapist: true }, orderBy: { startsAt: 'desc' }, take: 20,
   });
   res.json(appts.map((a) => ({

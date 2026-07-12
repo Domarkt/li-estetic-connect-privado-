@@ -118,26 +118,54 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const { subtotal, itbis } = splitItbis(amount);
   const { number, ncf } = await allocateSequence(branchId);
 
+  // Líneas de la factura: cada servicio/producto DETALLADO por separado (para conciliar).
+  let lineItems: { name: string; qty: number; unitPrice: number; total: number }[];
+  let saldoServicios = 0; // saldo pendiente cuando el cobro de servicios es un abono
+  const charges = b.chargeItemIds?.length
+    ? await prisma.chargeItem.findMany({ where: { id: { in: b.chargeItemIds }, branchId } })
+    : [];
+  if (charges.length) {
+    const chargesTotal = charges.reduce((s, c) => s + c.price, 0);
+    if (b.paymentKind === 'ABONO' && amount < chargesTotal) {
+      // Abono a servicios: se registra el abono; el resto queda como cargo pendiente.
+      saldoServicios = chargesTotal - amount;
+      lineItems = [{ name: `Abono · ${charges.map((c) => c.name).join(', ')}`, qty: 1, unitPrice: amount, total: amount }];
+    } else {
+      // Pago total: cada servicio como su propia línea.
+      lineItems = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price }));
+    }
+  } else {
+    lineItems = [{ name: b.concept, qty: 1, unitPrice: amount, total: amount }];
+  }
+
   const invoice = await prisma.invoice.create({
     data: {
       number, ncf, branchId, patientId: b.patientId ?? null, cashierId: req.staff!.sub,
       treatmentId: b.treatmentId ?? null, paymentKind: b.paymentKind,
       concept: b.concept, subtotal, itbis, total: amount, method: dominant,
       payments: b.payments, status: 'PAGADA',
-      items: { create: { name: b.concept, qty: 1, unitPrice: amount, total: amount } },
+      items: { create: lineItems },
     },
     include: invoiceInclude,
   });
 
-  // Marca como facturados los cargos que la esteticista envió a recepción.
-  if (b.chargeItemIds?.length) {
+  // Marca como facturados los cargos cobrados.
+  if (charges.length) {
     await prisma.chargeItem.updateMany({
-      where: { id: { in: b.chargeItemIds }, branchId },
+      where: { id: { in: b.chargeItemIds! }, branchId },
       data: { status: 'FACTURADO' },
     });
+    // El resto del abono queda como nuevo cargo pendiente para cobrar luego.
+    if (saldoServicios > 0 && b.patientId) {
+      await prisma.chargeItem.create({
+        data: { branchId, patientId: b.patientId, name: 'Saldo pendiente de servicios', price: saldoServicios, createdById: req.staff!.sub },
+      });
+    }
   }
 
-  const msg = (b.paymentKind === 'ABONO' || b.paymentKind === 'SALDO') && treatmentAfter
+  const msg = saldoServicios > 0
+    ? `Abono registrado · saldo pendiente RD$${saldoServicios.toLocaleString('en-US')}`
+    : (b.paymentKind === 'ABONO' || b.paymentKind === 'SALDO') && treatmentAfter
     ? `${b.paymentKind === 'SALDO' ? 'Saldo pagado' : 'Abono registrado'} · saldo restante ${'RD$' + treatmentAfter.balance.toLocaleString('en-US')}${treatmentAfter.balance > 0 ? ` (${'RD$' + treatmentAfter.perSession.toLocaleString('en-US')}/sesión en ${treatmentAfter.remaining} sesiones)` : ''}`
     : 'Recibo emitido · pago registrado en caja';
   res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg });
