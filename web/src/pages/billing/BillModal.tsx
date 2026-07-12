@@ -123,14 +123,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   return (
     <Overlay onClose={onClose} z={110}>
-      <div onClick={stop} className="flex max-h-[92vh] w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+      <div onClick={stop} className="flex w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="flex items-center border-b border-line px-6 py-5">
           <div className="flex-1 text-base font-extrabold">{step === 'form' ? 'Registrar cobro' : 'Validar cobro'}</div>
           <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
         </div>
 
         {step === 'form' ? (
-          <div className="flex flex-col gap-3.5 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col gap-3.5 px-6 py-5">
             <div>
               <span className="mb-1.5 block text-xs font-bold text-muted">Seleccionar paciente</span>
               <input value={pQuery} onChange={(e) => setPQuery(e.target.value)} placeholder="🔍 Buscar por nombre o teléfono…"
@@ -202,7 +202,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           </div>
         ) : (
           // Paso Validar: revisión antes de emitir
-          <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col gap-3 px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
             <Row k="Tipo de pago" v={KIND_LABEL[treatmentId ? payKind : 'TOTAL']} />
             <Row k="Concepto" v={concept} />

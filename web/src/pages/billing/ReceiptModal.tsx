@@ -21,7 +21,7 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
 
   return (
     <Overlay onClose={onClose} z={120}>
-      <div onClick={stop} className="flex max-h-[92vh] w-[520px] max-w-full flex-col overflow-hidden rounded-2xl bg-bg animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.4)' }}>
+      <div onClick={stop} className="flex w-[520px] max-w-full flex-col overflow-hidden rounded-2xl bg-bg animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.4)' }}>
         <div className="flex items-center gap-3 border-b border-line bg-card px-[22px] py-4">
           <div className="flex-1 text-[15px] font-extrabold">Recibo emitido</div>
           <div className="flex gap-1.5">
@@ -36,7 +36,7 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
           <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
         </div>
 
-        <div className="flex flex-1 justify-center overflow-y-auto p-6">
+        <div className="flex justify-center p-6">
           <div id="li-receipt" style={{ width, background: '#fff', border: '1px solid var(--line)', borderRadius: 8, padding: 26, fontSize: 13, color: '#1C2540' }}>
             <div style={{ textAlign: 'center', borderBottom: '2px solid #1C2540', paddingBottom: 14, marginBottom: 14 }}>
               <img src="/li-logo.png" style={{ height: 34, marginBottom: 8 }} />

@@ -37,12 +37,12 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
 
   return (
     <Overlay onClose={onClose} z={120}>
-      <div onClick={stop} className="flex max-h-[92vh] w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+      <div onClick={stop} className="flex w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="border-b border-line px-6 py-5">
           <div className="text-base font-extrabold">Agregar servicios / productos</div>
           <div className="mt-0.5 text-[12.5px] text-muted">{canBillNow ? 'Selecciona lo que eligió el paciente · pasarás a cobrar de inmediato' : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar'}</div>
         </div>
-        <div className="flex flex-col gap-2 overflow-y-auto px-6 py-4">
+        <div className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto px-6 py-4">
           {items.map((it) => {
             const on = cart.has(it.id);
             return (
