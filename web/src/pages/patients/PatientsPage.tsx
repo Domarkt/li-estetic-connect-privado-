@@ -38,8 +38,8 @@ export default function PatientsPage() {
 
   return (
     <div className="animate-fade">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex w-[340px] items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-faint">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-faint sm:w-[340px]">
           <Icon name="search" size={16} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar paciente por nombre o teléfono…"
             className="w-full bg-transparent text-[13.5px] text-ink outline-none placeholder:text-faint" />
@@ -51,7 +51,8 @@ export default function PatientsPage() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-base border border-line bg-card shadow-card">
+      <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
+        <div className="min-w-[760px]">
         <div className="grid grid-cols-[2.2fr_1.4fr_1.6fr_1fr_1.1fr_1fr] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted">
           <div>Paciente</div><div>Ficha clínica</div><div>Tratamiento</div><div>Progreso</div><div>Saldo</div><div>Próxima cita</div>
         </div>
@@ -82,6 +83,7 @@ export default function PatientsPage() {
             </div>
           );
         })}
+        </div>
       </div>
 
       {detailId && (

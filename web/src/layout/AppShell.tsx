@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useBranch } from './BranchContext';
@@ -58,6 +59,7 @@ export default function AppShell() {
   const { branches, activeBranch, setActiveBranch, active } = useBranch();
   const navigate = useNavigate();
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!staff) return null;
   const items = NAV[staff.role];
@@ -76,8 +78,11 @@ export default function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-bg">
-      {/* Sidebar */}
-      <aside className="sticky top-0 flex h-screen w-[244px] flex-none flex-col text-white" style={{ background: 'var(--navy)' }}>
+      {/* Backdrop (solo móvil, cuando el menú está abierto) */}
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/40 md:hidden" />}
+
+      {/* Sidebar: fijo en escritorio, cajón deslizable en móvil */}
+      <aside className={`fixed z-50 flex h-screen w-[244px] flex-none flex-col text-white transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ background: 'var(--navy)' }}>
         <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
           <div className="flex rounded-[10px] bg-white px-2.5 py-[7px]"><img src="/li-logo.png" className="block h-[26px]" /></div>
           <div className="text-[15px] font-extrabold tracking-tight">Connect</div>
@@ -93,7 +98,7 @@ export default function AppShell() {
         </div>
         <nav className="flex flex-1 flex-col gap-[3px] overflow-y-auto px-3 py-2.5">
           {items.map((n) => (
-            <NavLink key={n.key} to={`/app/${n.key}`}
+            <NavLink key={n.key} to={`/app/${n.key}`} onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-semibold transition ${
                   isActive ? 'bg-magenta text-white' : 'text-[#C6CBDE] hover:bg-white/5'
@@ -121,14 +126,17 @@ export default function AppShell() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-line bg-card px-7">
-          <div className="flex-1">
-            <h1 className="m-0 text-lg font-extrabold tracking-tight">{page.title}</h1>
-            <div className="text-xs text-muted">{page.sub}</div>
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-line bg-card px-3 sm:gap-4 sm:px-7">
+          <button onClick={() => setSidebarOpen(true)} className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-line bg-bg text-muted md:hidden" title="Menú">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="m-0 truncate text-base font-extrabold tracking-tight sm:text-lg">{page.title}</h1>
+            <div className="truncate text-xs text-muted">{page.sub}</div>
           </div>
 
           {staff.role === 'ADMIN' && (
-            <div className="flex gap-1.5 rounded-[10px] border border-line bg-bg p-1">
+            <div className="hidden gap-1.5 rounded-[10px] border border-line bg-bg p-1 sm:flex">
               {[{ id: 'all', label: 'Todas' }, ...branches.map((b) => ({ id: b.id, label: b.name.replace('Estética ', 'E') }))].map((b) => {
                 const on = activeBranch === b.id;
                 return (
@@ -143,7 +151,7 @@ export default function AppShell() {
 
           <NotificationBell />
 
-          <div className="flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2.5 text-[13px] font-semibold capitalize text-muted">
+          <div className="hidden items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2.5 text-[13px] font-semibold capitalize text-muted sm:flex">
             <Icon name="calDay" size={15} />
             {today}
           </div>
@@ -151,7 +159,7 @@ export default function AppShell() {
 
         {/* Banner de sucursal activa (admin filtrando) */}
         {staff.role === 'ADMIN' && active && (
-          <div className="mx-7 mt-4 flex items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-card"
+          <div className="mx-4 mt-4 flex items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-card sm:mx-7"
             style={{ borderLeft: `4px solid ${active.dotColor}` }}>
             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: active.dotColor }} />
             <div className="flex-1">
@@ -162,7 +170,7 @@ export default function AppShell() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto px-7 py-[26px]">
+        <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-7 sm:py-[26px]">
           <Outlet />
         </main>
       </div>

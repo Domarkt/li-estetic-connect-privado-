@@ -35,7 +35,8 @@ export default function EquipoPage() {
         <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Agregar colaborador</button>
       </div>
 
-      <div className="overflow-hidden rounded-base border border-line bg-card shadow-card">
+      <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
+        <div className="min-w-[640px]">
         <div className="grid grid-cols-[2fr_1.4fr_1fr_1.2fr_1.2fr_.9fr] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted">
           <div>Colaboradora</div><div>Sucursal</div><div>Puntos</div><div>Ventas mes</div><div>Comisión</div><div>Asist.</div>
         </div>
@@ -50,6 +51,7 @@ export default function EquipoPage() {
           </div>
         ))}
         {data.collaborators.length === 0 && <div className="px-5 py-8 text-center text-sm text-muted">Sin colaboradoras.</div>}
+        </div>
       </div>
 
       <div className="mt-1 text-base font-extrabold">Usuarios del sistema</div>
