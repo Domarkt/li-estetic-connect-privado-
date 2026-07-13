@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requirePatient } from '../../middleware/auth.js';
 import { genApptCode } from '../appointments/appointments.service.js';
-import { notifyBranchTherapists } from '../notifications/notifications.service.js';
+import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
+import { sendAppointmentCancelled } from '../mail/mail.service.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -16,15 +17,27 @@ function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d
 /** Mi Proceso: tratamiento activo, progreso, próxima cita y tips. */
 portalRouter.get('/proceso', async (req, res) => {
   const patientId = req.patient!.patientId;
-  const [treatment, nextAppt] = await Promise.all([
+  const since = new Date(Date.now() - 30 * 24 * 36e5); // últimos 30 días
+  const [treatment, nextAppt, cancelledByClinic] = await Promise.all([
     prisma.treatment.findFirst({ where: { patientId, active: true }, orderBy: { createdAt: 'desc' } }),
     prisma.appointment.findFirst({
       where: { patientId, startsAt: { gte: startOfToday() }, status: { not: 'CANCELADA' } },
       include: { therapist: true, branch: true }, orderBy: { startsAt: 'asc' },
     }),
+    // Avisos: citas que la CLÍNICA canceló recientemente (el paciente debe enterarse).
+    prisma.appointment.findMany({
+      where: { patientId, status: 'CANCELADA', cancelledBy: 'STAFF', cancelledAt: { gte: since } },
+      orderBy: { cancelledAt: 'desc' }, take: 5,
+    }),
   ]);
 
   res.json({
+    notices: cancelledByClinic.map((a) => ({
+      id: a.id,
+      service: a.serviceName,
+      date: a.startsAt.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      reason: a.cancelReason ?? '',
+    })),
     treatment: treatment ? {
       name: treatment.name, total: treatment.totalSessions, done: treatment.doneSessions,
       pct: treatment.totalSessions ? Math.round((treatment.doneSessions / treatment.totalSessions) * 100) : 0,
@@ -229,13 +242,47 @@ portalRouter.patch('/appointments/:id', async (req, res) => {
   res.json({ ok: true, message: 'Cita reagendada · pendiente de confirmar' });
 });
 
-/** Cancelar una cita (aplica política: aviso de 24h y límite de 5 cancelaciones). */
-portalRouter.delete('/appointments/:id', async (req, res) => {
-  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+const portalCancelSchema = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo de la cancelación') });
+
+/**
+ * Cancelar una cita propia con motivo obligatorio. Avisa al sistema (notificación
+ * a recepción/admin de la sucursal) y envía un correo de aviso a la sucursal.
+ * Política: recordatorio de 24h y límite de 5 cancelaciones.
+ */
+portalRouter.post('/appointments/:id/cancel', async (req, res) => {
+  const { reason } = portalCancelSchema.parse(req.body);
+  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: { branch: true, patient: true } });
   if (!appt || appt.patientId !== req.patient!.patientId) return res.status(404).json({ error: 'Cita no encontrada' });
+  if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita ya está cancelada' });
 
   const hoursToAppt = (appt.startsAt.getTime() - Date.now()) / 36e5;
-  await prisma.appointment.update({ where: { id: appt.id }, data: { status: 'CANCELADA' } });
+  await prisma.appointment.update({
+    where: { id: appt.id },
+    data: { status: 'CANCELADA', cancelReason: reason, cancelledBy: 'PATIENT', cancelledAt: new Date() },
+  });
+
+  const fecha = appt.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+  const hora = appt.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+
+  // Aviso al sistema: notificación a recepción y admin de la sucursal.
+  await notifyRole('RECEPCIONISTA', {
+    type: 'APPOINTMENT_CANCELLED', title: 'Cita cancelada por el paciente',
+    body: `${appt.patient.name} canceló · ${appt.serviceName} · ${fecha} ${hora}. Motivo: ${reason}`,
+    link: '/app/agenda',
+  }, appt.branchId);
+  await notifyRole('ADMIN', {
+    type: 'APPOINTMENT_CANCELLED', title: 'Cita cancelada por el paciente',
+    body: `${appt.patient.name} (${appt.branch.name}) · ${appt.serviceName} · ${fecha} ${hora}. Motivo: ${reason}`,
+    link: '/app/agenda',
+  });
+
+  // Correo de aviso a la sucursal (si tiene correo configurado).
+  if (appt.branch.email) {
+    await sendAppointmentCancelled(appt.branch.email, {
+      name: appt.patient.name, service: appt.serviceName, date: fecha, time: hora,
+      reason, by: 'patient', branchName: appt.branch.name,
+    });
+  }
 
   const cancelled = await prisma.appointment.count({ where: { patientId: req.patient!.patientId, status: 'CANCELADA' } });
   const warn = hoursToAppt < 24 ? ' (menos de 24h de anticipación)' : '';

@@ -114,4 +114,42 @@ export async function sendAppointmentAccess(
   return deliver(to, `Tu cita en Li Estetic Center · código ${opts.code}`, html, opts.replyTo);
 }
 
+/**
+ * Aviso de cancelación de cita. `by` define el texto:
+ *  - 'clinic'  → correo AL PACIENTE (la clínica canceló su cita).
+ *  - 'patient' → correo A LA SUCURSAL (el paciente canceló; aviso al negocio).
+ */
+export async function sendAppointmentCancelled(
+  to: string,
+  opts: { name: string; service: string; date: string; time: string; reason: string; by: 'clinic' | 'patient'; branchName?: string; replyTo?: string },
+): Promise<MailResult> {
+  const byClinic = opts.by === 'clinic';
+  const heading = byClinic ? 'Tu cita fue cancelada' : 'Cancelación de cita';
+  const intro = byClinic
+    ? `Hola <b>${opts.name}</b>, lamentamos informarte que tu cita fue <b>cancelada</b>.`
+    : `La paciente <b>${opts.name}</b> canceló su cita.`;
+  const footer = byClinic
+    ? 'Escríbenos o llámanos para reagendar cuando gustes. 💜'
+    : 'Registrado en el sistema. Puedes reasignar el turno.';
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
+        <div style="font-style:italic;color:#F3C3E0">Transformando Tu Cuerpo</div>
+        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
+      </div>
+      <div style="padding:24px;color:#1C2540">
+        <h3 style="margin:0 0 8px;color:#C0392B">${heading}</h3>
+        <p>${intro}</p>
+        <p style="background:#FBECEC;border-radius:10px;padding:12px 14px">
+          <b>Servicio:</b> ${opts.service}<br/>
+          <b>Fecha:</b> ${opts.date} · <b>Hora:</b> ${opts.time}<br/>
+          ${opts.branchName ? `<b>Sucursal:</b> ${opts.branchName}<br/>` : ''}
+          <b>Motivo:</b> ${opts.reason}
+        </p>
+        <p>${footer}</p>
+      </div>
+    </div>`;
+  return deliver(to, `Cita cancelada · Li Estetic Center`, html, opts.replyTo);
+}
+
 export { PORTAL_URL };

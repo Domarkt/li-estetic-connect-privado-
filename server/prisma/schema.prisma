@@ -379,6 +379,9 @@ model Appointment {
   ratingComment String? // comentario si la calificación es < 5
   googleEventId String? // sync Google Calendar (Fase 3)
   reminderSentAt DateTime?
+  cancelReason  String? // motivo de cancelación (obligatorio al cancelar)
+  cancelledBy   String? // STAFF | PATIENT
+  cancelledAt   DateTime?
   createdAt     DateTime          @default(now())
 
   branch      Branch  @relation(fields: [branchId], references: [id])

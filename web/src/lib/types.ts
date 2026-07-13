@@ -111,6 +111,8 @@ export interface Appointment {
   inService: boolean;
   finished: boolean;
   durationLabel?: string; // solo visible para admin
+  cancelReason?: string | null;
+  cancelledBy?: 'STAFF' | 'PATIENT' | null;
 }
 
 export interface AgendaResponse {
@@ -196,6 +198,7 @@ export interface IntegrationsView {
 
 // ── Portal del paciente ──
 export interface PortalProceso {
+  notices?: { id: string; service: string; date: string; reason: string }[];
   treatment: { name: string; total: number; done: number; pct: number } | null;
   nextAppointment: { date: string; day: string; month: string; time: string; service: string; therapist: string; branch: string; code: string | null; checkedIn: boolean } | null;
   tips: string;

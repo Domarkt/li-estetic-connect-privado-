@@ -68,6 +68,8 @@ export function serializeAppt(
     // Turno abierto (validado en cabina) y aún sin cerrar → se puede "Cerrar turno".
     inService: !!a.codeUsedAt && !a.serviceEndedAt,
     finished: !!a.serviceEndedAt,
+    cancelReason: a.cancelReason ?? null,
+    cancelledBy: a.cancelledBy ?? null,
     ...(opts?.includeDuration && a.serviceDurationSec != null
       ? { durationLabel: durationLabel(a.serviceDurationSec) }
       : {}),

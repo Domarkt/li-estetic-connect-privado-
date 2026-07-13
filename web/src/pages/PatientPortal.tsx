@@ -71,6 +71,14 @@ function Proceso() {
 
   return (
     <div className="flex animate-fade flex-col gap-4">
+      {d.notices && d.notices.length > 0 && d.notices.map((n) => (
+        <div key={n.id} className="rounded-[16px] border p-4" style={{ background: 'var(--danger-soft)', borderColor: '#F0C8C8' }}>
+          <div className="mb-1 text-[13.5px] font-bold" style={{ color: 'var(--danger)' }}>✕ Cita cancelada por la clínica</div>
+          <div className="text-[12.5px] leading-normal" style={{ color: '#8A2E2E' }}>
+            {n.service} · {n.date}<br/><b>Motivo:</b> {n.reason}<br/>Contáctanos para reagendar.
+          </div>
+        </div>
+      ))}
       {d.treatment ? (
         <div className="rounded-[18px] bg-card p-5 shadow-card">
           <div className="mb-3.5 flex items-center justify-between">
@@ -116,6 +124,7 @@ function Citas() {
   const toast = useToast();
   const [appts, setAppts] = useState<PortalAppointment[]>([]);
   const [branches, setBranches] = useState<PortalBranch[]>([]);
+  const [cancelId, setCancelId] = useState<string | null>(null);
 
   const load = useCallback(() => { api.get<PortalAppointment[]>('/portal/appointments', 'patient').then(setAppts).catch(() => {}); }, []);
   useEffect(() => {
@@ -123,10 +132,6 @@ function Citas() {
     api.get<PortalBranch[]>('/portal/branches', 'patient').then(setBranches).catch(() => {});
   }, [load]);
 
-  async function cancel(id: string) {
-    const r = await api.del<{ message: string }>(`/portal/appointments/${id}`, 'patient');
-    toast(r.message); load();
-  }
   function waLink(b: PortalBranch, msg: string) {
     return `https://wa.me/${b.waNumber}?text=${encodeURIComponent(msg)}`;
   }
@@ -152,7 +157,7 @@ function Citas() {
                   <a href={waLink(branches[0], `Hola, quiero reagendar mi cita del ${a.date} (${a.service}).`)} target="_blank" rel="noreferrer"
                     className="flex-1 rounded-[9px] py-2.5 text-center text-[12.5px] font-bold no-underline" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Reagendar por WhatsApp</a>
                 )}
-                <button onClick={() => cancel(a.id)} className="flex-1 rounded-[9px] py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Cancelar</button>
+                <button onClick={() => setCancelId(a.id)} className="flex-1 rounded-[9px] py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Cancelar</button>
               </div>
             </div>
           ))}
@@ -160,6 +165,9 @@ function Citas() {
         </div>
         <div className="mt-3 px-1 text-[11.5px] leading-normal text-faint">⚠ Recuerda cancelar con 24h de anticipación. Después de 5 cancelaciones se pierde el tratamiento.</div>
       </div>
+
+      {cancelId && <PortalCancelModal onClose={() => setCancelId(null)} onDone={(m) => { toast(m); setCancelId(null); load(); }}
+        appointmentId={cancelId} />}
 
       {/* Solicitar una NUEVA cita por WhatsApp (recepción la confirma en agenda) */}
       <div className="rounded-[18px] bg-card p-5 shadow-card">
@@ -367,6 +375,57 @@ function RateCard({ item, onDone }: { item: PortalHistoryItem; onDone: (msg: str
       {rated
         ? <div className="mt-1 text-[11.5px] font-semibold text-ok">✓ Calificada{item.ratingComment ? ` · "${item.ratingComment}"` : ''}</div>
         : <button onClick={send} disabled={busy || stars === 0} className="mt-2 w-full rounded-[10px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar calificación'}</button>}
+    </div>
+  );
+}
+
+const CANCEL_REASONS = ['Por horario', 'Tráfico', 'Otro motivo'] as const;
+
+function PortalCancelModal({ appointmentId, onClose, onDone }: { appointmentId: string; onClose: () => void; onDone: (msg: string) => void }) {
+  const [choice, setChoice] = useState<string>('');
+  const [other, setOther] = useState('');
+  const [busy, setBusy] = useState(false);
+  const isOther = choice === 'Otro motivo';
+  // El motivo final: la opción elegida, o el texto libre si es "Otro motivo".
+  const reason = isOther ? other.trim() : choice;
+  const canSubmit = !!choice && (!isOther || other.trim().length >= 3);
+
+  async function submit() {
+    if (!canSubmit) { onDone(isOther ? 'Escribe el motivo' : 'Elige un motivo'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>(`/portal/appointments/${appointmentId}/cancel`, { reason }, 'patient');
+      onDone(r.message);
+    } catch (e) { onDone(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[120] flex items-center justify-center p-5" style={{ background: 'rgba(28,37,64,.55)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[340px] overflow-hidden rounded-[20px] bg-card" style={{ boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
+        <div className="border-b border-line px-5 py-4"><div className="text-[15px] font-extrabold">Cancelar cita</div><div className="text-[11.5px] text-muted">¿Cuál es el motivo?</div></div>
+        <div className="flex flex-col gap-2 px-5 py-4">
+          {CANCEL_REASONS.map((r) => {
+            const on = choice === r;
+            return (
+              <button key={r} onClick={() => setChoice(r)} className="flex items-center gap-3 rounded-[11px] border px-4 py-3 text-left" style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full border-2" style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta)' : 'transparent' }}>{on && <span className="h-2 w-2 rounded-full bg-white" />}</span>
+                <span className="text-[13.5px] font-bold">{r}</span>
+              </button>
+            );
+          })}
+          {isOther && (
+            <textarea autoFocus value={other} onChange={(e) => setOther(e.target.value)} rows={2}
+              placeholder="Cuéntanos brevemente…"
+              className="mt-1 w-full resize-none rounded-[10px] border border-line p-3 text-[13px] outline-none focus:border-magenta" />
+          )}
+          <div className="mt-0.5 text-[10.5px] text-faint">Recepción recibirá el aviso con tu motivo.</div>
+        </div>
+        <div className="flex gap-2 border-t border-line px-5 py-3.5">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line py-2.5 text-[12.5px] font-bold text-muted">Volver</button>
+          <button onClick={submit} disabled={busy || !canSubmit} className="flex-[2] rounded-[10px] py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50" style={{ background: 'var(--danger)' }}>{busy ? 'Cancelando…' : 'Confirmar'}</button>
+        </div>
+      </div>
     </div>
   );
 }

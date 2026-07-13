@@ -24,11 +24,16 @@ export default function AgendaPage() {
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [checkinFor, setCheckinFor] = useState<Appointment | null>(null);
+  const [cancelFor, setCancelFor] = useState<Appointment | null>(null);
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
   const canSchedule = true;
   const isMasa = staff?.role === 'ESTETICISTA';
+  const isAdmin = staff?.role === 'ADMIN';
+  // Abrir/cerrar turno es exclusivo de la esteticista (y admin). Recepción cancela citas.
+  const canOpenTurno = isMasa || isAdmin;
+  const canCancel = staff?.role === 'RECEPCIONISTA' || isAdmin;
   const isToday = date === todayISO();
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long' });
 
@@ -156,38 +161,52 @@ export default function AgendaPage() {
                 {a.finished && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>✓ Atendido</span>}
               </div>
               <div className="mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist} · {a.branchName}</div>
+              {a.status === 'CANCELADA' && a.cancelReason && (
+                <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
+                  ✕ Cancelada {a.cancelledBy === 'PATIENT' ? 'por el paciente' : 'por recepción'} · {a.cancelReason}
+                </div>
+              )}
               {a.balance > 0 && (
                 <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
                   ⚠ Saldo {fmtRD(a.balance)} · cobrar antes de atender
                 </div>
               )}
             </div>
-            {!a.checkedIn && (
+            {canOpenTurno && !a.checkedIn && a.status !== 'CANCELADA' && (
               <button onClick={() => setCheckinFor(a)}
                 className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
                 style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
                 🔓 Abrir turno
               </button>
             )}
-            {a.inService && (
+            {canOpenTurno && a.inService && (
               <button onClick={() => finishService(a)}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--navy)' }}>
                 ✓ Cerrar turno
               </button>
             )}
+            {canCancel && a.status !== 'CANCELADA' && a.status !== 'COMPLETADA' && !a.finished && !a.inService && (
+              <button onClick={() => setCancelFor(a)}
+                className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
+                style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-soft)' }}>
+                ✕ Cancelar cita
+              </button>
+            )}
             {a.finished && a.durationLabel && (
               <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }} title="Tiempo de atención (solo visible para administración)">⏱ {a.durationLabel}</span>
             )}
-            {isMasa && (
+            {isMasa && a.status !== 'CANCELADA' && (
               <button onClick={() => setFicha({ id: a.patientId, name: a.patient })}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold"
                 style={a.fichaComplete ? { background: 'var(--magenta)', color: '#fff' } : { background: 'var(--magenta-soft)', color: 'var(--magenta)' }}>
                 {a.fichaComplete ? 'Abrir ficha' : 'Llenar ficha'}
               </button>
             )}
-            <button onClick={() => setRemindFor(a)} className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-muted hover:border-magenta hover:text-magenta">
-              {a.reminderSent ? 'Recordado ✓' : 'Recordar'}
-            </button>
+            {a.status !== 'CANCELADA' && (
+              <button onClick={() => setRemindFor(a)} className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-muted hover:border-magenta hover:text-magenta">
+                {a.reminderSent ? 'Recordado ✓' : 'Recordar'}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -198,7 +217,47 @@ export default function AgendaPage() {
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
       {(checkinOpen || checkinFor) && <CheckinModal appt={checkinFor} onClose={() => { setCheckinOpen(false); setCheckinFor(null); }} onDone={load} />}
+      {cancelFor && <CancelModal appt={cancelFor} onClose={() => setCancelFor(null)} onDone={load} />}
     </div>
+  );
+}
+
+function CancelModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (reason.trim().length < 3) { toast('Escribe el motivo de la cancelación'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>(`/appointments/${appt.id}/cancel`, { reason: reason.trim() });
+      toast(r.message);
+      onDone();
+      onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Portal>
+    <div onClick={onClose} className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="my-auto w-[440px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Cancelar cita</div><div className="text-[12.5px] text-muted">{appt.patient} · {appt.service} · {appt.time}</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3 px-6 py-5">
+          <div className="text-xs font-bold text-muted">Motivo de la cancelación (obligatorio)</div>
+          <textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+            placeholder="Ej: el cliente llamó/escribió por WhatsApp para cancelar, no puede asistir…"
+            className="rounded-[10px] border border-line px-4 py-3 text-[13.5px] outline-none focus:border-magenta" />
+          <div className="text-[11.5px] text-faint">Se enviará un correo al paciente con el motivo y quedará el aviso en su portal.</div>
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Volver</button>
+          <button onClick={submit} disabled={busy} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--danger)' }}>{busy ? 'Cancelando…' : 'Confirmar cancelación'}</button>
+        </div>
+      </div>
+    </div>
+    </Portal>
   );
 }
 

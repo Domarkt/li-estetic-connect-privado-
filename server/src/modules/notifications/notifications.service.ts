@@ -2,7 +2,7 @@ import { prisma } from '../../db/prisma.js';
 
 export interface NotifyInput {
   userId: string;
-  type: 'NEW_APPOINTMENT' | 'FICHA_FILLED' | 'FICHA_SENT' | 'GENERAL';
+  type: 'NEW_APPOINTMENT' | 'FICHA_FILLED' | 'FICHA_SENT' | 'APPOINTMENT_CANCELLED' | 'GENERAL';
   title: string;
   body: string;
   link?: string;

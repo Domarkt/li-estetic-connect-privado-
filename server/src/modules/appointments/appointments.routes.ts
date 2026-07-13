@@ -6,7 +6,8 @@ import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointment
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
-import { sendAppointmentAccess, PORTAL_URL } from '../mail/mail.service.js';
+import { sendAppointmentAccess, sendAppointmentCancelled, PORTAL_URL } from '../mail/mail.service.js';
+import { notifyRole } from '../notifications/notifications.service.js';
 import { hashPassword } from '../../utils/password.js';
 
 export const appointmentsRouter = Router();
@@ -227,7 +228,7 @@ const checkinSchema = z.object({ code: z.string().min(4) });
  * Abrir turno en cabina: la esteticista valida el código único del paciente.
  * No reutilizable (una vez usado, marca codeUsedAt). Aislado por sucursal.
  */
-appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), branchScope, async (req, res) => {
   const { code } = checkinSchema.parse(req.body);
   const appt = await prisma.appointment.findUnique({
     where: { code: code.trim().toUpperCase() }, include: apptInclude,
@@ -263,6 +264,50 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     data: { serviceEndedAt: endedAt, serviceDurationSec: durationSec, status: 'COMPLETADA' },
   });
   res.json({ ok: true, message: 'Proceso terminado. ¡Gracias!' });
+});
+
+const cancelSchema = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo de la cancelación') });
+
+/**
+ * Cancelar una cita desde el sistema (recepción/admin). Motivo obligatorio.
+ * Avisa al paciente por correo y le deja el aviso en su portal; notifica a la
+ * esteticista asignada. La esteticista NO cancela (solo recepción/admin).
+ */
+appointmentsRouter.post('/:id/cancel', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+  const { reason } = cancelSchema.parse(req.body);
+  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: apptInclude });
+  if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
+  if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
+  if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita ya está cancelada' });
+
+  await prisma.appointment.update({
+    where: { id: appt.id },
+    data: { status: 'CANCELADA', cancelReason: reason, cancelledBy: 'STAFF', cancelledAt: new Date() },
+  });
+
+  const fecha = appt.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+  const hora = appt.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+
+  // Correo al paciente con el motivo (el aviso en el portal se muestra desde la cita cancelada).
+  let emailSent = false;
+  if (appt.patient.email) {
+    const mail = await sendAppointmentCancelled(appt.patient.email, {
+      name: appt.patient.name, service: appt.serviceName, date: fecha, time: hora,
+      reason, by: 'clinic', branchName: appt.branch.name, replyTo: appt.branch.email ?? undefined,
+    });
+    emailSent = mail.sent;
+  }
+
+  // Aviso interno a la esteticista asignada (si la hay).
+  if (appt.therapistId) {
+    await notify({
+      userId: appt.therapistId, type: 'APPOINTMENT_CANCELLED',
+      title: 'Cita cancelada', body: `${appt.patient.name} · ${appt.serviceName} · ${fecha} ${hora}. Motivo: ${reason}`,
+      link: '/app/agenda',
+    });
+  }
+
+  res.json({ ok: true, emailSent, message: appt.patient.email ? (emailSent ? 'Cita cancelada · aviso enviado al paciente' : 'Cita cancelada · no se pudo enviar el correo') : 'Cita cancelada' });
 });
 
 const patchSchema = z.object({
