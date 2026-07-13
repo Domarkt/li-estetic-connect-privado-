@@ -155,9 +155,10 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     include: apptInclude,
   });
 
-  // Push a Google Calendar del usuario (si está conectado; demo/no-config => no-op)
+  // Push al Google Calendar de la SUCURSAL (cada estética conecta su propio calendario
+  // en Configuración → Integraciones). Si no está conectado / demo => no-op.
   try {
-    const eventId = await pushEvent('user', req.staff!.sub, {
+    const eventId = await pushEvent('branch', appt.branchId, {
       summary: `${patient.name} · ${serviceName}`,
       description: `Li Estetic Connect · ${appt.branch.name}`,
       start: startsAt, durationMin: b.durationMin,

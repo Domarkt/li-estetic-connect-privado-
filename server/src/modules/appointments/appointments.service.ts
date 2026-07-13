@@ -65,8 +65,8 @@ export function serializeAppt(
     // Código de turno + si ya fue validado en cabina.
     code: a.code,
     checkedIn: !!a.codeUsedAt,
-    // Proceso de atención abierto (turno abierto y aún sin cerrar). La duración solo se expone al admin.
-    inService: !!a.serviceStartedAt && !a.serviceEndedAt,
+    // Turno abierto (validado en cabina) y aún sin cerrar → se puede "Cerrar turno".
+    inService: !!a.codeUsedAt && !a.serviceEndedAt,
     finished: !!a.serviceEndedAt,
     ...(opts?.includeDuration && a.serviceDurationSec != null
       ? { durationLabel: durationLabel(a.serviceDurationSec) }

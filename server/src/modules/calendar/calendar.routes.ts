@@ -7,13 +7,25 @@ import {
 
 export const calendarRouter = Router();
 
-/** Estado de la conexión del usuario actual. */
+/**
+ * Estado de la conexión del calendario para la agenda.
+ * El calendario se conecta POR SUCURSAL (en Configuración → Integraciones), así que el
+ * estado se resuelve por sucursal: el personal de sucursal ve la suya; la admin ve la
+ * sucursal activa que pasa por ?branch. Solo la admin puede gestionar la conexión.
+ */
 calendarRouter.get('/status', requireStaff, async (req, res) => {
-  const conn = await getConnection('user', req.staff!.sub);
-  const real = !!conn && conn.accessToken !== 'demo';
+  const isAdmin = req.staff!.role === 'ADMIN';
+  const branchId = isAdmin ? (req.query.branch as string | undefined) : req.staff!.branchId ?? undefined;
+  let real = false;
+  if (branchId) {
+    const conn = await getConnection('branch', branchId);
+    real = !!conn && conn.accessToken !== 'demo';
+  }
   res.json({
     connected: real,
     mode: real ? 'google' : null,
+    scope: branchId ? 'branch' : 'all',
+    canManage: isAdmin,
     googleConfigured: googleConfigured(),
   });
 });

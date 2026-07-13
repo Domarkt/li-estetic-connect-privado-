@@ -37,7 +37,10 @@ export default function AgendaPage() {
     q.set('date', date);
     if (branchQuery) q.set('branch', branchQuery.split('=')[1]);
     api.get<AgendaResponse>(`/appointments?${q.toString()}`).then(setData).catch(() => {});
-    api.get<CalendarStatus>('/calendar/status').then(setCal).catch(() => {});
+    // El calendario se conecta por sucursal: la admin consulta la sucursal activa; el
+    // personal de sucursal (sin ?branch) resuelve la suya en el servidor.
+    const calQ = branchQuery ? `?${branchQuery}` : '';
+    api.get<CalendarStatus>(`/calendar/status${calQ}`).then(setCal).catch(() => {});
   }, [branchQuery, date]);
 
   function shiftDate(days: number) {
@@ -65,8 +68,10 @@ export default function AgendaPage() {
   }
 
   async function connect() {
+    // El calendario se conecta por sucursal. Debe haber una sucursal activa concreta.
+    if (activeBranch === 'all') { toast('Elige una sucursal (E1/E2/E3) para conectar su calendario'); return; }
     try {
-      const r = await api.post<{ redirect?: string; message?: string }>('/calendar/connect');
+      const r = await api.post<{ redirect?: string; message?: string }>(`/config/calendar/${activeBranch}/connect`);
       if (r.redirect) { window.location.href = r.redirect; return; } // OAuth real de Google
       load();
     } catch (e) {
@@ -126,7 +131,7 @@ export default function AgendaPage() {
         <Counter label={isToday ? 'Citas de hoy' : 'Citas del día'} value={data.counters.total} />
         <Counter label="Confirmadas" value={data.counters.confirmed} color="var(--ok)" />
         <Counter label="Sin confirmar" value={data.counters.pending} color="var(--warn)" />
-        {!cal.connected && (
+        {!cal.connected && cal.canManage && (
           <button onClick={connect} className="flex items-center gap-2 rounded-xl border border-line bg-card px-[18px] text-[13px] font-bold text-navy hover:border-magenta">
             <span className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-navy-soft text-[11px] font-extrabold" style={{ color: '#4285F4' }}>G</span>
             Conectar Calendar
@@ -147,7 +152,8 @@ export default function AgendaPage() {
                   ? <span className="rounded-full bg-magenta-soft px-2 py-0.5 text-[10px] font-bold text-magenta">Cliente nuevo</span>
                   : <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10px] font-bold text-muted">Recurrente</span>}
                 <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: a.statusColor + '1a', color: a.statusColor }}>{a.statusLabel}</span>
-                {a.checkedIn && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>🔓 Turno abierto</span>}
+                {a.inService && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>🔓 Turno abierto</span>}
+                {a.finished && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>✓ Atendido</span>}
               </div>
               <div className="mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist} · {a.branchName}</div>
               {a.balance > 0 && (

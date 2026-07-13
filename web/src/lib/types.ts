@@ -122,7 +122,7 @@ export interface CalendarDay { count: number; confirmed: number; pending: number
 export interface CalendarResponse { month: string; days: Record<string, CalendarDay> }
 
 export interface Therapist { id: string; name: string; branchId: string; avatarColor: string }
-export interface CalendarStatus { connected: boolean; mode: 'demo' | 'google' | null; googleConfigured: boolean }
+export interface CalendarStatus { connected: boolean; mode: 'demo' | 'google' | null; googleConfigured: boolean; scope?: 'branch' | 'all'; canManage?: boolean }
 
 export type PaymentMethod = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'AZUL';
 
