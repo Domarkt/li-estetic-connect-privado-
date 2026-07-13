@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { requirePatient } from '../../middleware/auth.js';
 import { genApptCode } from '../appointments/appointments.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
-import { sendAppointmentCancelled } from '../mail/mail.service.js';
+import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '../mail/mail.service.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -21,7 +21,8 @@ portalRouter.get('/proceso', async (req, res) => {
   const [treatment, nextAppt, cancelledByClinic] = await Promise.all([
     prisma.treatment.findFirst({ where: { patientId, active: true }, orderBy: { createdAt: 'desc' } }),
     prisma.appointment.findFirst({
-      where: { patientId, startsAt: { gte: startOfToday() }, status: { not: 'CANCELADA' } },
+      // Próxima cita = pendiente de atender (no cancelada, no completada, turno no cerrado).
+      where: { patientId, startsAt: { gte: startOfToday() }, status: { notIn: ['CANCELADA', 'COMPLETADA'] }, serviceEndedAt: null },
       include: { therapist: true, branch: true }, orderBy: { startsAt: 'asc' },
     }),
     // Avisos: citas que la CLÍNICA canceló recientemente (el paciente debe enterarse).
@@ -51,7 +52,8 @@ portalRouter.get('/proceso', async (req, res) => {
       therapist: nextAppt.therapist?.name ?? 'Por asignar',
       branch: nextAppt.branch ? `${nextAppt.branch.name} · ${nextAppt.branch.place}` : '',
       code: nextAppt.code,
-      checkedIn: !!nextAppt.codeUsedAt,
+      // "Abierto" solo mientras el turno sigue abierto (no si ya se cerró).
+      checkedIn: !!nextAppt.codeUsedAt && !nextAppt.serviceEndedAt,
     } : null,
     tips: CARE_TIPS,
   });
@@ -60,7 +62,8 @@ portalRouter.get('/proceso', async (req, res) => {
 /** Mis citas próximas. */
 portalRouter.get('/appointments', async (req, res) => {
   const appts = await prisma.appointment.findMany({
-    where: { patientId: req.patient!.patientId, status: { not: 'CANCELADA' }, startsAt: { gte: startOfToday() } },
+    // Próximas = pendientes de atender (no canceladas, no completadas, turno no cerrado).
+    where: { patientId: req.patient!.patientId, status: { notIn: ['CANCELADA', 'COMPLETADA'] }, serviceEndedAt: null, startsAt: { gte: startOfToday() } },
     include: { therapist: true }, orderBy: { startsAt: 'asc' },
   });
   res.json(appts.map((a) => ({
@@ -69,7 +72,7 @@ portalRouter.get('/appointments', async (req, res) => {
     service: a.serviceName,
     therapist: a.therapist?.name ?? 'Por asignar',
     code: a.code,
-    checkedIn: !!a.codeUsedAt,
+    checkedIn: !!a.codeUsedAt && !a.serviceEndedAt,
   })));
 });
 
@@ -191,13 +194,32 @@ portalRouter.get('/history', async (req, res) => {
 
 const rateSchema = z.object({ stars: z.number().int().min(1).max(5), comment: z.string().optional() });
 
-/** Calificar una cita recibida (si es < 5 estrellas, el comentario es obligatorio). */
+/** Calificar una cita recibida. El comentario es opcional (obligatorio si es < 5 estrellas).
+ * La calificación + comentario se envían por correo a la sucursal y se notifica al sistema. */
 portalRouter.post('/appointments/:id/rate', async (req, res) => {
   const { stars, comment } = rateSchema.parse(req.body);
   if (stars < 5 && !comment?.trim()) return res.status(400).json({ error: 'Cuéntanos qué ocurrió (comentario requerido para menos de 5 estrellas)' });
-  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+  const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: { branch: true, patient: true } });
   if (!appt || appt.patientId !== req.patient!.patientId) return res.status(404).json({ error: 'Cita no encontrada' });
-  await prisma.appointment.update({ where: { id: appt.id }, data: { rating: stars, ratingComment: stars < 5 ? (comment ?? null) : null } });
+
+  const cleanComment = comment?.trim() || null;
+  // El comentario se guarda siempre que exista (no solo con < 5 estrellas).
+  await prisma.appointment.update({ where: { id: appt.id }, data: { rating: stars, ratingComment: cleanComment } });
+
+  const fecha = appt.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+  // Correo de feedback a la sucursal + aviso al sistema.
+  if (appt.branch.email) {
+    await sendRatingFeedback(appt.branch.email, {
+      name: appt.patient.name, service: appt.serviceName, date: fecha,
+      stars, comment: cleanComment ?? undefined, branchName: appt.branch.name,
+    });
+  }
+  await notifyRole('RECEPCIONISTA', {
+    type: 'GENERAL', title: `Calificación ${stars}/5`,
+    body: `${appt.patient.name} · ${appt.serviceName}${cleanComment ? ` · "${cleanComment}"` : ''}`,
+    link: '/app/pacientes',
+  }, appt.branchId);
+
   res.json({ ok: true, message: stars === 5 ? '¡Gracias por tu calificación! ⭐' : 'Gracias, tu comentario ayuda a mejorar' });
 });
 
@@ -280,7 +302,7 @@ portalRouter.post('/appointments/:id/cancel', async (req, res) => {
   if (appt.branch.email) {
     await sendAppointmentCancelled(appt.branch.email, {
       name: appt.patient.name, service: appt.serviceName, date: fecha, time: hora,
-      reason, by: 'patient', branchName: appt.branch.name,
+      reason, by: 'patient', sex: appt.patient.sex, branchName: appt.branch.name,
     });
   }
 
@@ -314,7 +336,7 @@ portalRouter.get('/packages', async (req, res) => {
 
 const purchaseSchema = z.object({ catalogItemId: z.string() });
 
-/** Solicitar compra de un paquete (recepción la gestiona). */
+/** Solicitar compra de un paquete/servicio. Avisa a recepción (notificación + correo) para facturar. */
 portalRouter.post('/purchase', async (req, res) => {
   const { catalogItemId } = purchaseSchema.parse(req.body);
   const account = await prisma.patientAccount.findUnique({ where: { id: req.patient!.sub } });
@@ -322,5 +344,31 @@ portalRouter.post('/purchase', async (req, res) => {
   if (!account || !item) return res.status(404).json({ error: 'No encontrado' });
 
   await prisma.purchaseRequest.create({ data: { patientAccountId: account.id, catalogItemId: item.id, itemName: item.name } });
+
+  // La estética debe recibir la alerta para facturar y contactar al cliente.
+  const patient = await prisma.patient.findUnique({ where: { id: req.patient!.patientId }, include: { branch: true } });
+  if (patient) {
+    const precio = item.price ? ` · RD$${item.price.toLocaleString('en-US')}` : '';
+    await notifyRole('RECEPCIONISTA', {
+      type: 'GENERAL', title: 'Solicitud de compra (portal)',
+      body: `${patient.name} quiere comprar: ${item.name}${precio}. Contáctalo para facturar.`,
+      link: '/app/facturacion',
+    }, patient.branchId);
+    await notifyRole('ADMIN', {
+      type: 'GENERAL', title: 'Solicitud de compra (portal)',
+      body: `${patient.name} (${patient.branch.name}) · ${item.name}${precio}.`,
+      link: '/app/facturacion',
+    });
+    if (patient.branch.email) {
+      const tel = patient.phone ? ` · Tel: ${patient.phone}` : '';
+      await sendGenericAlert(patient.branch.email, {
+        subject: `Solicitud de compra · ${patient.name}`,
+        heading: 'Nueva solicitud de compra desde el portal',
+        lines: [`Paciente: ${patient.name}${tel}`, `Producto/paquete: ${item.name}${precio}`, `Sucursal: ${patient.branch.name}`, 'Contacta al cliente para completar la compra y facturar.'],
+        replyTo: patient.branch.email,
+      });
+    }
+  }
+
   res.status(201).json({ ok: true, message: `Solicitud enviada · recepción gestionará tu compra de ${item.name}` });
 });

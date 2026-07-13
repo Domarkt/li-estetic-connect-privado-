@@ -72,6 +72,7 @@ const createSchema = z.object({
   newPatient: z.object({
     name: z.string().min(1),
     phone: z.string().min(1),
+    sex: z.enum(['M', 'F']).optional(),
     email: z.string().email().optional().or(z.literal('')),
     birthDate: z.string().optional(),
     address: z.string().optional(),
@@ -104,6 +105,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     patient = await prisma.patient.create({
       data: {
         branchId, name: np.name, phone: np.phone, type: 'NUEVO',
+        sex: np.sex ?? null,
         email: np.email ? np.email : null,
         birthDate: np.birthDate ? new Date(np.birthDate) : null,
         address: np.address ?? null,

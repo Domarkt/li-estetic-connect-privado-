@@ -369,8 +369,10 @@ function RateCard({ item, onDone }: { item: PortalHistoryItem; onDone: (msg: str
           <button key={n} disabled={rated} onClick={() => setStars(n)} className="text-[24px] leading-none disabled:cursor-default" style={{ color: n <= stars ? '#F5B301' : 'var(--line)' }}>★</button>
         ))}
       </div>
-      {!rated && stars > 0 && stars < 5 && (
-        <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} placeholder="¿Qué ocurrió? Cuéntanos para mejorar" className="mt-2 w-full resize-none rounded-[10px] border border-line p-2.5 text-[12.5px] outline-none focus:border-magenta" />
+      {!rated && stars > 0 && (
+        <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
+          placeholder={stars < 5 ? '¿Qué ocurrió? Cuéntanos para mejorar (requerido)' : 'Comparte tu experiencia (opcional)'}
+          className="mt-2 w-full resize-none rounded-[10px] border border-line p-2.5 text-[12.5px] outline-none focus:border-magenta" />
       )}
       {rated
         ? <div className="mt-1 text-[11.5px] font-semibold text-ok">✓ Calificada{item.ratingComment ? ` · "${item.ratingComment}"` : ''}</div>

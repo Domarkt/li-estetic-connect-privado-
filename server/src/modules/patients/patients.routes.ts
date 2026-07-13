@@ -75,6 +75,7 @@ const createPatientSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(1),
   branchId: z.string().optional(),
+  sex: z.enum(['M', 'F']).optional(),
   age: z.number().int().optional(),
   cedula: z.string().optional(),
   occupation: z.string().optional(),
@@ -96,6 +97,7 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
   const patient = await prisma.patient.create({
     data: {
       branchId, name: body.name, phone: body.phone, age: body.age ?? null,
+      sex: body.sex ?? null,
       cedula: body.cedula ?? null, occupation: body.occupation ?? null, address: body.address ?? null,
       type: 'NUEVO',
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
@@ -121,6 +123,7 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
   res.json({
     patient: {
       id: patient.id, name: patient.name, phone: patient.phone, age: patient.age, email: patient.email,
+      sex: patient.sex,
       birthDate: patient.birthDate, occupation: patient.occupation, address: patient.address,
     },
     ficha: patient.clinicalRecord,
@@ -130,6 +133,7 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
 const step1Schema = z.object({
   consultDate: z.string().optional(),
   name: z.string().optional(),
+  sex: z.enum(['M', 'F']).optional(),
   age: z.number().int().optional(),
   birthDate: z.string().optional(),
   phone: z.string().optional(),
@@ -153,6 +157,7 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
     where: { id: patient.id },
     data: {
       name: body.name ?? patient.name,
+      sex: body.sex ?? patient.sex,
       age: body.age ?? patient.age,
       phone: body.phone ?? patient.phone,
       email: body.email ? body.email : patient.email,

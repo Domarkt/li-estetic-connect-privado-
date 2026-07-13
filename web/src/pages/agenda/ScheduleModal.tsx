@@ -20,6 +20,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [patientId, setPatientId] = useState('');
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newSex, setNewSex] = useState<'M' | 'F' | ''>('');
   const [newEmail, setNewEmail] = useState('');
   const [newBirth, setNewBirth] = useState('');
   const [newAddress, setNewAddress] = useState('');
@@ -66,8 +67,9 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
       };
       if (isNew) {
         if (!newName.trim() || !newPhone.trim()) { toast('Nombre y celular del paciente nuevo requeridos'); setBusy(false); return; }
+        if (!newSex) { toast('Selecciona el sexo del paciente'); setBusy(false); return; }
         payload.newPatient = {
-          name: newName.trim(), phone: newPhone.trim(),
+          name: newName.trim(), phone: newPhone.trim(), sex: newSex,
           email: newEmail.trim() || undefined,
           birthDate: newBirth || undefined,
           address: newAddress.trim() || undefined,
@@ -114,6 +116,16 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
                 ✎ Paso 1 de la ficha. Con el correo, el paciente recibirá la confirmación con su código y el acceso al portal para completar la ficha; la esteticista queda notificada.
               </div>
               <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre del nuevo paciente</span><input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nombre y apellidos" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              <div className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sexo</span>
+                <div className="flex gap-2">
+                  {([['F', 'Femenino'], ['M', 'Masculino']] as const).map(([v, lbl]) => (
+                    <button key={v} type="button" onClick={() => setNewSex(v)} className="flex-1 rounded-[9px] border py-2.5 text-[13px] font-bold"
+                      style={{ borderColor: newSex === v ? 'var(--magenta)' : 'var(--line)', background: newSex === v ? 'var(--magenta-soft)' : 'var(--card)', color: newSex === v ? 'var(--magenta)' : 'var(--muted)' }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex gap-3">
                 <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Celular</span><input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="809-000-0000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
                 <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha de nacimiento</span><input type="date" value={newBirth} onChange={(e) => setNewBirth(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>

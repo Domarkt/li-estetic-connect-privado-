@@ -13,15 +13,17 @@ export default function NewPatientModal({ onClose, onCreated }: { onClose: () =>
   const toast = useToast();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [sex, setSex] = useState<'M' | 'F' | ''>('');
   const [branchId, setBranchId] = useState(staff?.role === 'ADMIN' ? (branches[0]?.id ?? '') : (staff?.branchId ?? ''));
   const [busy, setBusy] = useState(false);
 
   async function save() {
     if (!name.trim() || !phone.trim()) { toast('Nombre y celular requeridos'); return; }
+    if (!sex) { toast('Selecciona el sexo del paciente'); return; }
     setBusy(true);
     try {
       const p = await api.post<PatientRow>('/patients', {
-        name: name.trim(), phone: phone.trim(),
+        name: name.trim(), phone: phone.trim(), sex,
         branchId: staff?.role === 'ADMIN' ? branchId : undefined,
       });
       onCreated(p);
@@ -41,6 +43,16 @@ export default function NewPatientModal({ onClose, onCreated }: { onClose: () =>
           <p className="text-[12.5px] text-muted">Al crear el paciente se abrirá su ficha clínica para completar el Paso 1.</p>
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre completo</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellidos" /></label>
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Celular</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="809-000-0000" /></label>
+          <div className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sexo</span>
+            <div className="flex gap-2.5">
+              {([['F', 'Femenino'], ['M', 'Masculino']] as const).map(([v, lbl]) => (
+                <button key={v} type="button" onClick={() => setSex(v)} className="flex-1 rounded-[9px] border py-3 text-[13.5px] font-bold"
+                  style={{ borderColor: sex === v ? 'var(--magenta)' : 'var(--line)', background: sex === v ? 'var(--magenta-soft)' : 'var(--card)', color: sex === v ? 'var(--magenta)' : 'var(--muted)' }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
           {staff?.role === 'ADMIN' && (
             <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sucursal</span>
               <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={branchId} onChange={(e) => setBranchId(e.target.value)}>

@@ -253,6 +253,7 @@ model Patient {
   phone       String
   cedula      String?
   email       String?
+  sex         String? // 'M' | 'F' — para redactar mensajes en género correcto
   age         Int?
   birthDate   DateTime?
   occupation  String?

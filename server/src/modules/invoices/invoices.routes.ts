@@ -126,13 +126,12 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     : [];
   if (charges.length) {
     const chargesTotal = charges.reduce((s, c) => s + c.price, 0);
+    // Cada servicio/producto SIEMPRE detallado por separado (a su precio).
+    lineItems = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price }));
     if (b.paymentKind === 'ABONO' && amount < chargesTotal) {
-      // Abono a servicios: se registra el abono; el resto queda como cargo pendiente.
+      // Abono: se muestran los servicios y una línea de saldo pendiente para conciliar el total pagado.
       saldoServicios = chargesTotal - amount;
-      lineItems = [{ name: `Abono · ${charges.map((c) => c.name).join(', ')}`, qty: 1, unitPrice: amount, total: amount }];
-    } else {
-      // Pago total: cada servicio como su propia línea.
-      lineItems = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price }));
+      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
     }
   } else {
     lineItems = [{ name: b.concept, qty: 1, unitPrice: amount, total: amount }];

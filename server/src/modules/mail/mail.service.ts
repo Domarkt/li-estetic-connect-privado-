@@ -121,13 +121,15 @@ export async function sendAppointmentAccess(
  */
 export async function sendAppointmentCancelled(
   to: string,
-  opts: { name: string; service: string; date: string; time: string; reason: string; by: 'clinic' | 'patient'; branchName?: string; replyTo?: string },
+  opts: { name: string; service: string; date: string; time: string; reason: string; by: 'clinic' | 'patient'; sex?: string | null; branchName?: string; replyTo?: string },
 ): Promise<MailResult> {
   const byClinic = opts.by === 'clinic';
   const heading = byClinic ? 'Tu cita fue cancelada' : 'Cancelación de cita';
+  // "El paciente" / "La paciente" según el sexo (neutral si no está definido).
+  const pacienteNoun = opts.sex === 'M' ? 'El paciente' : opts.sex === 'F' ? 'La paciente' : 'El/La paciente';
   const intro = byClinic
     ? `Hola <b>${opts.name}</b>, lamentamos informarte que tu cita fue <b>cancelada</b>.`
-    : `La paciente <b>${opts.name}</b> canceló su cita.`;
+    : `${pacienteNoun} <b>${opts.name}</b> canceló su cita.`;
   const footer = byClinic
     ? 'Escríbenos o llámanos para reagendar cuando gustes. 💜'
     : 'Registrado en el sistema. Puedes reasignar el turno.';
@@ -150,6 +152,54 @@ export async function sendAppointmentCancelled(
       </div>
     </div>`;
   return deliver(to, `Cita cancelada · Li Estetic Center`, html, opts.replyTo);
+}
+
+/** Feedback de calificación de un paciente → correo a la sucursal. */
+export async function sendRatingFeedback(
+  to: string,
+  opts: { name: string; service: string; date: string; stars: number; comment?: string; branchName?: string; replyTo?: string },
+): Promise<MailResult> {
+  const starRow = '★'.repeat(opts.stars) + '☆'.repeat(5 - opts.stars);
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
+        <div style="font-style:italic;color:#F3C3E0">Transformando Tu Cuerpo</div>
+        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
+      </div>
+      <div style="padding:24px;color:#1C2540">
+        <h3 style="margin:0 0 8px">Nueva calificación de un paciente</h3>
+        <p style="background:#FBEEF6;border-radius:10px;padding:12px 14px">
+          <b>Paciente:</b> ${opts.name}<br/>
+          <b>Servicio:</b> ${opts.service}<br/>
+          <b>Fecha:</b> ${opts.date}<br/>
+          ${opts.branchName ? `<b>Sucursal:</b> ${opts.branchName}<br/>` : ''}
+          <b>Calificación:</b> <span style="color:#F5B301;font-size:18px">${starRow}</span> (${opts.stars}/5)
+        </p>
+        ${opts.comment ? `<p><b>Comentario:</b><br/>“${opts.comment}”</p>` : ''}
+      </div>
+    </div>`;
+  return deliver(to, `Calificación ${opts.stars}/5 · ${opts.name}`, html, opts.replyTo);
+}
+
+/** Alerta genérica (asunto + encabezado + líneas). Para avisos internos a la sucursal. */
+export async function sendGenericAlert(
+  to: string,
+  opts: { subject: string; heading: string; lines: string[]; replyTo?: string },
+): Promise<MailResult> {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
+        <div style="font-style:italic;color:#F3C3E0">Transformando Tu Cuerpo</div>
+        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
+      </div>
+      <div style="padding:24px;color:#1C2540">
+        <h3 style="margin:0 0 10px">${opts.heading}</h3>
+        <div style="background:#FBEEF6;border-radius:10px;padding:12px 14px">
+          ${opts.lines.map((l) => `<div style="margin:2px 0">${l}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  return deliver(to, opts.subject, html, opts.replyTo);
 }
 
 export { PORTAL_URL };

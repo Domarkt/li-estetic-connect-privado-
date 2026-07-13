@@ -67,10 +67,18 @@ export default function BillingPage() {
       )}
 
       <div className="mb-3.5 flex items-center justify-between">
-        <div className="text-base font-extrabold">Recibos {isToday ? 'de hoy' : 'del día'}</div>
+        <div className="text-base font-extrabold">{showMoney ? `Recibos ${isToday ? 'de hoy' : 'del día'}` : 'Cobro'}</div>
         <button onClick={() => setBillOpen(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Nuevo cobro</button>
       </div>
 
+      {/* Recepción NO ve el listado de recibos cobrados; solo la acción de cobrar. */}
+      {!showMoney && (
+        <div className="rounded-base border border-line bg-card px-5 py-8 text-center text-sm text-muted shadow-card">
+          Pulsa <b>“Nuevo cobro”</b> para registrar un pago. El historial de recibos lo administra la dirección.
+        </div>
+      )}
+
+      {showMoney && (
       <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
         <div className="min-w-[640px]">
         <div className={`grid ${gridCols} gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted`}>
@@ -92,6 +100,7 @@ export default function BillingPage() {
         })}
         </div>
       </div>
+      )}
 
       {billOpen && <BillModal onClose={() => setBillOpen(false)} onEmitted={(r) => { setReceipt(r); load(); }} />}
       {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />}

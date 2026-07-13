@@ -31,6 +31,7 @@ export function serializePatient(
     id: p.id,
     name: p.name,
     phone: p.phone,
+    sex: p.sex,
     age: p.age,
     branchId: p.branchId,
     branchName: p.branch.name,

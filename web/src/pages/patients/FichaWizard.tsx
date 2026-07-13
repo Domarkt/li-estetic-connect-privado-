@@ -12,7 +12,7 @@ interface Props {
   onSaved: () => void;
 }
 
-interface FichaPatient { name?: string; phone?: string; email?: string | null; age?: number | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
+interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
 interface FichaData {
   consultDate?: string | null; motivos?: string[];
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
@@ -37,7 +37,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
   const [busy, setBusy] = useState(false);
 
   // Estado del formulario
-  const [datos, setDatos] = useState({ name: patientName, age: '', birthDate: '', phone: '', email: '', occupation: '', address: '', consultDate: '' });
+  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', occupation: '', address: '', consultDate: '' });
   const [motivos, setMotivos] = useState<Set<string>>(new Set());
   const [antecedentes, setAntecedentes] = useState<Record<string, boolean>>({});
   const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', lactancia: false });
@@ -60,6 +60,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
         setDatos((d) => ({
           ...d,
           name: patient.name ?? d.name,
+          sex: patient.sex ?? d.sex,
           phone: patient.phone ?? d.phone,
           email: patient.email ?? d.email,
           age: patient.age != null ? String(patient.age) : d.age,
@@ -97,6 +98,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
     await api.patch(`/patients/${patientId}/ficha/step1`, {
       consultDate: datos.consultDate || undefined,
       name: datos.name || undefined,
+      sex: datos.sex || undefined,
       age: datos.age ? Number(datos.age) : undefined,
       birthDate: datos.birthDate || undefined,
       phone: datos.phone || undefined,
@@ -206,7 +208,7 @@ const inputCls = 'rounded-[9px] border border-line px-3 py-2.5 text-[13.5px] out
 const lblCls = 'text-xs font-bold text-muted';
 const sectionCls = 'mb-3 text-[13px] font-extrabold uppercase tracking-wide text-navy';
 
-type Datos = { name: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; consultDate: string };
+type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; consultDate: string };
 
 function Step1({ datos, setDatos, motivos, setMotivos }: {
   datos: Datos; setDatos: React.Dispatch<React.SetStateAction<Datos>>;
@@ -224,6 +226,16 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Celular</span><input className={inputCls} value={datos.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-000-0000" /></label>
         <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Correo electrónico</span><input type="email" className={inputCls} value={datos.email} onChange={(e) => set('email', e.target.value)} placeholder="paciente@correo.com" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Ocupación</span><input className={inputCls} value={datos.occupation} onChange={(e) => set('occupation', e.target.value)} /></label>
+        <div className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Sexo</span>
+          <div className="flex gap-2">
+            {([['F', 'Femenino'], ['M', 'Masculino']] as const).map(([v, lbl]) => (
+              <button key={v} type="button" onClick={() => set('sex', v)} className="flex-1 rounded-[9px] border py-2.5 text-[13px] font-bold"
+                style={{ borderColor: datos.sex === v ? 'var(--magenta)' : 'var(--line)', background: datos.sex === v ? 'var(--magenta-soft)' : 'var(--bg)', color: datos.sex === v ? 'var(--magenta)' : 'var(--muted)' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="col-span-3 flex flex-col gap-1.5"><span className={lblCls}>Dirección</span><input className={inputCls} value={datos.address} onChange={(e) => set('address', e.target.value)} /></label>
       </div>
       <div className={sectionCls}>A · Motivo de la consulta</div>
