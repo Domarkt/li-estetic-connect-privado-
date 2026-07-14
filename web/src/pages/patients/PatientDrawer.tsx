@@ -22,6 +22,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [d, setD] = useState<PatientDetail | null>(null);
   const [sending, setSending] = useState(false);
   const [access, setAccess] = useState<SendAccess | null>(null);
+  const [waUrl, setWaUrl] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -37,9 +38,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   async function sendToPatient() {
     setSending(true);
     try {
-      const r = await api.post<{ message: string; access: SendAccess }>(`/patients/${patientId}/ficha/send-to-patient`);
+      const r = await api.post<{ message: string; access: SendAccess; whatsappUrl: string | null }>(`/patients/${patientId}/ficha/send-to-patient`);
       toast(r.message);
       setAccess(r.access);
+      setWaUrl(r.whatsappUrl);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error');
     } finally { setSending(false); }
@@ -93,6 +95,11 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                       <div className="text-muted">Usuario: <span className="font-semibold text-ink">{access.login}</span></div>
                       {access.tempPassword && <div className="text-muted">Contraseña: <span className="font-semibold text-ink">{access.tempPassword}</span></div>}
                       {!access.tempPassword && <div className="text-faint">Ya tenía acceso · usa su contraseña actual.</div>}
+                      {waUrl && (
+                        <a href={waUrl} target="_blank" rel="noreferrer" className="mt-2.5 flex items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12.5px] font-bold text-white no-underline" style={{ background: '#25D366' }}>
+                          <span>🟢</span> Enviar por WhatsApp
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>

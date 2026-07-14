@@ -6,6 +6,7 @@ import { serializePatient, patientInclude, syncPatientType } from './patients.se
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
+import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
 
@@ -186,9 +187,9 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
   const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { patientAccount: true, branch: true } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
-  if (!patient.email) return res.status(400).json({ error: 'Agrega el correo del paciente en el Paso 1 antes de enviar' });
 
   // Crea la cuenta del portal si no existe (login = celular; contraseña temporal).
+  // El correo es OPCIONAL: si no hay, se comparte el acceso por WhatsApp.
   const login = (patient.phone || patient.cedula || '').trim();
   if (!login) return res.status(400).json({ error: 'El paciente necesita celular o cédula para el acceso' });
 
@@ -203,7 +204,19 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
     data: { sentToPatientAt: new Date(), status: patient.type === 'RECURRENTE' ? undefined : 'PASO1_OK' },
   });
 
-  const mail = await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword, replyTo: patient.branch.email ?? undefined });
+  // Correo (opcional): solo si el paciente tiene correo.
+  const mail = patient.email
+    ? await sendPatientAccess(patient.email, { name: patient.name, login, password: tempPassword, replyTo: patient.branch.email ?? undefined })
+    : { sent: false, mode: 'demo' as const, error: undefined };
+
+  // Enlace de WhatsApp (wa.me) con el acceso listo para enviar desde el WhatsApp de recepción.
+  // Funciona sin la API de WhatsApp: abre el chat del paciente con el mensaje pre-cargado.
+  let whatsappUrl: string | null = null;
+  if (patient.phone) {
+    const waMsg = `Hola ${patient.name} 👋 Este es tu acceso al portal de Li Estetic Center para completar tu ficha clínica antes de tu cita:\n\n` +
+      `Portal: ${PORTAL_URL}\nUsuario: ${login}${tempPassword ? `\nContraseña temporal: ${tempPassword}` : ' (usa tu contraseña actual)'}\n\n¡Te esperamos! 💜`;
+    whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(waMsg)}`;
+  }
 
   // Aviso a las esteticistas de la sucursal: hay un nuevo paciente para atender.
   await notifyBranchTherapists(patient.branchId, {
@@ -213,18 +226,20 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
     link: '/app/pacientes',
   });
 
-  const failNote = mail.mode === 'live'
-    ? '(no se pudo enviar el correo, comparte los datos manualmente)'
-    : '(correo en modo demo)';
+  const message = mail.sent
+    ? `Ficha enviada al correo del paciente (${patient.email})`
+    : patient.email
+    ? `No se pudo enviar el correo. Compártelo por WhatsApp o pásale los datos.`
+    : `Acceso creado. Envíalo por WhatsApp o comparte: usuario ${login}${tempPassword ? ` · contraseña ${tempPassword}` : ''}`;
+
   res.json({
     ok: true,
     emailSent: mail.sent,
     mailMode: mail.mode,
     mailError: mail.error,
+    whatsappUrl,
     access: { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null },
-    message: mail.sent
-      ? `Ficha enviada al correo del paciente (${patient.email})`
-      : `Acceso creado. Comparte con el paciente: usuario ${login}${tempPassword ? ` · contraseña ${tempPassword}` : ''} ${failNote}`,
+    message,
   });
 });
 
