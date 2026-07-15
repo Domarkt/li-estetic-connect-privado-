@@ -3,26 +3,22 @@ dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
 
-function required(name: string, fallback?: string): string {
-  const v = process.env[name] ?? fallback;
+function required(name: string): string {
+  const v = process.env[name];
   if (v === undefined) throw new Error(`Missing env var: ${name}`);
   return v;
 }
 
-// Secretos de desarrollo: en producción NO deben usarse.
-const DEV_STAFF_SECRET = 'dev-staff-secret';
-const DEV_PATIENT_SECRET = 'dev-patient-secret';
-const DEV_ENCRYPTION_KEY = 'dev-encryption-key';
-
-const jwtSecret = required('JWT_SECRET', DEV_STAFF_SECRET);
-const jwtPatientSecret = required('JWT_PATIENT_SECRET', DEV_PATIENT_SECRET);
+// NINGÚN secreto/llave se escribe en el código. Todos se leen SIEMPRE del entorno
+// (Render en producción, .env en local). Si falta alguno, la app no arranca.
+const jwtSecret = required('JWT_SECRET');
+const jwtPatientSecret = required('JWT_PATIENT_SECRET');
 // Llave para cifrar datos sensibles del paciente y tokens de integraciones.
-const encryptionKey = required('ENCRYPTION_KEY', DEV_ENCRYPTION_KEY);
+const encryptionKey = required('ENCRYPTION_KEY');
 
+// En producción, además, exigimos que sean fuertes (no valores de ejemplo).
+const weak = (s: string) => !s || s.length < 24 || s.includes('change-me') || s.startsWith('dev-');
 if (isProd) {
-  const weak = (s: string) =>
-    !s || s.length < 24 || s === DEV_STAFF_SECRET || s === DEV_PATIENT_SECRET
-    || s === DEV_ENCRYPTION_KEY || s.includes('change-me');
   if (weak(jwtSecret) || weak(jwtPatientSecret)) {
     throw new Error(
       'JWT_SECRET / JWT_PATIENT_SECRET inseguros en producción. Usa secretos aleatorios de 32+ caracteres (p.ej. `openssl rand -base64 48`).',
