@@ -5,7 +5,13 @@ const HOST = process.env.SMTP_HOST;
 const USER = process.env.SMTP_USER;
 const PASS = process.env.SMTP_PASS;
 const FROM = process.env.MAIL_FROM ?? 'Li Estetic Center <no-reply@liestetic.do>';
-const PORTAL_URL = process.env.PORTAL_URL ?? (process.env.CORS_ORIGIN ?? 'http://localhost:5173') + '/portal/login';
+// Enlace del portal del paciente en los correos. Usa el dominio oficial;
+// ignora el env si apunta a un dominio viejo (pages.dev / netlify / localhost).
+const PORTAL_URL = (() => {
+  const e = process.env.PORTAL_URL;
+  if (e && !/pages\.dev|netlify|localhost/i.test(e)) return e;
+  return 'https://sistema.liesteticcenter.com/portal/login';
+})();
 
 // Correo configurado si hay API de Brevo (HTTP, funciona en hosts que bloquean SMTP) o SMTP directo.
 export const mailConfigured = () => Boolean(BREVO_KEY || (HOST && USER && PASS));
