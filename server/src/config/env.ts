@@ -28,8 +28,16 @@ if (isProd) {
 }
 
 // CORS_ORIGIN acepta uno o varios orígenes separados por coma (Netlify, Cloudflare Pages, etc.).
-const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
-  .split(',').map((s) => s.trim()).filter(Boolean);
+// El dominio propio siempre se permite (aunque no esté en el env), para no depender de Render.
+const ALWAYS_ALLOWED = [
+  'https://sistema.liesteticcenter.com',
+  'https://liesteticcenter.com',
+  'https://www.liesteticcenter.com',
+];
+const corsOrigins = [...new Set([
+  ...(process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(',').map((s) => s.trim()).filter(Boolean),
+  ...ALWAYS_ALLOWED,
+])];
 
 export const env = {
   isProd,
