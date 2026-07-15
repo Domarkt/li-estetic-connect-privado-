@@ -91,6 +91,31 @@ pointsRouter.get('/commissions', requireStaff, requireRole('ADMIN'), branchScope
   });
 });
 
+const adjustSchema = z.object({
+  userId: z.string(),
+  points: z.number().int().refine((n) => n !== 0, 'Indica cuántos puntos sumar o restar'),
+  label: z.string().trim().min(1).default('Ajuste manual'),
+});
+
+/** La Administradora agrega o quita puntos a un colaborador (ajuste diario/manual). */
+pointsRouter.post('/adjust', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const { userId, points, label } = adjustSchema.parse(req.body);
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ error: 'Colaborador no encontrado' });
+
+  const prof = await prisma.therapistProfile.upsert({
+    where: { userId },
+    create: { userId, points: Math.max(0, points) },
+    update: { points: { increment: points } },
+  });
+  // El total de puntos no puede quedar negativo.
+  const finalPoints = prof.points < 0 ? 0 : prof.points;
+  if (prof.points < 0) await prisma.therapistProfile.update({ where: { userId }, data: { points: 0 } });
+
+  await prisma.pointsEntry.create({ data: { userId, points, reason: 'MANUAL', label } });
+  res.json({ ok: true, points: finalPoints, message: `${points >= 0 ? '+' : ''}${points} pts · ${user.name}` });
+});
+
 /** Reglas de ganar/perder puntos (para mostrar). */
 pointsRouter.get('/rules', requireStaff, async (_req, res) => {
   const rules = await prisma.pointsRule.findMany({ where: { active: true }, orderBy: [{ isEarn: 'desc' }, { sortOrder: 'asc' }] });

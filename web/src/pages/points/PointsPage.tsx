@@ -82,11 +82,15 @@ function Line({ k, v, green }: { k: string; v: string; green?: boolean }) {
 function AdminCommissionsView() {
   const [d, setD] = useState<CommissionsView | null>(null);
   const [rules, setRules] = useState<PointsRules | null>(null);
+  const [adjustFor, setAdjustFor] = useState<{ id: string; name: string; points: number } | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get<CommissionsView>('/points/commissions').then(setD).catch(() => {});
-    api.get<PointsRules>('/points/rules').then(setRules).catch(() => {});
   }, []);
+  useEffect(() => {
+    load();
+    api.get<PointsRules>('/points/rules').then(setRules).catch(() => {});
+  }, [load]);
 
   if (!d) return <div className="text-sm text-muted">Cargando…</div>;
 
@@ -99,11 +103,11 @@ function AdminCommissionsView() {
       </div>
 
       <div className="mb-[18px] overflow-hidden rounded-base border border-line bg-card shadow-card">
-        <div className="grid grid-cols-[1.8fr_1.3fr_.9fr_.9fr_1.1fr_1.1fr] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted">
-          <div>Asesora</div><div>Sucursal</div><div>Puntos</div><div>Nivel</div><div>Ventas mes</div><div>Comisión</div>
+        <div className="grid grid-cols-[1.5fr_1fr_.7fr_.8fr_1fr_1fr_.9fr] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted">
+          <div>Asesora</div><div>Sucursal</div><div>Puntos</div><div>Nivel</div><div>Ventas mes</div><div>Comisión</div><div className="text-center">Ajustar</div>
         </div>
         {d.rows.map((c) => (
-          <div key={c.id} className="grid grid-cols-[1.8fr_1.3fr_.9fr_.9fr_1.1fr_1.1fr] items-center gap-3 border-b border-line-2 px-5 py-3">
+          <div key={c.id} className="grid grid-cols-[1.5fr_1fr_.7fr_.8fr_1fr_1fr_.9fr] items-center gap-3 border-b border-line-2 px-5 py-3">
             <div className="flex items-center gap-3">
               <div className="w-5 text-[13px] font-extrabold text-faint">{c.rank}</div>
               <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full text-[12px] font-bold text-white" style={{ background: c.avatarColor }}>{c.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
@@ -114,9 +118,15 @@ function AdminCommissionsView() {
             <div><span className="text-[11.5px] font-bold" style={{ color: c.tierColor }}>● {c.tier}</span></div>
             <div className="text-[13px] font-semibold">{fmtRD(c.sales)}</div>
             <div className="text-[13.5px] font-extrabold">{fmtRD(c.commission)}</div>
+            <div className="flex justify-center">
+              <button onClick={() => setAdjustFor({ id: c.id, name: c.name, points: c.points })} title="Sumar o restar puntos"
+                className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[12px] font-bold text-magenta hover:border-magenta">± pts</button>
+            </div>
           </div>
         ))}
       </div>
+
+      {adjustFor && <AdjustPointsModal collab={adjustFor} onClose={() => setAdjustFor(null)} onSaved={() => { setAdjustFor(null); load(); }} />}
 
       {rules && (
         <div className="grid grid-cols-2 gap-4">
@@ -130,6 +140,56 @@ function AdminCommissionsView() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AdjustPointsModal({ collab, onClose, onSaved }: { collab: { id: string; name: string; points: number }; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [amount, setAmount] = useState('');
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const n = Number(amount);
+  const valid = amount !== '' && !isNaN(n) && n !== 0;
+
+  async function submit() {
+    if (!valid) { toast('Indica cuántos puntos sumar o restar'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/points/adjust', { userId: collab.id, points: n, label: label.trim() || 'Ajuste manual' });
+      toast(r.message);
+      onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
+
+  const presets = [5, 10, 20, -5, -10];
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={(e) => e.stopPropagation()} className="my-auto w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Ajustar puntos</div><div className="text-[12.5px] text-muted">{collab.name} · actual: <b>{collab.points} pts</b></div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3 px-6 py-5">
+          <div className="flex flex-wrap gap-2">
+            {presets.map((p) => (
+              <button key={p} onClick={() => setAmount(String(p))} className="rounded-lg border px-3 py-1.5 text-[13px] font-bold"
+                style={{ borderColor: Number(amount) === p ? 'var(--magenta)' : 'var(--line)', color: p >= 0 ? 'var(--ok)' : 'var(--danger)', background: Number(amount) === p ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                {p >= 0 ? `+${p}` : p}
+              </button>
+            ))}
+          </div>
+          <label className="flex flex-col gap-1"><span className="text-xs font-bold text-muted">Cantidad (usa negativo para restar)</span>
+            <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9-]/g, ''))} placeholder="Ej: 10 o -5" className="rounded-[10px] border border-line px-4 py-3 text-[15px] font-extrabold outline-none focus:border-magenta" />
+          </label>
+          <label className="flex flex-col gap-1"><span className="text-xs font-bold text-muted">Motivo</span>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ej: Puntos del día, puntualidad…" className="rounded-[10px] border border-line px-4 py-2.5 text-[13.5px] outline-none focus:border-magenta" />
+          </label>
+          {valid && <div className="text-[12px] text-muted">Quedará en <b>{Math.max(0, collab.points + n)} pts</b></div>}
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+          <button onClick={submit} disabled={busy || !valid} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Guardando…' : 'Aplicar'}</button>
+        </div>
+      </div>
     </div>
   );
 }
