@@ -1,0 +1,18 @@
+name: Keep API warm
+
+# Mantiene despierto el servicio de Render (plan free) para evitar los "cold
+# starts" de ~50s. Hace ping al /health cada 10 minutos.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API health
+        run: |
+          curl -fsS --max-time 90 https://li-estetic-connect-privado.onrender.com/api/health \
+            && echo "API warm OK" \
+            || echo "ping falló (se reintenta en el próximo ciclo)"
