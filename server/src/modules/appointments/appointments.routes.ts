@@ -8,6 +8,7 @@ import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
 import { sendAppointmentAccess, sendAppointmentCancelled, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
+import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { hashPassword } from '../../utils/password.js';
 
 export const appointmentsRouter = Router();
@@ -108,7 +109,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
         sex: np.sex ?? null,
         email: np.email ? np.email : null,
         birthDate: np.birthDate ? new Date(np.birthDate) : null,
-        address: np.address ?? null,
+        ...encryptPatientWrite({ address: np.address ?? null }),
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
         // Si recepción ya capturó datos del Paso 1, la ficha queda lista para la parte clínica.
         clinicalRecord: { create: { status: hasStep1 ? 'PASO1_OK' : 'PENDIENTE', consultDate: new Date() } },

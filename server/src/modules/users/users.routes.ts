@@ -54,7 +54,7 @@ usersRouter.get('/team', requireStaff, requireRole('ADMIN'), branchScope, async 
 const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
   role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']),
   branchId: z.string().nullish(),
 });
@@ -93,7 +93,7 @@ const updateSchema = z.object({
   role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
   branchId: z.string().nullish(),
   active: z.boolean().optional(),
-  password: z.string().min(6).optional(),
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
 });
 
 /** Actualizar colaborador: nombre, correo, rol, sucursal, estado o contraseña (Admin). */

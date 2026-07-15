@@ -12,16 +12,25 @@ function required(name: string, fallback?: string): string {
 // Secretos de desarrollo: en producción NO deben usarse.
 const DEV_STAFF_SECRET = 'dev-staff-secret';
 const DEV_PATIENT_SECRET = 'dev-patient-secret';
+const DEV_ENCRYPTION_KEY = 'dev-encryption-key';
 
 const jwtSecret = required('JWT_SECRET', DEV_STAFF_SECRET);
 const jwtPatientSecret = required('JWT_PATIENT_SECRET', DEV_PATIENT_SECRET);
+// Llave para cifrar datos sensibles del paciente y tokens de integraciones.
+const encryptionKey = required('ENCRYPTION_KEY', DEV_ENCRYPTION_KEY);
 
 if (isProd) {
   const weak = (s: string) =>
-    !s || s.length < 24 || s === DEV_STAFF_SECRET || s === DEV_PATIENT_SECRET || s.includes('change-me');
+    !s || s.length < 24 || s === DEV_STAFF_SECRET || s === DEV_PATIENT_SECRET
+    || s === DEV_ENCRYPTION_KEY || s.includes('change-me');
   if (weak(jwtSecret) || weak(jwtPatientSecret)) {
     throw new Error(
       'JWT_SECRET / JWT_PATIENT_SECRET inseguros en producción. Usa secretos aleatorios de 32+ caracteres (p.ej. `openssl rand -base64 48`).',
+    );
+  }
+  if (weak(encryptionKey)) {
+    throw new Error(
+      'ENCRYPTION_KEY inseguro en producción. Usa una llave aleatoria de 32+ caracteres (p.ej. `openssl rand -base64 48`). ¡No la cambies una vez en uso o no podrás descifrar los datos!',
     );
   }
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL requerido en producción');
@@ -47,6 +56,7 @@ export const env = {
   corsOrigins,
   jwtSecret,
   jwtPatientSecret,
+  encryptionKey,
   jwtExpires: process.env.JWT_EXPIRES ?? '12h',
   seedStaffPassword: process.env.SEED_STAFF_PASSWORD ?? 'liestetic',
   seedPatientPassword: process.env.SEED_PATIENT_PASSWORD ?? 'paciente',

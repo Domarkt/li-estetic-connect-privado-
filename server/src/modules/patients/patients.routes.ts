@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { serializePatient, patientInclude, syncPatientType, ageFromBirth } from './patients.service.js';
+import { decryptClinical, encryptClinicalWrite, decryptPatientPII, encryptPatientWrite } from './patients.crypto.js';
+import { decrypt } from '../../utils/crypto.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
@@ -39,7 +41,7 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
   }
 
   const treatment = patient.treatments.find((t) => t.active) ?? patient.treatments[0] ?? null;
-  const cr = patient.clinicalRecord;
+  const cr = decryptClinical(patient.clinicalRecord);
   const truthyKeys = (obj: unknown) =>
     obj && typeof obj === 'object' ? Object.entries(obj as Record<string, unknown>).filter(([, v]) => v === true).map(([k]) => k) : [];
 
@@ -99,7 +101,8 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
     data: {
       branchId, name: body.name, phone: body.phone, age: body.age ?? null,
       sex: body.sex ?? null,
-      cedula: body.cedula ?? null, occupation: body.occupation ?? null, address: body.address ?? null,
+      ...encryptPatientWrite({ cedula: body.cedula ?? null, address: body.address ?? null }),
+      occupation: body.occupation ?? null,
       type: 'NUEVO',
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
       clinicalRecord: { create: { status: 'PENDIENTE' } },
@@ -126,9 +129,10 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
       id: patient.id, name: patient.name, phone: patient.phone,
       age: ageFromBirth(patient.birthDate) ?? patient.age, email: patient.email,
       sex: patient.sex,
-      birthDate: patient.birthDate, occupation: patient.occupation, address: patient.address,
+      birthDate: patient.birthDate, occupation: patient.occupation,
+      address: patient.address != null ? decrypt(patient.address) : patient.address,
     },
-    ficha: patient.clinicalRecord,
+    ficha: decryptClinical(patient.clinicalRecord),
   });
 });
 
@@ -168,7 +172,7 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
       email: body.email ? body.email : patient.email,
       birthDate: newBirth,
       occupation: body.occupation ?? patient.occupation,
-      address: body.address ?? patient.address,
+      ...(body.address !== undefined ? encryptPatientWrite({ address: body.address }) : {}),
     },
   });
   await prisma.clinicalRecord.update({
@@ -194,7 +198,7 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
 
   // Crea la cuenta del portal si no existe (login = celular; contraseña temporal).
   // El correo es OPCIONAL: si no hay, se comparte el acceso por WhatsApp.
-  const login = (patient.phone || patient.cedula || '').trim();
+  const login = (patient.phone || decrypt(patient.cedula) || '').trim();
   if (!login) return res.status(400).json({ error: 'El paciente necesita celular o cédula para el acceso' });
 
   let tempPassword: string | undefined;
@@ -281,7 +285,7 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
   await prisma.clinicalRecord.update({
     where: { patientId: patient.id },
     data: {
-      ...fields,
+      ...encryptClinicalWrite(fields),
       therapistId: req.staff!.role === 'ESTETICISTA' ? req.staff!.sub : patient.clinicalRecord?.therapistId,
       ...(complete ? { status: 'COMPLETA', completedAt: new Date() } : {}),
     },

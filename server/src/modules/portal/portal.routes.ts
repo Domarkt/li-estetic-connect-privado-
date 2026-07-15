@@ -7,6 +7,7 @@ import { ageFromBirth } from '../patients/patients.service.js';
 import { awardFiveStar } from '../points/points.automation.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '../mail/mail.service.js';
+import { decryptJson, encryptJson } from '../../utils/crypto.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -87,10 +88,10 @@ portalRouter.get('/ficha', async (req, res) => {
     filled: !!record?.patientFilledAt,
     completed: record?.status === 'COMPLETA',
     ficha: record ? {
-      antecedentes: record.antecedentes ?? {},
-      ginecoObst: record.ginecoObst ?? {},
-      quirurgicos: record.quirurgicos ?? {},
-      medicamentos: record.medicamentos ?? {},
+      antecedentes: decryptJson(record.antecedentes) ?? {},
+      ginecoObst: decryptJson(record.ginecoObst) ?? {},
+      quirurgicos: decryptJson(record.quirurgicos) ?? {},
+      medicamentos: decryptJson(record.medicamentos) ?? {},
       fototipo: record.fototipo ?? '',
       tallaCm: record.tallaCm ?? null,
       pesoLb: record.pesoLb ?? null,
@@ -125,24 +126,18 @@ portalRouter.patch('/ficha', async (req, res) => {
   if (!record) return res.status(404).json({ error: 'Ficha no disponible' });
   if (record.status === 'COMPLETA') return res.status(409).json({ error: 'Tu ficha ya fue validada por la esteticista' });
 
-  await prisma.clinicalRecord.update({
-    where: { patientId: req.patient!.patientId },
-    data: {
-      antecedentes: b.antecedentes ?? record.antecedentes ?? undefined,
-      ginecoObst: b.ginecoObst ?? record.ginecoObst ?? undefined,
-      quirurgicos: b.quirurgicos ?? record.quirurgicos ?? undefined,
-      medicamentos: b.medicamentos ?? record.medicamentos ?? undefined,
-      fototipo: b.fototipo ?? record.fototipo ?? undefined,
-      tallaCm: b.tallaCm ?? record.tallaCm ?? undefined,
-      pesoLb: b.pesoLb ?? record.pesoLb ?? undefined,
-      alturaCm: b.alturaCm ?? record.alturaCm ?? undefined,
-      cinturaCm: b.cinturaCm ?? record.cinturaCm ?? undefined,
-      abdomenCm: b.abdomenCm ?? record.abdomenCm ?? undefined,
-      piernaCm: b.piernaCm ?? record.piernaCm ?? undefined,
-      brazoCm: b.brazoCm ?? record.brazoCm ?? undefined,
-      patientFilledAt: new Date(),
-    },
-  });
+  // Solo se re-cifra y actualiza lo que el paciente envía; lo no enviado queda
+  // intacto (Prisma no toca los campos ausentes). Los campos de salud se cifran.
+  const data: Record<string, unknown> = { patientFilledAt: new Date() };
+  if (b.antecedentes !== undefined) data.antecedentes = encryptJson(b.antecedentes) ?? undefined;
+  if (b.ginecoObst !== undefined) data.ginecoObst = encryptJson(b.ginecoObst) ?? undefined;
+  if (b.quirurgicos !== undefined) data.quirurgicos = encryptJson(b.quirurgicos) ?? undefined;
+  if (b.medicamentos !== undefined) data.medicamentos = encryptJson(b.medicamentos) ?? undefined;
+  if (b.fototipo !== undefined) data.fototipo = b.fototipo;
+  for (const k of ['tallaCm', 'pesoLb', 'alturaCm', 'cinturaCm', 'abdomenCm', 'piernaCm', 'brazoCm'] as const) {
+    if (b[k] !== undefined) data[k] = b[k];
+  }
+  await prisma.clinicalRecord.update({ where: { patientId: req.patient!.patientId }, data });
 
   // Aviso a las esteticistas de la sucursal: la ficha está lista para validar.
   const patient = await prisma.patient.findUnique({
