@@ -7,6 +7,16 @@ const FICHA_LABEL: Record<string, string> = {
   COMPLETA: 'Completa',
 };
 
+/** Edad calculada a partir de la fecha de nacimiento (o null si no hay fecha). */
+export function ageFromBirth(birthDate: Date | null | undefined): number | null {
+  if (!birthDate) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const m = now.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
+
 /** Serializa un paciente para la lista (columnas del prototipo). */
 export function serializePatient(
   p: Prisma.PatientGetPayload<{
@@ -32,7 +42,7 @@ export function serializePatient(
     name: p.name,
     phone: p.phone,
     sex: p.sex,
-    age: p.age,
+    age: ageFromBirth(p.birthDate) ?? p.age,
     branchId: p.branchId,
     branchName: p.branch.name,
     avatarColor: p.avatarColor,

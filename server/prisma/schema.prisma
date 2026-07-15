@@ -295,6 +295,11 @@ model ClinicalRecord {
   fototipo     String? // I..VI (Fitzpatrick)
   tallaCm      Int?
   pesoLb       Int?
+  alturaCm     Int? // estatura
+  cinturaCm    Int? // medidas corporales (cm)
+  abdomenCm    Int?
+  piernaCm     Int?
+  brazoCm      Int?
 
   // Paso 4 — Tratamiento (Esteticista)
   tratamiento     String?

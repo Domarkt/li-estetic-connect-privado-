@@ -9,7 +9,11 @@ import { ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './patients
 
 interface PortalFichaState {
   status: string; sentToPatient: boolean; filled: boolean; completed: boolean;
-  ficha: { antecedentes: Record<string, boolean>; medicamentos: Record<string, boolean>; fototipo: string; tallaCm: number | null; pesoLb: number | null } | null;
+  ficha: {
+    antecedentes: Record<string, boolean>; medicamentos: Record<string, boolean>; fototipo: string;
+    tallaCm: number | null; pesoLb: number | null;
+    alturaCm: number | null; cinturaCm: number | null; abdomenCm: number | null; piernaCm: number | null; brazoCm: number | null;
+  } | null;
 }
 
 type Tab = 'proceso' | 'citas' | 'paquetes' | 'perfil';
@@ -195,7 +199,7 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div className="rounded-[10px] bg-bg px-3 py-2.5"><div className="text-[11px] font-semibold text-muted">{label}</div><div className="text-[13px] font-bold">{value}</div></div>;
 }
 
-function MiFicha() {
+function MiFicha({ onSaved }: { onSaved?: () => void }) {
   const toast = useToast();
   const [d, setD] = useState<PortalFichaState | null>(null);
   const [open, setOpen] = useState(false);
@@ -204,14 +208,21 @@ function MiFicha() {
   const [fototipo, setFototipo] = useState('');
   const [talla, setTalla] = useState('');
   const [peso, setPeso] = useState('');
+  const [altura, setAltura] = useState('');
+  const [cintura, setCintura] = useState('');
+  const [abdomen, setAbdomen] = useState('');
+  const [pierna, setPierna] = useState('');
+  const [brazo, setBrazo] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     api.get<PortalFichaState>('/portal/ficha', 'patient').then((r) => {
       setD(r);
       if (r.ficha) {
-        setAnt(r.ficha.antecedentes || {}); setMed(r.ficha.medicamentos || {});
-        setFototipo(r.ficha.fototipo || ''); setTalla(r.ficha.tallaCm ? String(r.ficha.tallaCm) : ''); setPeso(r.ficha.pesoLb ? String(r.ficha.pesoLb) : '');
+        const f = r.ficha; const s = (v: number | null) => (v ? String(v) : '');
+        setAnt(f.antecedentes || {}); setMed(f.medicamentos || {});
+        setFototipo(f.fototipo || ''); setTalla(s(f.tallaCm)); setPeso(s(f.pesoLb));
+        setAltura(s(f.alturaCm)); setCintura(s(f.cinturaCm)); setAbdomen(s(f.abdomenCm)); setPierna(s(f.piernaCm)); setBrazo(s(f.brazoCm));
       }
     }).catch(() => {});
   }, []);
@@ -224,13 +235,15 @@ function MiFicha() {
 
   async function save() {
     setBusy(true);
+    const num = (v: string) => (v ? Number(v) : undefined);
     try {
       const r = await api.patch<{ message: string }>('/portal/ficha', {
         antecedentes: ant, medicamentos: med,
         fototipo: fototipo || undefined,
-        tallaCm: talla ? Number(talla) : undefined, pesoLb: peso ? Number(peso) : undefined,
+        tallaCm: num(talla), pesoLb: num(peso),
+        alturaCm: num(altura), cinturaCm: num(cintura), abdomenCm: num(abdomen), piernaCm: num(pierna), brazoCm: num(brazo),
       }, 'patient');
-      toast(r.message); setOpen(false); load();
+      toast(r.message); setOpen(false); load(); onSaved?.();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
     finally { setBusy(false); }
   }
@@ -259,9 +272,17 @@ function MiFicha() {
             <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] leading-snug" style={{ background: 'var(--bg)', color: fototipo ? 'var(--ink)' : 'var(--muted)' }}>
               {fototipo ? <><b>Tipo {fototipo}:</b> {FOTOTIPO_DESC[fototipo]}</> : 'Toca cada número para ver la descripción y elegir tu tipo de piel.'}
             </div>
-            <div className="mt-2 flex gap-2">
-              <label className="flex-1"><span className="mb-1 block text-[11px] font-bold text-muted">Talla (cm)</span><input value={talla} onChange={(e) => setTalla(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-              <label className="flex-1"><span className="mb-1 block text-[11px] font-bold text-muted">Peso (lb)</span><input value={peso} onChange={(e) => setPeso(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Altura (cm)</span><input inputMode="numeric" value={altura} onChange={(e) => setAltura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Talla (cm)</span><input inputMode="numeric" value={talla} onChange={(e) => setTalla(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Peso (lb)</span><input inputMode="numeric" value={peso} onChange={(e) => setPeso(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+            </div>
+            <div className="mt-2.5 text-[11px] font-bold text-navy">Medidas corporales (cm)</div>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Cintura</span><input inputMode="numeric" value={cintura} onChange={(e) => setCintura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Abdomen</span><input inputMode="numeric" value={abdomen} onChange={(e) => setAbdomen(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Piernas</span><input inputMode="numeric" value={pierna} onChange={(e) => setPierna(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              <label><span className="mb-1 block text-[11px] font-bold text-muted">Brazos</span><input inputMode="numeric" value={brazo} onChange={(e) => setBrazo(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
             </div>
           </div>
           <button onClick={save} disabled={busy} className="rounded-[11px] bg-magenta py-3 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Enviar a mi esteticista'}</button>
@@ -310,16 +331,26 @@ function Perfil() {
 
   return (
     <div className="flex animate-fade flex-col gap-4">
-      <MiFicha />
+      <MiFicha onSaved={load} />
       <div className="rounded-[18px] bg-card p-5 shadow-card">
         <div className="text-[17px] font-extrabold">{p.firstName} {p.lastName}</div>
         <div className="text-[12.5px] text-muted">{p.phone}{p.branch ? ` · ${p.branch}` : ''}</div>
         <div className="mt-3 grid grid-cols-2 gap-2">
+          <Info label="Edad" value={p.age != null ? `${p.age} años` : '—'} />
+          <Info label="Fototipo" value={p.baseline.fototipo ?? '—'} />
+          <Info label="Altura" value={p.baseline.alturaCm ? `${p.baseline.alturaCm} cm` : '—'} />
           <Info label="Talla" value={p.baseline.tallaCm ? `${p.baseline.tallaCm} cm` : '—'} />
           <Info label="Peso" value={p.baseline.pesoLb ? `${p.baseline.pesoLb} lb` : '—'} />
-          <Info label="Fototipo" value={p.baseline.fototipo ?? '—'} />
           <Info label="Paciente desde" value={p.since} />
         </div>
+        {(p.baseline.cinturaCm || p.baseline.abdomenCm || p.baseline.piernaCm || p.baseline.brazoCm) && (
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            <Info label="Cintura" value={p.baseline.cinturaCm ? `${p.baseline.cinturaCm}` : '—'} />
+            <Info label="Abdomen" value={p.baseline.abdomenCm ? `${p.baseline.abdomenCm}` : '—'} />
+            <Info label="Piernas" value={p.baseline.piernaCm ? `${p.baseline.piernaCm}` : '—'} />
+            <Info label="Brazos" value={p.baseline.brazoCm ? `${p.baseline.brazoCm}` : '—'} />
+          </div>
+        )}
         {p.baseline.motivos.length > 0 && (
           <div className="mt-3"><div className="text-[11px] font-semibold text-muted">Motivo inicial</div><div className="mt-1 flex flex-wrap gap-1.5">{p.baseline.motivos.map((m) => <span key={m} className="rounded-full bg-magenta-soft px-2 py-0.5 text-[11px] font-semibold text-magenta">{m}</span>)}</div></div>
         )}

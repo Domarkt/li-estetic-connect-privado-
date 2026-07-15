@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
-import { serializePatient, patientInclude, syncPatientType } from './patients.service.js';
+import { serializePatient, patientInclude, syncPatientType, ageFromBirth } from './patients.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
@@ -123,7 +123,8 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
   res.json({
     patient: {
-      id: patient.id, name: patient.name, phone: patient.phone, age: patient.age, email: patient.email,
+      id: patient.id, name: patient.name, phone: patient.phone,
+      age: ageFromBirth(patient.birthDate) ?? patient.age, email: patient.email,
       sex: patient.sex,
       birthDate: patient.birthDate, occupation: patient.occupation, address: patient.address,
     },
@@ -154,15 +155,18 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
 
+  // La edad se calcula automáticamente de la fecha de nacimiento cuando se provee.
+  const newBirth = body.birthDate ? new Date(body.birthDate) : patient.birthDate;
+  const computedAge = ageFromBirth(newBirth) ?? body.age ?? patient.age;
   await prisma.patient.update({
     where: { id: patient.id },
     data: {
       name: body.name ?? patient.name,
       sex: body.sex ?? patient.sex,
-      age: body.age ?? patient.age,
+      age: computedAge,
       phone: body.phone ?? patient.phone,
       email: body.email ? body.email : patient.email,
-      birthDate: body.birthDate ? new Date(body.birthDate) : patient.birthDate,
+      birthDate: newBirth,
       occupation: body.occupation ?? patient.occupation,
       address: body.address ?? patient.address,
     },
@@ -251,6 +255,11 @@ const clinicalSchema = z.object({
   fototipo: z.string().optional(),
   tallaCm: z.number().int().optional(),
   pesoLb: z.number().int().optional(),
+  alturaCm: z.number().int().optional(),
+  cinturaCm: z.number().int().optional(),
+  abdomenCm: z.number().int().optional(),
+  piernaCm: z.number().int().optional(),
+  brazoCm: z.number().int().optional(),
   tratamiento: z.string().optional(),
   controlCitas: z.array(z.any()).optional(),
   cancelPolicyAck: z.boolean().optional(),

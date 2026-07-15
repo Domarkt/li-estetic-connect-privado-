@@ -207,7 +207,11 @@ export interface PortalAppointment { id: string; date: string; service: string; 
 export interface PortalBranch { id: string; name: string; place: string; phone: string; waNumber: string }
 export interface PortalProfile {
   firstName: string; lastName: string; phone: string; branch: string | null; since: string; firstEval: string | null;
-  baseline: { tallaCm: number | null; pesoLb: number | null; fototipo: string | null; motivos: string[] };
+  age?: number | null;
+  baseline: {
+    tallaCm: number | null; pesoLb: number | null; fototipo: string | null; motivos: string[];
+    alturaCm?: number | null; cinturaCm?: number | null; abdomenCm?: number | null; piernaCm?: number | null; brazoCm?: number | null;
+  };
   treatment: { name: string; total: number; done: number; pct: number } | null;
 }
 export interface PortalHistoryItem { id: string; date: string; service: string; therapist: string; rating: number | null; ratingComment: string | null; durationMin: number | null }

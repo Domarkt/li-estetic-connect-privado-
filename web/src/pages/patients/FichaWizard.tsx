@@ -17,6 +17,7 @@ interface FichaData {
   consultDate?: string | null; motivos?: string[];
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
   fototipo?: string | null; tallaCm?: number | null; pesoLb?: number | null;
+  alturaCm?: number | null; cinturaCm?: number | null; abdomenCm?: number | null; piernaCm?: number | null; brazoCm?: number | null;
   tratamiento?: string | null; controlCitas?: { fecha: string; obs: string }[] | null; cancelPolicyAck?: boolean;
 }
 
@@ -46,6 +47,8 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
   const [fototipo, setFototipo] = useState('');
   const [talla, setTalla] = useState('');
   const [peso, setPeso] = useState('');
+  const [altura, setAltura] = useState('');
+  const [medidas, setMedidas] = useState({ cintura: '', abdomen: '', pierna: '', brazo: '' });
   const [tratamiento, setTratamiento] = useState('');
   const [controlCitas, setControlCitas] = useState<{ fecha: string; obs: string }[]>(
     Array.from({ length: 10 }, () => ({ fecha: '', obs: '' })),
@@ -78,6 +81,13 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
           if (ficha.fototipo) setFototipo(ficha.fototipo);
           if (ficha.tallaCm != null) setTalla(String(ficha.tallaCm));
           if (ficha.pesoLb != null) setPeso(String(ficha.pesoLb));
+          if (ficha.alturaCm != null) setAltura(String(ficha.alturaCm));
+          setMedidas((m) => ({
+            cintura: ficha.cinturaCm != null ? String(ficha.cinturaCm) : m.cintura,
+            abdomen: ficha.abdomenCm != null ? String(ficha.abdomenCm) : m.abdomen,
+            pierna: ficha.piernaCm != null ? String(ficha.piernaCm) : m.pierna,
+            brazo: ficha.brazoCm != null ? String(ficha.brazoCm) : m.brazo,
+          }));
           if (ficha.tratamiento) setTratamiento(ficha.tratamiento);
           if (Array.isArray(ficha.controlCitas) && ficha.controlCitas.length) {
             const rows = Array.from({ length: 10 }, (_, i) => ficha.controlCitas![i] ?? { fecha: '', obs: '' });
@@ -115,6 +125,11 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
       fototipo: fototipo || undefined,
       tallaCm: talla ? Number(talla) : undefined,
       pesoLb: peso ? Number(peso) : undefined,
+      alturaCm: altura ? Number(altura) : undefined,
+      cinturaCm: medidas.cintura ? Number(medidas.cintura) : undefined,
+      abdomenCm: medidas.abdomen ? Number(medidas.abdomen) : undefined,
+      piernaCm: medidas.pierna ? Number(medidas.pierna) : undefined,
+      brazoCm: medidas.brazo ? Number(medidas.brazo) : undefined,
       tratamiento: tratamiento || undefined,
       controlCitas,
       cancelPolicyAck: policyAck,
@@ -182,7 +197,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
         <div className="min-h-0 flex-1 overflow-y-auto px-[26px] py-6">
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
-          {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} />}
+          {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
           {stepNum === 4 && <Step4 tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} policyAck={policyAck} setPolicyAck={setPolicyAck} />}
         </div>
 
@@ -208,6 +223,18 @@ const inputCls = 'rounded-[9px] border border-line px-3 py-2.5 text-[13.5px] out
 const lblCls = 'text-xs font-bold text-muted';
 const sectionCls = 'mb-3 text-[13px] font-extrabold uppercase tracking-wide text-navy';
 
+/** Edad calculada a partir de una fecha ISO (YYYY-MM-DD). Cadena vacía si no aplica. */
+function ageFromISO(iso: string): string {
+  if (!iso) return '';
+  const b = new Date(iso + 'T00:00:00');
+  if (isNaN(b.getTime())) return '';
+  const now = new Date();
+  let a = now.getFullYear() - b.getFullYear();
+  const m = now.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a--;
+  return a >= 0 && a < 130 ? String(a) : '';
+}
+
 type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; consultDate: string };
 
 function Step1({ datos, setDatos, motivos, setMotivos }: {
@@ -221,8 +248,8 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
       <div className="mb-5 grid grid-cols-3 gap-3.5">
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de consulta</span><input type="date" className={inputCls} value={datos.consultDate} onChange={(e) => set('consultDate', e.target.value)} /></label>
         <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Nombre completo</span><input className={inputCls} value={datos.name} onChange={(e) => set('name', e.target.value)} placeholder="Nombre y apellidos" /></label>
-        <label className="flex flex-col gap-1.5"><span className={lblCls}>Edad</span><input className={inputCls} value={datos.age} onChange={(e) => set('age', e.target.value)} placeholder="34" /></label>
-        <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de nacimiento</span><input type="date" className={inputCls} value={datos.birthDate} onChange={(e) => set('birthDate', e.target.value)} /></label>
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>Edad <span className="font-semibold text-faint">(automática)</span></span><input className={inputCls + ' bg-bg text-muted'} value={datos.age} readOnly placeholder="—" title="Se calcula de la fecha de nacimiento" /></label>
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de nacimiento</span><input type="date" className={inputCls} value={datos.birthDate} onChange={(e) => setDatos({ ...datos, birthDate: e.target.value, age: ageFromISO(e.target.value) })} /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Celular</span><input className={inputCls} value={datos.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-000-0000" /></label>
         <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Correo electrónico</span><input type="email" className={inputCls} value={datos.email} onChange={(e) => set('email', e.target.value)} placeholder="paciente@correo.com" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Ocupación</span><input className={inputCls} value={datos.occupation} onChange={(e) => set('occupation', e.target.value)} /></label>
@@ -304,10 +331,12 @@ function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir }: {
   );
 }
 
-function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setPeso }: {
+type Medidas = { cintura: string; abdomen: string; pierna: string; brazo: string };
+function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setPeso, altura, setAltura, medidas, setMedidas }: {
   med: Record<string, boolean>; setMed: (v: Record<string, boolean>) => void;
   fototipo: string; setFototipo: (v: string) => void;
   talla: string; setTalla: (v: string) => void; peso: string; setPeso: (v: string) => void;
+  altura: string; setAltura: (v: string) => void; medidas: Medidas; setMedidas: (v: Medidas) => void;
 }) {
   return (
     <div className="animate-fade">
@@ -332,9 +361,18 @@ function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setP
             {fototipo ? <><b>Fototipo {fototipo}:</b> {FOTOTIPO_DESC[fototipo]}</> : 'Pasa el cursor o toca cada opción para ver la descripción y elegir el tipo de piel.'}
           </div>
         </div>
-        <div className="flex flex-col justify-end gap-3">
-          <label className="flex flex-col gap-1"><span className="text-[11.5px] font-bold text-muted">Talla (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={talla} onChange={(e) => setTalla(e.target.value)} /></label>
-          <label className="flex flex-col gap-1"><span className="text-[11.5px] font-bold text-muted">Peso (lb)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
+        <div className="flex flex-col justify-end gap-2.5">
+          <div className="grid grid-cols-3 gap-2">
+            <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Altura (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={altura} onChange={(e) => setAltura(e.target.value)} /></label>
+            <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Talla (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={talla} onChange={(e) => setTalla(e.target.value)} /></label>
+            <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Peso (lb)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
+          </div>
+          <div className="text-[11px] font-extrabold uppercase text-navy">Medidas corporales (cm)</div>
+          <div className="grid grid-cols-4 gap-2">
+            {([['cintura', 'Cintura'], ['abdomen', 'Abdomen'], ['pierna', 'Piernas'], ['brazo', 'Brazos']] as const).map(([k, lbl]) => (
+              <label key={k} className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">{lbl}</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={medidas[k]} onChange={(e) => setMedidas({ ...medidas, [k]: e.target.value })} /></label>
+            ))}
+          </div>
         </div>
       </div>
     </div>

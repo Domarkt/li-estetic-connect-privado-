@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requirePatient } from '../../middleware/auth.js';
 import { genApptCode } from '../appointments/appointments.service.js';
+import { ageFromBirth } from '../patients/patients.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '../mail/mail.service.js';
 
@@ -92,6 +93,11 @@ portalRouter.get('/ficha', async (req, res) => {
       fototipo: record.fototipo ?? '',
       tallaCm: record.tallaCm ?? null,
       pesoLb: record.pesoLb ?? null,
+      alturaCm: record.alturaCm ?? null,
+      cinturaCm: record.cinturaCm ?? null,
+      abdomenCm: record.abdomenCm ?? null,
+      piernaCm: record.piernaCm ?? null,
+      brazoCm: record.brazoCm ?? null,
     } : null,
   });
 });
@@ -104,6 +110,11 @@ const portalFichaSchema = z.object({
   fototipo: z.string().optional(),
   tallaCm: z.number().int().optional(),
   pesoLb: z.number().int().optional(),
+  alturaCm: z.number().int().optional(),
+  cinturaCm: z.number().int().optional(),
+  abdomenCm: z.number().int().optional(),
+  piernaCm: z.number().int().optional(),
+  brazoCm: z.number().int().optional(),
 });
 
 /** El paciente guarda/actualiza su parte clínica. La esteticista la validará y finalizará. */
@@ -123,6 +134,11 @@ portalRouter.patch('/ficha', async (req, res) => {
       fototipo: b.fototipo ?? record.fototipo ?? undefined,
       tallaCm: b.tallaCm ?? record.tallaCm ?? undefined,
       pesoLb: b.pesoLb ?? record.pesoLb ?? undefined,
+      alturaCm: b.alturaCm ?? record.alturaCm ?? undefined,
+      cinturaCm: b.cinturaCm ?? record.cinturaCm ?? undefined,
+      abdomenCm: b.abdomenCm ?? record.abdomenCm ?? undefined,
+      piernaCm: b.piernaCm ?? record.piernaCm ?? undefined,
+      brazoCm: b.brazoCm ?? record.brazoCm ?? undefined,
       patientFilledAt: new Date(),
     },
   });
@@ -161,10 +177,17 @@ portalRouter.get('/profile', async (req, res) => {
     branch: patient.branch ? `${patient.branch.name} · ${patient.branch.place}` : null,
     since: patient.createdAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }),
     firstEval: cr?.completedAt ? cr.completedAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
+    // La edad se calcula de la fecha de nacimiento (automática); si no hay, usa la guardada.
+    age: ageFromBirth(patient.birthDate) ?? patient.age ?? null,
     baseline: {
       tallaCm: cr?.tallaCm ?? null,
       pesoLb: cr?.pesoLb ?? null,
       fototipo: cr?.fototipo ?? null,
+      alturaCm: cr?.alturaCm ?? null,
+      cinturaCm: cr?.cinturaCm ?? null,
+      abdomenCm: cr?.abdomenCm ?? null,
+      piernaCm: cr?.piernaCm ?? null,
+      brazoCm: cr?.brazoCm ?? null,
       motivos: cr?.motivos ?? [],
     },
     treatment: t ? { name: t.name, total: t.totalSessions, done: t.doneSessions, pct: t.totalSessions ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0 } : null,
