@@ -4,7 +4,58 @@ import { requireStaff, requireRole } from '../../middleware/auth.js';
 import { ageFromBirth } from '../patients/patients.service.js';
 
 export const reportsRouter = Router();
-// Reportes son exclusivos de la Administradora (visión consolidada).
+
+/**
+ * KPIs de la Vista General y desglose por sucursal (datos reales).
+ * Accesible a todo el personal; los montos (ventas) solo se devuelven a la admin.
+ * ?branch=<id|all> filtra el resumen a la sucursal seleccionada.
+ */
+reportsRouter.get('/dashboard', requireStaff, async (req, res) => {
+  const isAdmin = req.staff!.role === 'ADMIN';
+  const branch = req.query.branch as string | undefined;
+  const scopeBranch = branch && branch !== 'all' ? branch : null;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+
+  const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
+
+  // Calcula los KPIs de una sucursal (o consolidado si branchId=null).
+  async function kpis(branchId: string | null) {
+    const bw = branchId ? { branchId } : {};
+    const [salesAgg, todaySalesAgg, citasHoy, citasConf, pacientesActivos] = await Promise.all([
+      prisma.invoice.aggregate({ where: { ...bw, status: 'PAGADA', issuedAt: { gte: monthStart } }, _sum: { total: true }, _count: true }),
+      prisma.invoice.aggregate({ where: { ...bw, status: 'PAGADA', issuedAt: { gte: dayStart, lt: dayEnd } }, _sum: { total: true } }),
+      prisma.appointment.count({ where: { ...bw, startsAt: { gte: dayStart, lt: dayEnd }, status: { not: 'CANCELADA' } } }),
+      prisma.appointment.count({ where: { ...bw, startsAt: { gte: dayStart, lt: dayEnd }, status: 'CONFIRMADA' } }),
+      prisma.patient.count({ where: { ...(branchId ? { branchId } : {}), treatments: { some: { active: true } } } }),
+    ]);
+    const ventasMes = salesAgg._sum.total ?? 0;
+    const recibosMes = salesAgg._count;
+    return {
+      ventasMes, recibosMes, ventasHoy: todaySalesAgg._sum.total ?? 0,
+      ticketPromedio: recibosMes ? Math.round(ventasMes / recibosMes) : 0,
+      citasHoy, citasHoyConfirmadas: citasConf, pacientesActivos,
+    };
+  }
+
+  const scope = await kpis(scopeBranch);
+  const perBranch = await Promise.all(branches.map(async (b) => ({ id: b.id, name: b.name, ...(await kpis(b.id)) })));
+
+  // Oculta montos para no-admin.
+  const strip = <T extends { ventasMes: number; recibosMes: number; ventasHoy: number; ticketPromedio: number }>(o: T) =>
+    isAdmin ? o : { ...o, ventasMes: 0, recibosMes: 0, ventasHoy: 0, ticketPromedio: 0 };
+
+  res.json({
+    isAdmin,
+    scope: strip(scope),
+    branches: perBranch.map(strip),
+  });
+});
+
+// Los demás reportes son exclusivos de la Administradora (visión consolidada).
 reportsRouter.use(requireStaff, requireRole('ADMIN'));
 
 const METHOD_LABEL: Record<string, string> = {

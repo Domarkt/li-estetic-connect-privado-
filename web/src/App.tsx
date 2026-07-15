@@ -8,7 +8,6 @@ import StaffLogin from './pages/StaffLogin';
 import PatientLogin from './pages/PatientLogin';
 import PatientPortal from './pages/PatientPortal';
 import Dashboard from './pages/Dashboard';
-import Placeholder from './pages/Placeholder';
 import PatientsPage from './pages/patients/PatientsPage';
 import CatalogPage from './pages/CatalogPage';
 import AgendaPage from './pages/agenda/AgendaPage';
@@ -20,6 +19,7 @@ import ConfigPage from './pages/config/ConfigPage';
 import EquipoPage from './pages/team/EquipoPage';
 import CashClosePage from './pages/cashclose/CashClosePage';
 import ReportsPage from './pages/reports/ReportsPage';
+import SucursalesPage from './pages/SucursalesPage';
 
 function StaffArea() {
   return (
@@ -52,7 +52,7 @@ export default function App() {
           <Route path="/app" element={<RequireStaff><StaffArea /></RequireStaff>}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="sucursales" element={<Placeholder title="Sucursales" phase="Fase 1 base" />} />
+            <Route path="sucursales" element={<SucursalesPage />} />
             <Route path="pacientes" element={<PatientsPage />} />
             <Route path="agenda" element={<AgendaPage />} />
             <Route path="mensajes" element={<MessagesPage />} />

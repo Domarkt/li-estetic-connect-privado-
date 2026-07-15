@@ -84,7 +84,7 @@ export default function AppShell() {
       {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/40 md:hidden" />}
 
       {/* Sidebar: fijo en escritorio, cajón deslizable en móvil */}
-      <aside className={`fixed z-50 flex h-screen w-[244px] flex-none flex-col text-white transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ background: 'var(--navy)' }}>
+      <aside className={`fixed z-50 flex h-[100dvh] w-[244px] flex-none flex-col text-white transition-transform duration-200 md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ background: 'var(--navy)' }}>
         <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
           <div className="flex rounded-[10px] bg-white px-2.5 py-[7px]"><img src="/li-logo.png" className="block h-[26px]" /></div>
           <div className="text-[15px] font-extrabold tracking-tight">Connect</div>
@@ -112,15 +112,15 @@ export default function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-white/10 p-3">
-          <div className="flex items-center gap-2.5 px-2 py-1.5">
+        <div className="border-t border-white/10 p-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+          <div className="flex items-center gap-2.5 px-1 py-1">
             <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full text-[13px] font-bold" style={{ background: staff.avatarColor }}>{initials}</div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13px] font-bold">{staff.name}</div>
               <div className="text-[11px]" style={{ color: '#9AA0C0' }}>{ROLE_LABEL[staff.role]}</div>
             </div>
-            <button onClick={doLogout} title="Cerrar sesión" className="flex p-1.5 text-[#9AA0C0] hover:text-white">
-              <Icon name="logout" size={18} />
+            <button onClick={doLogout} title="Cerrar sesión" className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[12px] font-bold text-white hover:bg-white/20">
+              <Icon name="logout" size={17} /> Salir
             </button>
           </div>
         </div>

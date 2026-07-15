@@ -147,8 +147,9 @@ export default function AgendaPage() {
       <div className="rounded-base border border-line bg-card p-2 shadow-card">
         {data.appointments.length === 0 && <div className="py-10 text-center text-sm text-muted">No hay citas para este día. Aprovecha para gestionar pacientes.</div>}
         {data.appointments.map((a) => (
-          <div key={a.id} className="flex items-center gap-4 rounded-[11px] px-3.5 py-3.5 hover:bg-bg">
-            <div className="w-[74px] flex-none text-right"><div className="text-sm font-extrabold">{a.time}</div></div>
+          <div key={a.id} className="flex flex-col gap-2.5 rounded-[11px] px-3.5 py-3.5 hover:bg-bg sm:flex-row sm:items-center sm:gap-4">
+            <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
+            <div className="w-[52px] flex-none pt-0.5 text-right sm:w-[74px] sm:pt-0"><div className="text-sm font-extrabold">{a.time}</div></div>
             <div className="w-[3px] self-stretch flex-none rounded" style={{ background: a.barColor }} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2.5">
@@ -172,6 +173,8 @@ export default function AgendaPage() {
                 </div>
               )}
             </div>
+            </div>
+            <div className="flex flex-wrap gap-2 sm:flex-none sm:justify-end">
             {canOpenTurno && !a.checkedIn && a.status !== 'CANCELADA' && (
               <button onClick={() => setCheckinFor(a)}
                 className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
@@ -207,6 +210,7 @@ export default function AgendaPage() {
                 {a.reminderSent ? 'Recordado ✓' : 'Recordar'}
               </button>
             )}
+            </div>
           </div>
         ))}
       </div>
