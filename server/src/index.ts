@@ -1,3 +1,4 @@
+import './config/tz.js'; // fija TZ de RD antes de todo (fechas/horas correctas)
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 

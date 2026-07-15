@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useBranch } from './BranchContext';
@@ -153,6 +153,8 @@ export default function AppShell() {
 
           <NotificationBell />
 
+          <Clock />
+
           <div className="hidden items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2.5 text-[13px] font-semibold capitalize text-muted sm:flex">
             <Icon name="calDay" size={15} />
             {today}
@@ -176,6 +178,30 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+/** Reloj en vivo con la hora local de República Dominicana (UTC-4). Visible en
+ *  todos los paneles (recepción/esteticista/admin), también en móvil. */
+function Clock() {
+  const fmt = () =>
+    new Date().toLocaleTimeString('es-DO', {
+      timeZone: 'America/Santo_Domingo',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  const [now, setNow] = useState(fmt);
+  useEffect(() => {
+    const id = setInterval(() => setNow(fmt()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="flex items-center gap-1.5 rounded-[10px] border border-line bg-bg px-2.5 py-2.5 text-[13px] font-bold tabular-nums text-text sm:px-3">
+      <Icon name="clock" size={15} />
+      <span>{now}</span>
     </div>
   );
 }
