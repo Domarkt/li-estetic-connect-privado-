@@ -5,6 +5,7 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import {
   allocateSequence, splitItbis, invoiceInclude, serializeInvoiceRow, serializeReceipt,
 } from './invoices.service.js';
+import { awardSalePoints } from '../points/points.automation.js';
 
 export const invoicesRouter = Router();
 
@@ -159,6 +160,15 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       await prisma.chargeItem.create({
         data: { branchId, patientId: b.patientId, name: 'Saldo pendiente de servicios', price: saldoServicios, createdById: req.staff!.sub },
       });
+    }
+  }
+
+  // Atribuye la venta a la esteticista que atiende al paciente (ficha) para puntos y comisiones.
+  if (b.patientId) {
+    const cr = await prisma.clinicalRecord.findUnique({ where: { patientId: b.patientId }, select: { therapistId: true } });
+    if (cr?.therapistId) {
+      await prisma.invoice.update({ where: { id: invoice.id }, data: { therapistId: cr.therapistId } });
+      await awardSalePoints(cr.therapistId, branchId, amount); // puntos automáticos (no rompe el cobro)
     }
   }
 

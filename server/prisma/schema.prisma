@@ -435,6 +435,7 @@ model Invoice {
   branchId   String
   patientId  String?
   cashierId  String?
+  therapistId String? // esteticista atribuida a la venta (para puntos/comisiones)
   treatmentId String? // si el cobro/abono aplica a un tratamiento
   concept    String
   subtotal   Int // RD$

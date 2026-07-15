@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { requirePatient } from '../../middleware/auth.js';
 import { genApptCode } from '../appointments/appointments.service.js';
 import { ageFromBirth } from '../patients/patients.service.js';
+import { awardFiveStar } from '../points/points.automation.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '../mail/mail.service.js';
 
@@ -228,6 +229,9 @@ portalRouter.post('/appointments/:id/rate', async (req, res) => {
   const cleanComment = comment?.trim() || null;
   // El comentario se guarda siempre que exista (no solo con < 5 estrellas).
   await prisma.appointment.update({ where: { id: appt.id }, data: { rating: stars, ratingComment: cleanComment } });
+
+  // Reseña 5★ → puntos automáticos a la esteticista que atendió (una sola vez).
+  if (stars === 5 && appt.rating !== 5) await awardFiveStar(appt.therapistId);
 
   const fecha = appt.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
   // Correo de feedback a la sucursal + aviso al sistema.
