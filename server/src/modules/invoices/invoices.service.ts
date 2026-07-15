@@ -4,6 +4,10 @@ import type { Prisma, PaymentMethod } from '@prisma/client';
 // RNC único de Li Estetic Center para las 3 sucursales.
 export const RNC = '1-31-46233-2';
 
+// Zona horaria de RD (UTC-4). Se fija explícitamente al formatear fechas para
+// que el recibo muestre la hora local aunque el servidor corra en UTC (Render).
+const TZ_RD = 'America/Santo_Domingo';
+
 const METHOD_LABEL: Record<PaymentMethod, string> = {
   EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', TARJETA: 'Tarjeta', AZUL: 'Azul',
 };
@@ -57,7 +61,7 @@ export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeo
     id: i.id,
     number: i.number,
     patient: i.patient?.name ?? 'Cliente',
-    date: i.issuedAt.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    date: i.issuedAt.toLocaleString('es-DO', { timeZone: TZ_RD, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     branchName: i.branch.name,
     concept: i.concept,
     method: lines.length > 1 ? 'Mixto' : lines[0].method,
@@ -77,7 +81,7 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     branchPhone: i.branch.phone,
     branchEmail: i.branch.email,
     rnc: RNC,
-    date: i.issuedAt.toLocaleString('es-DO', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    date: i.issuedAt.toLocaleString('es-DO', { timeZone: TZ_RD, day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     patient: i.patient?.name ?? 'Cliente',
     concept: i.concept,
     items: i.items.map((it) => ({ name: it.name, qty: it.qty, total: it.total })),
