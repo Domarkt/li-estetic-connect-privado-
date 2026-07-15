@@ -19,6 +19,7 @@ import PointsPage from './pages/points/PointsPage';
 import ConfigPage from './pages/config/ConfigPage';
 import EquipoPage from './pages/team/EquipoPage';
 import CashClosePage from './pages/cashclose/CashClosePage';
+import ReportsPage from './pages/reports/ReportsPage';
 
 function StaffArea() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="configuracion" element={<ConfigPage />} />
             <Route path="seguimiento" element={<PipelinePage />} />
             <Route path="cierre" element={<CashClosePage />} />
+            <Route path="reportes" element={<ReportsPage />} />
           </Route>
 
           {/* Portal del paciente (externo) */}
