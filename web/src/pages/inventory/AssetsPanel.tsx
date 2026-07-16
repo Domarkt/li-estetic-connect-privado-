@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
+import { useBranch } from '../../layout/BranchContext';
 import { Overlay, stop } from '../../components/Modal';
+
+const CATEGORIES: Record<Kind, string[]> = {
+  EQUIPO: ['Láser', 'Dermapen', 'Cavitación', 'Radiofrecuencia', 'Ultracavitación', 'Vacumterapia', 'Computadora', 'Impresora', 'Mobiliario', 'Otro'],
+  SUMINISTRO: ['Uniforme', 'Bata', 'Herramienta', 'Flota', 'Utensilio', 'Desechable', 'Lencería', 'Otro'],
+};
 
 type Kind = 'EQUIPO' | 'SUMINISTRO';
 
@@ -19,6 +25,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function AssetsPanel({ kind, canManage, branchQ, mine }: { kind: Kind; canManage: boolean; branchQ: string; mine?: boolean }) {
+  const { branches: ctxBranches, activeBranch } = useBranch();
   const [data, setData] = useState<AssetResp | null>(null);
   const [reload, setReload] = useState(0);
   const [editing, setEditing] = useState<Asset | null | 'new'>(null);
@@ -69,7 +76,15 @@ export default function AssetsPanel({ kind, canManage, branchQ, mine }: { kind: 
       </div>
 
       {editing && (
-        <AssetModal kind={kind} asset={editing === 'new' ? null : editing} users={data?.users ?? []} branches={data?.branches ?? []} onClose={() => setEditing(null)} onSaved={refresh} />
+        <AssetModal
+          kind={kind}
+          asset={editing === 'new' ? null : editing}
+          users={data?.users ?? []}
+          branches={(data?.branches?.length ? data.branches : ctxBranches.map((b) => ({ id: b.id, name: b.name })))}
+          defaultBranchId={activeBranch !== 'all' ? activeBranch : ''}
+          onClose={() => setEditing(null)}
+          onSaved={refresh}
+        />
       )}
       {reporting && <EventModal asset={reporting} canManage={canManage} onClose={() => setReporting(null)} onSaved={refresh} />}
       {history && <HistoryModal asset={history} onClose={() => setHistory(null)} />}
@@ -77,26 +92,41 @@ export default function AssetsPanel({ kind, canManage, branchQ, mine }: { kind: 
   );
 }
 
-function AssetModal({ kind, asset, users, branches, onClose, onSaved }: {
+function AssetModal({ kind, asset, users, branches, defaultBranchId, onClose, onSaved }: {
   kind: Kind; asset: Asset | null; users: UserLite[]; branches: { id: string; name: string }[];
-  onClose: () => void; onSaved: () => void;
+  defaultBranchId: string; onClose: () => void; onSaved: () => void;
 }) {
   const toast = useToast();
+  const isSupply = kind === 'SUMINISTRO';
   const [name, setName] = useState(asset?.name ?? '');
   const [category, setCategory] = useState(asset?.category ?? '');
-  const [branchId, setBranchId] = useState(asset?.branchId ?? (branches[0]?.id ?? ''));
+  const [branchId, setBranchId] = useState(asset?.branchId ?? defaultBranchId ?? (branches[0]?.id ?? ''));
   const [assignedToId, setAssignedToId] = useState(asset?.assignedTo?.id ?? '');
   const [serial, setSerial] = useState(asset?.serial ?? '');
   const [notes, setNotes] = useState(asset?.notes ?? '');
   const [status, setStatus] = useState(asset?.status ?? 'OPERATIVO');
   const [busy, setBusy] = useState(false);
 
+  // Personal elegible para asignar (por sucursal seleccionada; admin puede en cualquiera).
+  const staff = users.filter((u) => u.role !== 'ADMIN' && (!branchId || u.branchId === branchId));
+
+  // Suministro: la sucursal se toma del personal asignado (o la sucursal por defecto).
+  function pickPerson(id: string) {
+    setAssignedToId(id);
+    if (isSupply && id) {
+      const u = users.find((x) => x.id === id);
+      if (u?.branchId) setBranchId(u.branchId);
+    }
+  }
+
   async function save() {
     if (!name.trim()) { toast('El nombre es requerido'); return; }
-    if (!asset && !branchId) { toast('Selecciona una sucursal'); return; }
+    // Sucursal efectiva: la elegida, o (en suministros) la del personal, o la por defecto.
+    const effBranch = branchId || (isSupply ? users.find((u) => u.id === assignedToId)?.branchId : '') || defaultBranchId || branches[0]?.id || '';
+    if (!asset && !effBranch) { toast(isSupply ? 'Asigna a un miembro o elige una sucursal' : 'Selecciona una sucursal'); return; }
     setBusy(true);
     const payload = {
-      kind, name: name.trim(), category: category.trim() || undefined, branchId,
+      kind, name: name.trim(), category: category.trim() || undefined, branchId: effBranch,
       assignedToId: assignedToId || undefined, serial: serial.trim() || undefined,
       notes: notes.trim() || undefined, ...(asset ? { status } : {}),
     };
@@ -108,24 +138,51 @@ function AssetModal({ kind, asset, users, branches, onClose, onSaved }: {
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
 
-  const catPh = kind === 'EQUIPO' ? 'láser, dermapen, computadora…' : 'uniforme, herramienta, flota…';
+  const listId = `cat-${kind}`;
 
   return (
     <Overlay onClose={onClose} z={120}>
       <div onClick={stop} className="max-h-[88vh] w-[460px] max-w-full overflow-y-auto rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
-        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1 text-base font-extrabold">{asset ? 'Editar' : 'Agregar'} {kind === 'EQUIPO' ? 'equipo' : 'suministro'}</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1 text-base font-extrabold">{asset ? 'Editar' : 'Agregar'} {isSupply ? 'suministro' : 'equipo'}</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
         <div className="flex flex-col gap-3.5 px-6 py-5">
-          <Field label="Nombre"><input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'EQUIPO' ? 'Ej. Láser diodo' : 'Ej. Uniforme talla M'} /></Field>
-          <Field label="Categoría"><input className="inp" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={catPh} /></Field>
-          <Field label="Sucursal"><select className="inp" value={branchId} onChange={(e) => setBranchId(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
-          {kind === 'SUMINISTRO' && (
-            <Field label="Asignar a (personal)"><select className="inp" value={assignedToId} onChange={(e) => setAssignedToId(e.target.value)}>
-              <option value="">— Sin asignar —</option>
-              {users.filter((u) => !branchId || u.branchId === branchId || u.role === 'ADMIN').map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select></Field>
+          {!asset && (
+            <div className="rounded-[9px] bg-magenta-soft px-3 py-2 text-[12px] font-semibold text-magenta">El ID se asigna automáticamente: {isSupply ? 'SU' : 'EQ'}-0001, {isSupply ? 'SU' : 'EQ'}-0002…</div>
           )}
+          {asset && <div className="text-[12px] font-bold text-faint">ID: {asset.code}</div>}
+          <Field label="Nombre"><input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder={isSupply ? 'Ej. Uniforme talla M' : 'Ej. Láser diodo'} /></Field>
+          <Field label="Categoría">
+            <input className="inp" list={listId} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Elige o escribe una categoría" />
+            <datalist id={listId}>{CATEGORIES[kind].map((c) => <option key={c} value={c} />)}</datalist>
+          </Field>
+
+          {/* Suministro: se asigna a una persona (y de ahí sale su sucursal). Equipo: sucursal + persona opcional. */}
+          {isSupply ? (
+            <>
+              <Field label="Asignar a (personal)">
+                <select className="inp" value={assignedToId} onChange={(e) => pickPerson(e.target.value)}>
+                  <option value="">— Sin asignar —</option>
+                  {users.filter((u) => u.role !== 'ADMIN').map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </Field>
+              {!assignedToId && (
+                <Field label="Sucursal (si no lo asignas a alguien)"><select className="inp" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                  <option value="">— Selecciona —</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select></Field>
+              )}
+            </>
+          ) : (
+            <>
+              <Field label="Sucursal"><select className="inp" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                <option value="">— Selecciona —</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select></Field>
+              <Field label="Asignar a (opcional)"><select className="inp" value={assignedToId} onChange={(e) => setAssignedToId(e.target.value)}>
+                <option value="">— Sin asignar —</option>{staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select></Field>
+            </>
+          )}
+
           <div className="flex gap-3">
-            <Field label="Serie / No." className="flex-1"><input className="inp" value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="opcional" /></Field>
+            <Field label="Serie / No. (opcional)" className="flex-1"><input className="inp" value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="desechables: dejar vacío" /></Field>
             {asset && <Field label="Estado" className="flex-1"><select className="inp" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="OPERATIVO">Operativo</option><option value="MANTENIMIENTO">En mantenimiento</option><option value="AVERIADO">Averiado</option><option value="BAJA">Dar de baja</option>
             </select></Field>}
