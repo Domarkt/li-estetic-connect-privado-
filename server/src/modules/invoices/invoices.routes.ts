@@ -84,6 +84,7 @@ const billSchema = z.object({
   chargeItemIds: z.array(z.string()).optional(), // marca estos cargos como facturados
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
   paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
+  fullAmount: z.number().int().positive().optional(), // precio total del combo/compra (para abono a concepto libre)
 });
 
 /** Emitir recibo (cobro). Asigna No. + NCF, calcula ITBIS y marca cargos facturados. */
@@ -137,6 +138,11 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     }
   } else {
     lineItems = [{ name: b.concept, qty: 1, unitPrice: amount, total: amount }];
+    // Abono a un combo/compra nuevo (concepto libre): el resto queda como saldo pendiente.
+    if (b.paymentKind === 'ABONO' && b.patientId && b.fullAmount && b.fullAmount > amount) {
+      saldoServicios = b.fullAmount - amount;
+      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
+    }
   }
 
   const invoice = await prisma.invoice.create({
@@ -168,6 +174,11 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
         data: { branchId, patientId: b.patientId, name: 'Saldo pendiente de servicios', price: saldoServicios, createdById: req.staff!.sub },
       });
     }
+  } else if (saldoServicios > 0 && b.patientId) {
+    // Abono a un combo/compra de concepto libre: el resto queda pendiente para cobrar luego.
+    await prisma.chargeItem.create({
+      data: { branchId, patientId: b.patientId, name: `Saldo pendiente: ${b.concept}`, price: saldoServicios, createdById: req.staff!.sub },
+    });
   }
 
   // Atribuye la venta a la esteticista que atiende al paciente (ficha) para puntos y comisiones.

@@ -369,6 +369,13 @@ portalRouter.post('/purchase', async (req, res) => {
 
   // La estética debe recibir la alerta para facturar y contactar al cliente.
   const patient = await prisma.patient.findUnique({ where: { id: req.patient!.patientId }, include: { branch: true } });
+
+  // Deja un cargo pendiente para que recepción lo facture directo (con abono disponible).
+  if (patient) {
+    await prisma.chargeItem.create({
+      data: { branchId: patient.branchId, patientId: patient.id, catalogItemId: item.id, name: item.name, price: item.price },
+    });
+  }
   if (patient) {
     const precio = item.price ? ` · RD$${item.price.toLocaleString('en-US')}` : '';
     await notifyRole('RECEPCIONISTA', {

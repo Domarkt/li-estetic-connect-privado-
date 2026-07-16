@@ -466,11 +466,20 @@ function PortalCancelModal({ appointmentId, onClose, onDone }: { appointmentId: 
 function Paquetes() {
   const toast = useToast();
   const [d, setD] = useState<PortalPackages | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; name: string; price: number } | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => { api.get<PortalPackages>('/portal/packages', 'patient').then(setD).catch(() => {}); }, []);
 
-  async function buy(id: string) {
-    const r = await api.post<{ message: string }>('/portal/purchase', { catalogItemId: id }, 'patient');
-    toast(r.message);
+  async function doBuy() {
+    if (!confirm) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/portal/purchase', { catalogItemId: confirm.id }, 'patient');
+      toast(r.message);
+      setConfirm(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'No se pudo enviar');
+    } finally { setBusy(false); }
   }
   if (!d) return <div className="text-center text-sm text-muted">Cargando…</div>;
 
@@ -491,11 +500,26 @@ function Paquetes() {
             <div key={p.id} className="flex items-center gap-3.5 rounded-[16px] bg-card p-4 shadow-card">
               <div className="flex h-[50px] w-[50px] flex-none items-center justify-center rounded-[13px] bg-magenta-soft text-xl text-magenta">✦</div>
               <div className="min-w-0 flex-1"><div className="text-sm font-bold">{p.name}</div><div className="text-xs text-muted">{p.sessions} sesiones · {fmtRD(p.price)}</div></div>
-              <button onClick={() => buy(p.id)} className="flex-none rounded-[9px] bg-magenta px-3.5 py-2.5 text-[12.5px] font-bold text-white">Comprar</button>
+              <button onClick={() => setConfirm({ id: p.id, name: p.name, price: p.price })} className="flex-none rounded-[9px] bg-magenta px-3.5 py-2.5 text-[12.5px] font-bold text-white">Comprar</button>
             </div>
           ))}
         </div>
       </div>
+
+      {confirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 px-6" onClick={() => !busy && setConfirm(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[360px] overflow-hidden rounded-2xl bg-card">
+            <div className="px-5 py-5">
+              <div className="mb-1 text-[15px] font-extrabold">¿Confirmar solicitud de compra?</div>
+              <div className="text-[13px] text-muted">Vas a solicitar <b className="text-text">{confirm.name}</b> · {fmtRD(confirm.price)}. Recepción te contactará para completar la compra. <b>No es un cobro automático.</b></div>
+            </div>
+            <div className="flex gap-2.5 border-t border-line px-5 py-4">
+              <button onClick={() => setConfirm(null)} disabled={busy} className="flex-1 rounded-[10px] border border-line bg-card py-2.5 text-[13px] font-bold text-muted">Cancelar</button>
+              <button onClick={doBuy} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-2.5 text-[13px] font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Sí, enviar solicitud'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [chargeIds, setChargeIds] = useState<string[]>([]);
   const [treatmentId, setTreatmentId] = useState<string | null>(null);
   const [payKind, setPayKind] = useState<PayKind>('TOTAL');
+  const [fullAmount, setFullAmount] = useState(''); // precio total del combo (abono a concepto libre)
   // Pago dividido: monto por método
   const [split, setSplit] = useState<Record<PaymentMethod, string>>({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', AZUL: '' });
   const [step, setStep] = useState<'form' | 'review'>('form');
@@ -32,6 +33,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const t = current?.treatment ?? null;
   const hasBalance = !!t && t.balance > 0;
   const hasCharges = chargeIds.length > 0; // servicios pendientes por cobrar
+  // Abono a un combo/compra "libre" (sin tratamiento ni cargos): pide el precio total.
+  const freeAbono = payKind === 'ABONO' && !t && !hasCharges;
 
   function loadPatients() {
     setLoadingP(true); setErrP(false);
@@ -87,6 +90,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   }
 
   const amt = parseInt((amount || '').replace(/[^0-9]/g, ''), 10) || 0;
+  const fullAmt = parseInt((fullAmount || '').replace(/[^0-9]/g, ''), 10) || 0;
+  const freePending = Math.max(0, fullAmt - amt); // saldo que quedará pendiente
   const assigned = METHODS.reduce((s, m) => s + (parseInt(split[m].replace(/[^0-9]/g, ''), 10) || 0), 0);
   const remaining = amt - assigned;
   const paymentsList = METHODS.map((m) => ({ method: m, amount: parseInt(split[m].replace(/[^0-9]/g, ''), 10) || 0 })).filter((p) => p.amount > 0);
@@ -101,6 +106,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   function validate(): string | null {
     if (!concept.trim()) return 'Falta el concepto';
     if (!amt) return 'Falta el monto';
+    if (freeAbono && fullAmt <= amt) return 'El precio total del combo debe ser mayor que el abono';
     if (assigned !== amt) return `El pago dividido (${fmtRD(assigned)}) debe sumar el total (${fmtRD(amt)})`;
     return null;
   }
@@ -117,8 +123,10 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
       const r = await api.post<{ receipt: Receipt; message: string }>('/invoices', {
         patientId: selected ?? undefined, concept: concept.trim(),
         payments: paymentsList, treatmentId: treatmentId ?? undefined,
-        paymentKind: (treatmentId || chargeIds.length) ? payKind : 'TOTAL',
+        // Abono aplica también a un combo/compra libre (con paciente); si no, TOTAL.
+        paymentKind: (treatmentId || chargeIds.length || (freeAbono && selected)) ? payKind : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
+        fullAmount: freeAbono && selected ? fullAmt : undefined,
       });
       toast(r.message); onEmitted(r.receipt); onClose();
     } catch (e) {
@@ -171,8 +179,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               <div className="flex gap-2">
                 {(['TOTAL', 'ABONO', 'SALDO'] as const).map((k) => {
                   const on = payKind === k;
-                  // Abono disponible con tratamiento o con servicios pendientes; saldo solo con tratamiento.
-                  const disabled = (k === 'SALDO' && !hasBalance) || (k === 'ABONO' && !hasBalance && !hasCharges);
+                  // Abono disponible con cualquier paciente (combo/compra o tratamiento);
+                  // saldo solo cuando ya hay un tratamiento con saldo.
+                  const disabled = (k === 'SALDO' && !hasBalance) || (k === 'ABONO' && !selected);
                   return (
                     <button key={k} onClick={() => !disabled && setKind(k)} disabled={disabled}
                       className="flex-1 rounded-[9px] border py-2 text-[11.5px] font-bold disabled:opacity-40"
@@ -188,10 +197,17 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               {!t && hasCharges && payKind === 'ABONO' && (
                 <div className="mt-2 rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Total servicios: <b>{fmtRD(current?.pendingTotal ?? 0)}</b>. Abono de <b>{fmtRD(amt)}</b> · queda pendiente <b style={{ color: 'var(--danger)' }}>{fmtRD(Math.max(0, (current?.pendingTotal ?? 0) - amt))}</b>.</div>
               )}
+              {freeAbono && (
+                <div className="mt-2 flex flex-col gap-2">
+                  <label className="flex flex-col gap-1"><span className="text-[11.5px] font-bold text-muted">Precio total del combo/compra (RD$)</span>
+                    <input value={fullAmount} onChange={(e) => setFullAmount(e.target.value)} placeholder="Ej. 18000" className="rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
+                  {fullAmt > 0 && <div className="rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Abono de <b>{fmtRD(amt)}</b> de <b>{fmtRD(fullAmt)}</b> · queda pendiente <b style={{ color: 'var(--danger)' }}>{fmtRD(freePending)}</b>.</div>}
+                </div>
+              )}
             </div>
 
             <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Concepto</span><input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Servicio o paquete" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
-            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Monto total (RD$) · ITBIS 18% incluido</span><input value={amount} onChange={(e) => setAmountDefault(e.target.value)} placeholder="18000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] font-bold outline-none focus:border-magenta" /></label>
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">{freeAbono ? 'Monto a abonar' : 'Monto total'} (RD$) · ITBIS 18% incluido</span><input value={amount} onChange={(e) => setAmountDefault(e.target.value)} placeholder="18000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] font-bold outline-none focus:border-magenta" /></label>
 
             {/* Pago dividido por método */}
             <div>
@@ -213,8 +229,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           // Paso Validar: revisión antes de emitir
           <div className="flex flex-col gap-3 px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
-            <Row k="Tipo de pago" v={KIND_LABEL[treatmentId ? payKind : 'TOTAL']} />
+            <Row k="Tipo de pago" v={KIND_LABEL[(treatmentId || hasCharges || freeAbono) ? payKind : 'TOTAL']} />
             <Row k="Concepto" v={concept} />
+            {freeAbono && fullAmt > 0 && <Row k="Saldo pendiente" v={fmtRD(freePending)} />}
             <div className="rounded-[11px] border border-line-2 p-3">
               <div className="mb-1.5 text-[11.5px] font-bold text-muted">Desglose de pago</div>
               {paymentsList.map((p) => <div key={p.method} className="flex justify-between py-0.5 text-[13px]"><span>{METHOD_LABEL[p.method]}</span><span className="font-bold">{fmtRD(p.amount)}</span></div>)}
