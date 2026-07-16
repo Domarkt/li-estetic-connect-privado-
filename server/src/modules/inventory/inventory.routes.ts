@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { adjustStock } from './inventory.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
+import { sendGenericAlert } from '../mail/mail.service.js';
 
 export const inventoryRouter = Router();
 
@@ -115,13 +116,37 @@ inventoryRouter.post('/adjust', requireStaff, requireRole(...viewers), branchSco
       date: new Date().toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       qtyAfter: level.qty,
     };
-    // Aviso al admin con el detalle del movimiento.
+    // Aviso al admin: notificación interna + correo.
     await notifyRole('ADMIN', {
       type: 'GENERAL',
       title: `${tipo} de insumo (${branch?.name ?? ''})`,
       body: `${req.staff!.name} registró ${tipo.toLowerCase()} de ${qty} ${item.unit ?? 'u'} · ${item.name}${b.note ? ` · ${b.note}` : ''}. Existencia: ${level.qty}.`,
       link: '/app/inventario',
     });
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: 'ADMIN', active: true },
+        select: { email: true },
+      });
+      for (const a of admins) {
+        if (!a.email) continue;
+        await sendGenericAlert(a.email, {
+          subject: `${tipo} de insumo · ${item.name} · ${branch?.name ?? ''}`,
+          heading: `${tipo} de insumo registrada`,
+          lines: [
+            `Comprobante: ${(document as { code: string }).code}`,
+            `Insumo: ${item.name}`,
+            `Cantidad: ${qty} ${item.unit ?? 'u'}`,
+            `Existencia luego: ${level.qty} ${item.unit ?? 'u'}`,
+            `Sucursal: ${branch?.name ?? ''}`,
+            `Registrado por: ${req.staff!.name}`,
+            ...(b.note ? [`Nota: ${b.note}`] : []),
+          ],
+        });
+      }
+    } catch {
+      /* el correo no debe bloquear el movimiento */
+    }
   }
 
   res.json({ ok: true, qty: level.qty, message: `Stock actualizado · ${item.name}: ${level.qty} ${item.unit ?? 'u'}`, document });
