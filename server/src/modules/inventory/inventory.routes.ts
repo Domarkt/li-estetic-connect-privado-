@@ -3,12 +3,21 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { adjustStock } from './inventory.service.js';
+import { notifyRole } from '../notifications/notifications.service.js';
 
 export const inventoryRouter = Router();
 
-// Ver inventario: Admin y Recepción. Editar (entrada/consumo/ajuste/mínimos): solo Admin.
-// Recepción solo puede registrar SALIDAS (p. ej. enviar toallas/sábanas a lavar).
+// Ver inventario: Admin y Recepción.
+// Recepción: solo INSUMOS, y solo ENTRADA (recibir, p. ej. toallas que vuelven de
+//   lavar) y SALIDA (enviar a lavar). No hace consumo/ajuste/mínimos ni toca productos.
+// Admin: control total sobre todo.
 const viewers = ['ADMIN', 'RECEPCIONISTA'] as const;
+
+/** Código corto para el comprobante de movimiento de insumos. */
+function movementCode(reason: string) {
+  const p = reason === 'ENTRADA' ? 'ENT' : reason === 'SALIDA' ? 'SAL' : 'MOV';
+  return `${p}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+}
 
 /**
  * Inventario por sucursal. ?kind=PRODUCTO|INSUMO (por defecto ambos).
@@ -60,13 +69,13 @@ const adjustSchema = z.object({
 });
 
 /** Registra entrada, consumo, ajuste o salida de stock en una sucursal.
- *  Recepción solo puede SALIDA (enviar a lavar, etc.); el resto es solo Admin. */
+ *  Recepción: solo ENTRADA/SALIDA de INSUMOS (genera comprobante y avisa al admin).
+ *  Admin: cualquier movimiento sobre productos e insumos. */
 inventoryRouter.post('/adjust', requireStaff, requireRole(...viewers), branchScope, async (req, res) => {
   const b = adjustSchema.parse(req.body);
-  if (req.staff!.role !== 'ADMIN' && b.reason !== 'SALIDA') {
-    return res.status(403).json({ error: 'Solo puedes registrar salidas del inventario' });
-  }
-  const branchId = req.staff!.role === 'ADMIN' ? (b.branchId ?? req.scopeBranchId) : req.staff!.branchId;
+  const isAdmin = req.staff!.role === 'ADMIN';
+
+  const branchId = isAdmin ? (b.branchId ?? req.scopeBranchId) : req.staff!.branchId;
   if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
   if (!assertBranchAccess(req, branchId)) return res.status(403).json({ error: 'Sucursal no permitida' });
   if (b.delta === 0) return res.status(400).json({ error: 'La cantidad no puede ser cero' });
@@ -74,11 +83,48 @@ inventoryRouter.post('/adjust', requireStaff, requireRole(...viewers), branchSco
   const item = await prisma.catalogItem.findUnique({ where: { id: b.catalogItemId } });
   if (!item) return res.status(404).json({ error: 'Producto/insumo no encontrado' });
 
+  // Recepción: solo insumos y solo entradas/salidas.
+  if (!isAdmin) {
+    if (item.kind !== 'INSUMO') return res.status(403).json({ error: 'Solo puedes mover insumos operativos' });
+    if (b.reason !== 'ENTRADA' && b.reason !== 'SALIDA') {
+      return res.status(403).json({ error: 'Solo puedes registrar entradas o salidas de insumos' });
+    }
+  }
+
   const level = await adjustStock({
     branchId, catalogItemId: b.catalogItemId, delta: b.delta,
     reason: b.reason, note: b.note, createdById: req.staff!.sub,
   });
-  res.json({ ok: true, qty: level.qty, message: `Stock actualizado · ${item.name}: ${level.qty} ${item.unit ?? 'u'}` });
+
+  // Movimiento de recepción (entrada/salida): genera comprobante y avisa al admin.
+  let document: Record<string, unknown> | undefined;
+  if (!isAdmin && (b.reason === 'ENTRADA' || b.reason === 'SALIDA')) {
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { name: true } });
+    const qty = Math.abs(b.delta);
+    const tipo = b.reason === 'ENTRADA' ? 'Entrada' : 'Salida';
+    document = {
+      code: movementCode(b.reason),
+      type: b.reason,
+      typeLabel: tipo,
+      item: item.name,
+      qty,
+      unit: item.unit ?? 'u',
+      branch: branch?.name ?? '',
+      by: req.staff!.name,
+      note: b.note ?? null,
+      date: new Date().toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      qtyAfter: level.qty,
+    };
+    // Aviso al admin con el detalle del movimiento.
+    await notifyRole('ADMIN', {
+      type: 'GENERAL',
+      title: `${tipo} de insumo (${branch?.name ?? ''})`,
+      body: `${req.staff!.name} registró ${tipo.toLowerCase()} de ${qty} ${item.unit ?? 'u'} · ${item.name}${b.note ? ` · ${b.note}` : ''}. Existencia: ${level.qty}.`,
+      link: '/app/inventario',
+    });
+  }
+
+  res.json({ ok: true, qty: level.qty, message: `Stock actualizado · ${item.name}: ${level.qty} ${item.unit ?? 'u'}`, document });
 });
 
 const minSchema = z.object({ catalogItemId: z.string(), branchId: z.string().optional(), minQty: z.number().int().nonnegative() });

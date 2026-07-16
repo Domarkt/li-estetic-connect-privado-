@@ -23,6 +23,7 @@ export default function InventarioPage() {
   const [tab, setTab] = useState<Kind>('PRODUCTO');
   const [data, setData] = useState<InvResp | null>(null);
   const [edit, setEdit] = useState<Row | null>(null);
+  const [doc, setDoc] = useState<Doc | null>(null);
   const [reload, setReload] = useState(0);
 
   const branchQ = activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
@@ -92,7 +93,7 @@ export default function InventarioPage() {
                 <td className="px-4 py-3 text-right text-muted">{allBranches ? '—' : r.minQty || '—'}</td>
                 {!allBranches && (
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEdit(r)} className="rounded-lg bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">{isAdmin ? 'Ajustar' : 'Salida'}</button>
+                    <button onClick={() => setEdit(r)} className="rounded-lg bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">{isAdmin ? 'Ajustar' : 'Entrada / Salida'}</button>
                   </td>
                 )}
               </tr>
@@ -110,20 +111,28 @@ export default function InventarioPage() {
         <AdjustModal
           row={edit}
           branchId={activeBranch !== 'all' ? activeBranch : undefined}
-          modes={isAdmin ? ['ENTRADA', 'CONSUMO', 'SALIDA', 'AJUSTE'] : ['SALIDA']}
+          modes={isAdmin ? ['ENTRADA', 'CONSUMO', 'SALIDA', 'AJUSTE'] : ['ENTRADA', 'SALIDA']}
           canSetMin={isAdmin}
           onClose={() => setEdit(null)}
           onSaved={() => setReload((n) => n + 1)}
+          onDocument={setDoc}
         />
       )}
+
+      {doc && <ComprobanteModal doc={doc} onClose={() => setDoc(null)} />}
     </div>
   );
 }
 
+interface Doc {
+  code: string; typeLabel: string; item: string; qty: number; unit: string;
+  branch: string; by: string; note: string | null; date: string; qtyAfter: number;
+}
+
 type Mode = 'ENTRADA' | 'CONSUMO' | 'SALIDA' | 'AJUSTE';
 
-function AdjustModal({ row, branchId, modes, canSetMin, onClose, onSaved }: {
-  row: Row; branchId?: string; modes: Mode[]; canSetMin: boolean; onClose: () => void; onSaved: () => void;
+function AdjustModal({ row, branchId, modes, canSetMin, onClose, onSaved, onDocument }: {
+  row: Row; branchId?: string; modes: Mode[]; canSetMin: boolean; onClose: () => void; onSaved: () => void; onDocument: (d: Doc) => void;
 }) {
   const toast = useToast();
   const [mode, setMode] = useState<Mode>(modes[0]);
@@ -139,10 +148,11 @@ function AdjustModal({ row, branchId, modes, canSetMin, onClose, onSaved }: {
     const delta = mode === 'ENTRADA' ? n : -n;
     setBusy(true);
     try {
-      await api.post('/inventory/adjust', { catalogItemId: row.id, branchId, delta, reason: mode, note: note.trim() || undefined });
+      const r = await api.post<{ document?: Doc }>('/inventory/adjust', { catalogItemId: row.id, branchId, delta, reason: mode, note: note.trim() || undefined });
       toast('Inventario actualizado');
       onSaved();
       onClose();
+      if (r.document) onDocument(r.document);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error');
     } finally { setBusy(false); }
@@ -207,6 +217,71 @@ function AdjustModal({ row, branchId, modes, canSetMin, onClose, onSaved }: {
             <button onClick={saveMin} disabled={busy} className="ml-auto rounded-[9px] border border-line bg-card px-3 py-2 text-[12px] font-bold text-muted">Guardar mínimo</button>
           </div>
         )}
+      </div>
+    </Overlay>
+  );
+}
+
+/** Comprobante imprimible de un movimiento de insumos hecho por recepción.
+ *  El admin ya fue notificado automáticamente; aquí se puede imprimir/descargar. */
+function ComprobanteModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
+  function print() {
+    const w = window.open('', '_blank', 'width=460,height=640');
+    if (!w) return;
+    const row = (k: string, v: string) => `<tr><td style="padding:4px 0;color:#777">${k}</td><td style="padding:4px 0;text-align:right;font-weight:700">${v}</td></tr>`;
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${doc.code}</title>
+      <style>body{font-family:Arial,Helvetica,sans-serif;color:#222;padding:24px;max-width:380px;margin:auto}
+      h1{font-size:16px;margin:0} .sub{color:#888;font-size:12px;margin:2px 0 16px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      .code{background:#f4e8f1;color:#B31C86;font-weight:800;border-radius:8px;padding:8px 12px;display:inline-block;margin-bottom:14px}
+      .note{margin-top:14px;font-size:12px;color:#555;border-top:1px solid #eee;padding-top:10px}</style></head>
+      <body>
+        <h1>Li Estetic Center</h1>
+        <div class="sub">Comprobante de ${doc.typeLabel.toLowerCase()} de insumos</div>
+        <div class="code">${doc.code}</div>
+        <table>
+          ${row('Tipo', doc.typeLabel)}
+          ${row('Insumo', doc.item)}
+          ${row('Cantidad', `${doc.qty} ${doc.unit}`)}
+          ${row('Existencia luego', `${doc.qtyAfter} ${doc.unit}`)}
+          ${row('Sucursal', doc.branch)}
+          ${row('Registrado por', doc.by)}
+          ${row('Fecha', doc.date)}
+        </table>
+        ${doc.note ? `<div class="note"><b>Nota:</b> ${doc.note}</div>` : ''}
+        <div class="note">Enviado automáticamente al administrador.</div>
+      </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 200);
+  }
+
+  const Line = ({ k, v }: { k: string; v: string }) => (
+    <div className="flex justify-between py-1.5 text-[13px]"><span className="text-muted">{k}</span><span className="font-bold">{v}</span></div>
+  );
+
+  return (
+    <Overlay onClose={onClose} z={130}>
+      <div onClick={stop} className="w-[400px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="border-b border-line px-6 py-5">
+          <div className="text-base font-extrabold">Comprobante generado</div>
+          <div className="text-[12px] text-muted">Se envió al administrador automáticamente ✓</div>
+        </div>
+        <div className="px-6 py-5">
+          <div className="mb-3 inline-block rounded-lg bg-magenta-soft px-3 py-1.5 text-[13px] font-extrabold text-magenta">{doc.code}</div>
+          <Line k="Tipo" v={doc.typeLabel} />
+          <Line k="Insumo" v={doc.item} />
+          <Line k="Cantidad" v={`${doc.qty} ${doc.unit}`} />
+          <Line k="Existencia luego" v={`${doc.qtyAfter} ${doc.unit}`} />
+          <Line k="Sucursal" v={doc.branch} />
+          <Line k="Registrado por" v={doc.by} />
+          <Line k="Fecha" v={doc.date} />
+          {doc.note && <Line k="Nota" v={doc.note} />}
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
+          <button onClick={print} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">Imprimir / Descargar</button>
+        </div>
       </div>
     </Overlay>
   );
