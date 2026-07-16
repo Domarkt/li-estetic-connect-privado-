@@ -92,7 +92,7 @@ export default function InventarioPage() {
                 <td className="px-4 py-3 text-right text-muted">{allBranches ? '—' : r.minQty || '—'}</td>
                 {!allBranches && (
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEdit(r)} className="rounded-lg bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">Ajustar</button>
+                    <button onClick={() => setEdit(r)} className="rounded-lg bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">{isAdmin ? 'Ajustar' : 'Salida'}</button>
                   </td>
                 )}
               </tr>
@@ -110,7 +110,8 @@ export default function InventarioPage() {
         <AdjustModal
           row={edit}
           branchId={activeBranch !== 'all' ? activeBranch : undefined}
-          canSetMin={staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA'}
+          modes={isAdmin ? ['ENTRADA', 'CONSUMO', 'SALIDA', 'AJUSTE'] : ['SALIDA']}
+          canSetMin={isAdmin}
           onClose={() => setEdit(null)}
           onSaved={() => setReload((n) => n + 1)}
         />
@@ -119,11 +120,13 @@ export default function InventarioPage() {
   );
 }
 
-function AdjustModal({ row, branchId, canSetMin, onClose, onSaved }: {
-  row: Row; branchId?: string; canSetMin: boolean; onClose: () => void; onSaved: () => void;
+type Mode = 'ENTRADA' | 'CONSUMO' | 'SALIDA' | 'AJUSTE';
+
+function AdjustModal({ row, branchId, modes, canSetMin, onClose, onSaved }: {
+  row: Row; branchId?: string; modes: Mode[]; canSetMin: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const toast = useToast();
-  const [mode, setMode] = useState<'ENTRADA' | 'CONSUMO' | 'AJUSTE'>('ENTRADA');
+  const [mode, setMode] = useState<Mode>(modes[0]);
   const [qty, setQty] = useState('');
   const [note, setNote] = useState('');
   const [minQty, setMinQty] = useState(String(row.minQty || ''));
@@ -132,7 +135,7 @@ function AdjustModal({ row, branchId, canSetMin, onClose, onSaved }: {
   async function save() {
     const n = Number(qty);
     if (!n || n <= 0) { toast('Escribe una cantidad'); return; }
-    // ENTRADA suma; CONSUMO/AJUSTE(salida) resta.
+    // ENTRADA suma; CONSUMO / SALIDA / AJUSTE restan.
     const delta = mode === 'ENTRADA' ? n : -n;
     setBusy(true);
     try {
@@ -157,11 +160,11 @@ function AdjustModal({ row, branchId, canSetMin, onClose, onSaved }: {
     } finally { setBusy(false); }
   }
 
-  const modes: { k: typeof mode; label: string }[] = [
-    { k: 'ENTRADA', label: 'Entrada (+)' },
-    { k: 'CONSUMO', label: 'Consumo (−)' },
-    { k: 'AJUSTE', label: 'Ajuste (−)' },
-  ];
+  const MODE_LABEL: Record<Mode, string> = {
+    ENTRADA: 'Entrada (+)', CONSUMO: 'Consumo (−)', SALIDA: 'Salida (−)', AJUSTE: 'Ajuste (−)',
+  };
+  const modeOptions = modes.map((k) => ({ k, label: MODE_LABEL[k] }));
+  const notePlaceholder = mode === 'SALIDA' ? 'Ej. Enviado a lavandería' : mode === 'ENTRADA' ? 'Ej. Compra a proveedor' : 'Ej. consumo del día';
 
   return (
     <Overlay onClose={onClose} z={120}>
@@ -174,23 +177,28 @@ function AdjustModal({ row, branchId, canSetMin, onClose, onSaved }: {
           <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
         </div>
         <div className="flex flex-col gap-3.5 px-6 py-5">
-          <div className="flex gap-2">
-            {modes.map((m) => {
-              const on = mode === m.k;
-              return (
-                <button key={m.k} onClick={() => setMode(m.k)} className="flex-1 rounded-[9px] px-2 py-2.5 text-[12px] font-bold transition"
-                  style={{ background: on ? 'var(--magenta)' : 'var(--bg)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
+          {modeOptions.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {modeOptions.map((m) => {
+                const on = mode === m.k;
+                return (
+                  <button key={m.k} onClick={() => setMode(m.k)} className="flex-1 rounded-[9px] px-2 py-2.5 text-[12px] font-bold transition"
+                    style={{ background: on ? 'var(--magenta)' : 'var(--bg)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {modeOptions.length === 1 && (
+            <div className="rounded-[9px] bg-magenta-soft px-3 py-2.5 text-[12.5px] font-bold text-magenta">Registrar salida (p. ej. enviar a lavandería)</div>
+          )}
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Cantidad</span><input autoFocus className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} placeholder={`Cantidad en ${row.unit ?? 'unidades'}`} /></label>
-          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nota (opcional)</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. Compra a proveedor / consumo del día" /></label>
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nota (opcional)</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={note} onChange={(e) => setNote(e.target.value)} placeholder={notePlaceholder} /></label>
         </div>
         <div className="flex gap-2.5 border-t border-line px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-          <button onClick={save} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Registrar</button>
+          <button onClick={save} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{modeOptions.length === 1 ? 'Registrar salida' : 'Registrar'}</button>
         </div>
         {canSetMin && (
           <div className="flex items-center gap-2.5 border-t border-line bg-bg px-6 py-3.5">

@@ -6,15 +6,16 @@ import { adjustStock } from './inventory.service.js';
 
 export const inventoryRouter = Router();
 
-// Quién gestiona inventario: Admin y Recepción (la esteticista puede registrar consumo).
-const managers = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'] as const;
+// Ver inventario: Admin y Recepción. Editar (entrada/consumo/ajuste/mínimos): solo Admin.
+// Recepción solo puede registrar SALIDAS (p. ej. enviar toallas/sábanas a lavar).
+const viewers = ['ADMIN', 'RECEPCIONISTA'] as const;
 
 /**
  * Inventario por sucursal. ?kind=PRODUCTO|INSUMO (por defecto ambos).
  * - Personal de sucursal: su sucursal.
  * - Admin: la sucursal por ?branch=; con "Todas" muestra el desglose por sucursal.
  */
-inventoryRouter.get('/', requireStaff, requireRole(...managers), branchScope, async (req, res) => {
+inventoryRouter.get('/', requireStaff, requireRole(...viewers), branchScope, async (req, res) => {
   const kindQ = req.query.kind as string | undefined;
   const kinds = kindQ ? [kindQ] : ['PRODUCTO', 'INSUMO'];
 
@@ -54,13 +55,17 @@ const adjustSchema = z.object({
   catalogItemId: z.string(),
   branchId: z.string().optional(), // admin puede elegir; personal usa la suya
   delta: z.number().int(),
-  reason: z.enum(['ENTRADA', 'CONSUMO', 'AJUSTE']),
+  reason: z.enum(['ENTRADA', 'CONSUMO', 'AJUSTE', 'SALIDA']),
   note: z.string().optional(),
 });
 
-/** Registra entrada, consumo o ajuste de stock en una sucursal. */
-inventoryRouter.post('/adjust', requireStaff, requireRole(...managers), branchScope, async (req, res) => {
+/** Registra entrada, consumo, ajuste o salida de stock en una sucursal.
+ *  Recepción solo puede SALIDA (enviar a lavar, etc.); el resto es solo Admin. */
+inventoryRouter.post('/adjust', requireStaff, requireRole(...viewers), branchScope, async (req, res) => {
   const b = adjustSchema.parse(req.body);
+  if (req.staff!.role !== 'ADMIN' && b.reason !== 'SALIDA') {
+    return res.status(403).json({ error: 'Solo puedes registrar salidas del inventario' });
+  }
   const branchId = req.staff!.role === 'ADMIN' ? (b.branchId ?? req.scopeBranchId) : req.staff!.branchId;
   if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
   if (!assertBranchAccess(req, branchId)) return res.status(403).json({ error: 'Sucursal no permitida' });
@@ -78,8 +83,8 @@ inventoryRouter.post('/adjust', requireStaff, requireRole(...managers), branchSc
 
 const minSchema = z.object({ catalogItemId: z.string(), branchId: z.string().optional(), minQty: z.number().int().nonnegative() });
 
-/** Define el umbral de alerta de stock bajo para un ítem en una sucursal. */
-inventoryRouter.post('/min', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+/** Define el umbral de alerta de stock bajo para un ítem en una sucursal (solo Admin). */
+inventoryRouter.post('/min', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
   const b = minSchema.parse(req.body);
   const branchId = req.staff!.role === 'ADMIN' ? (b.branchId ?? req.scopeBranchId) : req.staff!.branchId;
   if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });

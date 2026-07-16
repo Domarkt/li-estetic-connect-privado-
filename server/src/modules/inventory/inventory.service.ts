@@ -1,6 +1,6 @@
 import { prisma } from '../../db/prisma.js';
 
-export type StockReason = 'ENTRADA' | 'VENTA' | 'CONSUMO' | 'AJUSTE';
+export type StockReason = 'ENTRADA' | 'VENTA' | 'CONSUMO' | 'AJUSTE' | 'SALIDA';
 
 /**
  * Ajusta la existencia de un producto/insumo en UNA sucursal y deja traza del
