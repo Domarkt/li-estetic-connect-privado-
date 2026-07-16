@@ -36,6 +36,7 @@ const NAV: Record<Role, NavItem[]> = {
   ESTETICISTA: [
     { key: 'agenda', label: 'Mi Agenda', badge: 4 },
     { key: 'pacientes', label: 'Pacientes' },
+    { key: 'equipos', label: 'Equipos' },
     { key: 'puntos', label: 'Mis Puntos' },
   ],
 };
@@ -49,6 +50,7 @@ const PAGE_TITLE: Record<string, { title: string; sub: string }> = {
   facturacion: { title: 'Facturación', sub: 'Cobros y recibos' },
   catalogo: { title: 'Catálogo', sub: 'Servicios, paquetes, combos y productos' },
   inventario: { title: 'Inventario', sub: 'Stock de productos e insumos por sucursal' },
+  equipos: { title: 'Equipos y suministros', sub: 'Consulta y reporta averías o incidentes' },
   puntos: { title: 'Puntos & Comisiones', sub: 'Programa Líderes LI' },
   reportes: { title: 'Reportes', sub: 'Ventas, operación, equipo y campañas' },
   equipo: { title: 'Equipo', sub: 'Colaboradoras y usuarios del sistema' },

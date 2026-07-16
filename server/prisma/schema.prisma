@@ -137,6 +137,7 @@ model Branch {
   cashCloses    CashClose[]
   stockLevels   StockLevel[]
   stockMoves    StockMovement[]
+  assets        Asset[]
 }
 
 // Cierre de caja diario (conteo ciego por recepción, cuadre por admin)
@@ -216,6 +217,8 @@ model User {
   chargeItems     ChargeItem[]   @relation("ChargeItemCreatedBy")
   notifications   Notification[]
   deductions      StaffDeduction[]
+  assetsAssigned  Asset[]        @relation("AssetAssignee")
+  assetEvents     AssetEvent[]   @relation("AssetReporter")
 }
 
 // Alertas internas para el personal (aviso a la esteticista, ficha lista, etc.)
@@ -379,6 +382,47 @@ model StockLevel {
 
   @@unique([branchId, catalogItemId])
   @@index([branchId])
+}
+
+// Activos durables: EQUIPOS (láser, dermapen, computadora...) y SUMINISTROS que se
+// entregan al personal (uniformes, herramientas, flota...). Cada uno con ID único
+// e historial de mantenimiento/averías/incidentes.
+model Asset {
+  id           String   @id @default(cuid())
+  code         String   @unique // etiqueta/ID del activo (EQ-0001 / SU-0001)
+  kind         String // EQUIPO | SUMINISTRO
+  name         String
+  category     String? // láser, dermapen, computadora, uniforme, herramienta...
+  branchId     String
+  assignedToId String? // usuario al que se le entregó (suministros del personal)
+  status       String   @default("OPERATIVO") // OPERATIVO | MANTENIMIENTO | AVERIADO | BAJA
+  serial       String?
+  notes        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  branch     Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  assignedTo User?        @relation("AssetAssignee", fields: [assignedToId], references: [id])
+  events     AssetEvent[]
+
+  @@index([branchId, kind])
+  @@index([assignedToId])
+}
+
+// Historial de un activo: entradas/salidas, mantenimientos, averías, incidentes.
+model AssetEvent {
+  id           String   @id @default(cuid())
+  assetId      String
+  type         String // ENTRADA | SALIDA | MANTENIMIENTO | AVERIA | INCIDENTE | NOTA | BAJA
+  note         String?
+  cost         Int? // costo del mantenimiento (RD$), opcional
+  reportedById String?
+  createdAt    DateTime @default(now())
+
+  asset      Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  reportedBy User? @relation("AssetReporter", fields: [reportedById], references: [id])
+
+  @@index([assetId, createdAt])
 }
 
 // Movimiento de inventario (traza de entradas, ventas, consumo y ajustes) por sucursal.

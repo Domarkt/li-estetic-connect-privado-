@@ -4,8 +4,16 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
+import AssetsPanel from './AssetsPanel';
 
 type Kind = 'PRODUCTO' | 'INSUMO';
+type TabKey = 'PRODUCTO' | 'INSUMO' | 'EQUIPO' | 'SUMINISTRO';
+const TABS: { k: TabKey; label: string }[] = [
+  { k: 'PRODUCTO', label: 'Productos' },
+  { k: 'INSUMO', label: 'Insumos' },
+  { k: 'EQUIPO', label: 'Equipos' },
+  { k: 'SUMINISTRO', label: 'Suministros' },
+];
 
 interface Level { branchId: string; branch: string; qty: number; minQty: number; low: boolean }
 interface Row {
@@ -20,40 +28,45 @@ export default function InventarioPage() {
   const isAdmin = staff?.role === 'ADMIN';
   const allBranches = isAdmin && activeBranch === 'all';
 
-  const [tab, setTab] = useState<Kind>('PRODUCTO');
+  const [tab, setTab] = useState<TabKey>('PRODUCTO');
   const [data, setData] = useState<InvResp | null>(null);
   const [edit, setEdit] = useState<Row | null>(null);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [reload, setReload] = useState(0);
 
+  const isAsset = tab === 'EQUIPO' || tab === 'SUMINISTRO';
   const branchQ = activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
   useEffect(() => {
+    if (isAsset) return;
     api.get<InvResp>(`/inventory${branchQ}`).then(setData).catch(() => setData(null));
-  }, [reload, branchQ]);
+  }, [reload, branchQ, isAsset]);
 
-  const rows = (data?.items ?? []).filter((i) => i.kind === tab);
+  const rows = (data?.items ?? []).filter((i) => i.kind === (tab as Kind));
   const lowCount = rows.filter((r) => r.low && r.qty <= r.minQty && r.minQty > 0).length;
 
   return (
     <div className="animate-fade">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-2">
-          {(['PRODUCTO', 'INSUMO'] as Kind[]).map((k) => {
-            const on = tab === k;
+        <div className="flex flex-wrap gap-2">
+          {TABS.map((t) => {
+            const on = tab === t.k;
             return (
-              <button key={k} onClick={() => setTab(k)}
+              <button key={t.k} onClick={() => setTab(t.k)}
                 className="rounded-[10px] px-4 py-2 text-[13px] font-bold transition"
                 style={{ background: on ? 'var(--magenta)' : 'var(--card)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
-                {k === 'PRODUCTO' ? 'Productos' : 'Insumos'}
+                {t.label}
               </button>
             );
           })}
         </div>
-        {lowCount > 0 && (
+        {!isAsset && lowCount > 0 && (
           <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[12px] font-bold text-amber-700">⚠ {lowCount} en stock bajo</span>
         )}
       </div>
 
+      {isAsset && <AssetsPanel kind={tab as 'EQUIPO' | 'SUMINISTRO'} canManage={!!isAdmin} branchQ={branchQ} />}
+
+      {!isAsset && <>
       {allBranches && (
         <div className="mb-3 rounded-xl border border-line bg-card px-4 py-3 text-[12.5px] text-muted">
           Viendo <b>todas las sucursales</b> (stock total y desglose). Para registrar entradas o consumo, elige una sucursal arriba.
@@ -106,6 +119,7 @@ export default function InventarioPage() {
           </tbody>
         </table>
       </div>
+      </>}
 
       {edit && !allBranches && (
         <AdjustModal

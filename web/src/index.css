@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* Input/select/textarea estándar reutilizable (usado en el módulo de activos). */
+  .inp {
+    @apply rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta;
+  }
+}
+
 :root {
   --magenta: #b31c86;
   --magenta-d: #8e1268;
