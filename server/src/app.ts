@@ -22,6 +22,7 @@ import { portalRouter } from './modules/portal/portal.routes.js';
 import { cashCloseRouter } from './modules/cashclose/cashclose.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
+import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 
 export function createApp() {
   const app = express();
@@ -74,6 +75,7 @@ export function createApp() {
   app.use('/api/cashclose', cashCloseRouter);
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/inventory', inventoryRouter);
 
   // Fases siguientes montan aquí sus routers:
   // app.use('/api/invoices', invoicesRouter);   // Fase 4

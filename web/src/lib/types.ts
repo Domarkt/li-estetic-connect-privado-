@@ -71,7 +71,7 @@ export interface PatientDetail extends PatientRow {
   pendingCharges: { id: string; name: string; price: number }[];
 }
 
-export type CatalogKind = 'SERVICIO' | 'PAQUETE' | 'COMBO' | 'PRODUCTO';
+export type CatalogKind = 'SERVICIO' | 'PAQUETE' | 'COMBO' | 'PRODUCTO' | 'INSUMO';
 export interface CatalogItem {
   id: string;
   kind: CatalogKind;
@@ -80,6 +80,7 @@ export interface CatalogItem {
   price: number;
   sessions: number;
   stock: number | null;
+  unit: string | null;
   tag: string | null;
 }
 

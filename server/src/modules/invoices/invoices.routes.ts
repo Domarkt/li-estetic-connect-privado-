@@ -6,6 +6,7 @@ import {
   allocateSequence, splitItbis, invoiceInclude, serializeInvoiceRow, serializeReceipt,
 } from './invoices.service.js';
 import { awardSalePoints } from '../points/points.automation.js';
+import { decrementSoldProducts } from '../inventory/inventory.service.js';
 
 export const invoicesRouter = Router();
 
@@ -155,6 +156,12 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       where: { id: { in: b.chargeItemIds! }, branchId },
       data: { status: 'FACTURADO' },
     });
+    // Descuenta del inventario los productos vendidos (por sucursal).
+    await decrementSoldProducts(
+      branchId,
+      charges.map((c) => c.catalogItemId).filter((x): x is string => !!x),
+      req.staff!.sub,
+    );
     // El resto del abono queda como nuevo cargo pendiente para cobrar luego.
     if (saldoServicios > 0 && b.patientId) {
       await prisma.chargeItem.create({

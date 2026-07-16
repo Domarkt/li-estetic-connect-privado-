@@ -45,7 +45,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
 
   useEffect(() => {
     loadPatients();
-    api.get<CatalogItem[]>('/catalog').then((c) => { const s = c.filter((i) => i.kind !== 'PRODUCTO'); setServices(s); if (s[0]) setServiceId(s[0].id); });
+    api.get<CatalogItem[]>('/catalog').then((c) => { const s = c.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO'); setServices(s); if (s[0]) setServiceId(s[0].id); });
     api.get<Therapist[]>(`/users/therapists${branchQuery ? '?' + branchQuery.slice(1) : ''}`).then((t) => { setTherapists(t); if (t[0] && staff?.role !== 'ESTETICISTA') setTherapistId(t[0].id); });
     if (staff?.role === 'ESTETICISTA') setTherapistId(staff.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps

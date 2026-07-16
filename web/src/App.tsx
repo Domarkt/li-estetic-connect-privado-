@@ -20,6 +20,7 @@ import EquipoPage from './pages/team/EquipoPage';
 import CashClosePage from './pages/cashclose/CashClosePage';
 import ReportsPage from './pages/reports/ReportsPage';
 import SucursalesPage from './pages/SucursalesPage';
+import InventarioPage from './pages/inventory/InventarioPage';
 
 function StaffArea() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="mensajes" element={<MessagesPage />} />
             <Route path="facturacion" element={<BillingPage />} />
             <Route path="catalogo" element={<CatalogPage />} />
+            <Route path="inventario" element={<InventarioPage />} />
             <Route path="puntos" element={<PointsPage />} />
             <Route path="equipo" element={<EquipoPage />} />
             <Route path="configuracion" element={<ConfigPage />} />

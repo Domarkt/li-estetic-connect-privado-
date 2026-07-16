@@ -48,6 +48,7 @@ enum CatalogKind {
   PAQUETE
   COMBO
   PRODUCTO
+  INSUMO // insumo operativo (toallas, wiper, papel, sábanas, alcohol, gel...) — no se vende
 }
 
 enum PaymentMethod {
@@ -134,6 +135,8 @@ model Branch {
   chargeItems   ChargeItem[]
   goals         BranchGoal[]
   cashCloses    CashClose[]
+  stockLevels   StockLevel[]
+  stockMoves    StockMovement[]
 }
 
 // Cierre de caja diario (conteo ciego por recepción, cuadre por admin)
@@ -350,13 +353,49 @@ model CatalogItem {
   category  String?
   price     Int // RD$ (pesos enteros)
   sessions  Int         @default(1)
-  stock     Int? // para productos
+  stock     Int? // (legacy) stock global; el stock real es por sucursal en StockLevel
+  unit      String? // unidad de medida del producto/insumo: "unidad", "rollo", "litro", "caja"...
   tag       String? // "Ahorro RD$2,000", "Popular"
   active    Boolean     @default(true)
   createdAt DateTime    @default(now())
 
   treatments   Treatment[]
   chargeItems  ChargeItem[]
+  stockLevels  StockLevel[]
+  stockMoves   StockMovement[]
+}
+
+// Existencia de un producto/insumo en UNA sucursal (inventario aislado por sucursal).
+model StockLevel {
+  id            String   @id @default(cuid())
+  branchId      String
+  catalogItemId String
+  qty           Int      @default(0) // existencia actual
+  minQty        Int      @default(0) // umbral de alerta de stock bajo
+  updatedAt     DateTime @updatedAt
+
+  branch      Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, catalogItemId])
+  @@index([branchId])
+}
+
+// Movimiento de inventario (traza de entradas, ventas, consumo y ajustes) por sucursal.
+model StockMovement {
+  id            String   @id @default(cuid())
+  branchId      String
+  catalogItemId String
+  delta         Int // + entrada, - salida
+  reason        String // ENTRADA | VENTA | CONSUMO | AJUSTE
+  note          String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  branch      Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────
