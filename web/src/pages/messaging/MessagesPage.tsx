@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
 import type { ChatMessage, Conversation } from '../../lib/types';
 
-const FILTERS: { key: string; label: string }[] = [
+const ALL_FILTERS: { key: string; label: string }[] = [
   { key: 'all', label: 'Todos' },
   { key: 'INSTAGRAM', label: 'Instagram' },
   { key: 'WHATSAPP', label: 'WhatsApp' },
@@ -11,7 +12,11 @@ const FILTERS: { key: string; label: string }[] = [
 ];
 
 export default function MessagesPage() {
-  const [filter, setFilter] = useState('all');
+  const { staff } = useAuth();
+  const isAdmin = staff?.role === 'ADMIN';
+  // El personal de sucursal solo ve WhatsApp; los demás canales son del admin.
+  const FILTERS = isAdmin ? ALL_FILTERS : [{ key: 'WHATSAPP', label: 'WhatsApp' }];
+  const [filter, setFilter] = useState(isAdmin ? 'all' : 'WHATSAPP');
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [current, setCurrent] = useState<Conversation | null>(null);

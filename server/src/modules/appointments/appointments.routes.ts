@@ -6,10 +6,9 @@ import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointment
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
-import { sendAppointmentAccess, sendAppointmentCancelled, PORTAL_URL } from '../mail/mail.service.js';
+import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
-import { hashPassword } from '../../utils/password.js';
 
 export const appointmentsRouter = Router();
 
@@ -182,31 +181,18 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     });
   }
 
-  // Confirmación de cita por correo a CUALQUIER paciente con correo (nuevo o recurrente):
-  // incluye el código del turno + acceso al portal (crea la cuenta si aún no existe).
+  // Correo de CONFIRMACIÓN (solo detalles + código). NO crea cuenta ni envía acceso:
+  // el acceso al portal y la ficha se entregan cuando el paciente se presenta y paga.
   let emailSent = false;
-  let access: { portalUrl: string; login: string; tempPassword: string | null } | undefined;
   if (patient.email) {
-    const login = (patient.phone || patient.cedula || '').trim();
-    if (login) {
-      const existing = await prisma.patientAccount.findFirst({ where: { patientId: patient.id } });
-      let tempPassword: string | undefined;
-      if (!existing) {
-        tempPassword = 'li' + Math.random().toString(36).slice(2, 8);
-        await prisma.patientAccount.create({ data: { patientId: patient.id, login, passwordHash: await hashPassword(tempPassword) } });
-      }
-      // Solo marca "enviada al paciente" cuando es cliente nuevo (aún debe llenar la ficha).
-      if (b.newPatient) await prisma.clinicalRecord.updateMany({ where: { patientId: patient.id }, data: { sentToPatientAt: new Date() } });
-      const fecha = startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
-      const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
-      const mail = await sendAppointmentAccess(patient.email, {
-        name: patient.name, login, password: tempPassword,
-        service: serviceName, date: fecha, time: hora, code: appt.code ?? '',
-        replyTo: appt.branch.email ?? undefined,
-      });
-      emailSent = mail.sent;
-      access = { portalUrl: PORTAL_URL, login, tempPassword: tempPassword ?? null };
-    }
+    const fecha = startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+    const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+    const mail = await sendAppointmentConfirmation(patient.email, {
+      name: patient.name, service: serviceName, date: fecha, time: hora, code: appt.code ?? '',
+      branchName: appt.branch.name, branchPlace: appt.branch.place,
+      replyTo: appt.branch.email ?? undefined,
+    });
+    emailSent = mail.sent;
   }
 
   // Cliente nuevo: aviso a las esteticistas de la sucursal.
@@ -214,7 +200,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     await notifyBranchTherapists(patient.branchId, {
       type: 'FICHA_SENT',
       title: 'Nuevo paciente agendado',
-      body: `${patient.name} · ${serviceName}. ${patient.email ? 'Recibió acceso para completar su ficha.' : ''}`.trim(),
+      body: `${patient.name} · ${serviceName}. Llena la ficha cuando se presente y pague.`,
       link: '/app/pacientes',
     });
   }
@@ -222,7 +208,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   const message = patient.email
     ? (emailSent ? `Cita agendada · confirmación enviada a ${patient.email}` : `Cita agendada · no se pudo enviar el correo`)
     : 'Cita agendada y confirmada';
-  res.status(201).json({ ...serializeAppt(appt), emailSent, access, message });
+  res.status(201).json({ ...serializeAppt(appt), emailSent, message });
 });
 
 const checkinSchema = z.object({ code: z.string().min(4) });

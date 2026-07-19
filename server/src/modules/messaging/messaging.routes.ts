@@ -9,12 +9,18 @@ export const messagingRouter = Router();
 // Bandeja: Recepción y Admin.
 const inboxRoles = ['ADMIN', 'RECEPCIONISTA'] as const;
 
-/** Lista de conversaciones (aislada por sucursal; filtro opcional ?channel=). */
+/** Lista de conversaciones (aislada por sucursal; filtro opcional ?channel=).
+ *  Solo el ADMIN ve todos los canales; el personal de sucursal solo WhatsApp
+ *  (Instagram/TikTok/Messenger son centralizados para no cruzar respuestas). */
 messagingRouter.get('/conversations', requireStaff, requireRole(...inboxRoles), branchScope, async (req, res) => {
+  const isAdmin = req.staff!.role === 'ADMIN';
   const channel = req.query.channel as string | undefined;
+  const channelFilter = isAdmin
+    ? (channel && channel !== 'all' ? { channel: channel as never } : {})
+    : { channel: 'WHATSAPP' as never }; // personal de sucursal: solo WhatsApp
   const where = {
     ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
-    ...(channel && channel !== 'all' ? { channel: channel as never } : {}),
+    ...channelFilter,
   };
   const conversations = await prisma.conversation.findMany({
     where, include: { branch: true }, orderBy: { lastAt: 'desc' },
@@ -30,6 +36,7 @@ messagingRouter.get('/conversations/:id', requireStaff, requireRole(...inboxRole
   });
   if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
   if (!assertBranchAccess(req, conv.branchId)) return res.status(403).json({ error: 'Conversación de otra sucursal' });
+  if (req.staff!.role !== 'ADMIN' && conv.channel !== 'WHATSAPP') return res.status(403).json({ error: 'Este canal lo gestiona la administración' });
 
   if (conv.unread > 0) await prisma.conversation.update({ where: { id: conv.id }, data: { unread: 0 } });
 
@@ -47,6 +54,7 @@ messagingRouter.post('/conversations/:id/messages', requireStaff, requireRole(..
   const conv = await prisma.conversation.findUnique({ where: { id: req.params.id } });
   if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
   if (!assertBranchAccess(req, conv.branchId)) return res.status(403).json({ error: 'Conversación de otra sucursal' });
+  if (req.staff!.role !== 'ADMIN' && conv.channel !== 'WHATSAPP') return res.status(403).json({ error: 'Este canal lo gestiona la administración' });
 
   const msg = await prisma.message.create({ data: { conversationId: conv.id, fromMe: true, body } });
   await prisma.conversation.update({ where: { id: conv.id }, data: { lastMessage: body, lastAt: new Date(), unread: 0 } });

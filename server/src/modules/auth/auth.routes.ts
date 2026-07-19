@@ -82,40 +82,45 @@ authRouter.get('/staff/me', requireStaff, async (req, res) => {
 });
 
 const patientLoginSchema = z.object({
-  login: z.string().min(1), // celular o cédula
-  password: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().min(1),
 });
 
-/** Login externo del paciente (portal separado). */
+/**
+ * Login externo del paciente (portal separado). Identidad = correo + teléfono
+ * (los que registró la estética). El acceso solo funciona si la cuenta está
+ * activa, lo cual ocurre cuando el paciente paga su primer servicio.
+ */
 authRouter.post('/patient/login', async (req, res) => {
-  const { login, password } = patientLoginSchema.parse(req.body);
-  const normalized = login.trim();
+  const { email, phone } = patientLoginSchema.parse(req.body);
+  const normalizedEmail = email.trim().toLowerCase();
+  const phoneDigits = phone.replace(/\D/g, '');
 
-  const account = await prisma.patientAccount.findUnique({
-    where: { login: normalized },
-    include: { patient: { include: { branch: true } } },
+  // Busca pacientes con ese correo y cruza el teléfono por dígitos (formatos varían).
+  const candidates = await prisma.patient.findMany({
+    where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    include: { patientAccount: true, branch: true },
   });
-  if (!account || !account.active) {
-    return res.status(401).json({ error: 'Credenciales inválidas' });
+  const patient = candidates.find(
+    (p) => (p.phone || '').replace(/\D/g, '') === phoneDigits && p.patientAccount?.active,
+  );
+  if (!patient || !patient.patientAccount) {
+    return res.status(401).json({ error: 'Correo o teléfono incorrectos. Tu acceso se activa al pagar tu primer servicio en la estética.' });
   }
-  const ok = await verifyPassword(password, account.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
 
   const token = signPatient({
-    sub: account.id,
-    patientId: account.patientId,
-    name: account.patient.name,
+    sub: patient.patientAccount.id,
+    patientId: patient.id,
+    name: patient.name,
   });
 
   res.json({
     token,
     patient: {
-      id: account.patient.id,
-      name: account.patient.name,
-      phone: account.patient.phone,
-      branch: account.patient.branch
-        ? { name: account.patient.branch.name, place: account.patient.branch.place }
-        : null,
+      id: patient.id,
+      name: patient.name,
+      phone: patient.phone,
+      branch: patient.branch ? { name: patient.branch.name, place: patient.branch.place } : null,
     },
   });
 });

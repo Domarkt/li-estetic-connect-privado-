@@ -7,7 +7,7 @@ interface AuthState {
   patient: PatientUser | null;
   loading: boolean;
   loginStaff: (email: string, password: string, role?: Role, branchId?: string) => Promise<void>;
-  loginPatient: (login: string, password: string) => Promise<void>;
+  loginPatient: (email: string, phone: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -48,10 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStaff(res.user);
   };
 
-  const loginPatient: AuthState['loginPatient'] = async (login, password) => {
+  const loginPatient: AuthState['loginPatient'] = async (email, phone) => {
     const res = await api.post<{ token: string; patient: PatientUser }>(
       '/auth/patient/login',
-      { login, password },
+      { email, phone },
       'none',
     );
     tokenStore.setPatient(res.token);

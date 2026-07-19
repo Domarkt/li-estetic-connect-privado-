@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import { Portal, stop } from '../../components/Modal';
 import { fmtRD, type PatientDetail } from '../../lib/types';
-
-interface SendAccess { portalUrl: string; login: string; tempPassword: string | null }
 
 interface Props {
   patientId: string;
@@ -21,8 +20,9 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const toast = useToast();
   const [d, setD] = useState<PatientDetail | null>(null);
   const [sending, setSending] = useState(false);
-  const [access, setAccess] = useState<SendAccess | null>(null);
+  const [accessGiven, setAccessGiven] = useState(false);
   const [waUrl, setWaUrl] = useState<string | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -38,10 +38,12 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   async function sendToPatient() {
     setSending(true);
     try {
-      const r = await api.post<{ message: string; access: SendAccess; whatsappUrl: string | null }>(`/patients/${patientId}/ficha/send-to-patient`);
+      const r = await api.post<{ message: string; whatsappUrl: string | null; portalUrl: string }>(`/patients/${patientId}/ficha/send-to-patient`);
       toast(r.message);
-      setAccess(r.access);
+      setAccessGiven(true);
       setWaUrl(r.whatsappUrl);
+      // QR de la URL pública del portal (no lleva datos del paciente).
+      try { setQr(await QRCode.toDataURL(r.portalUrl, { width: 220, margin: 1 })); } catch { setQr(null); }
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error');
     } finally { setSending(false); }
@@ -77,24 +79,21 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                 </div>
               )}
 
-              {/* Recepción/Admin: enviar la ficha al paciente para que la complete (solo si aún no la llenó) */}
-              {canBill && !fichaComplete && !fichaFilled && (
+              {/* Recepción/Admin: dar acceso al portal (tras presentarse y pagar) */}
+              {canBill && !fichaComplete && (
                 <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
                   <div className="mb-2 text-[12px] leading-normal" style={{ color: '#1E5A82' }}>
-                    {d.fichaSent
-                      ? 'Ficha enviada · esperando que el paciente la complete desde su portal. Puedes reenviarla.'
-                      : 'Envía la ficha al paciente para que complete la parte clínica desde su portal (o ayúdalo tú). La esteticista la validará luego.'}
+                    Cuando el paciente <b>se presenta y paga</b>, dale acceso a su portal (para ver su proceso y su ficha). Entra con su <b>correo y teléfono</b>.
                   </div>
                   <button onClick={sendToPatient} disabled={sending} className="flex w-full items-center justify-center gap-2 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
-                    {sending ? 'Enviando…' : d.fichaSent ? '✉ Reenviar ficha al paciente' : '✉ Enviar ficha al paciente'}
+                    {sending ? 'Enviando…' : d.fichaSent ? '✉ Reenviar acceso al portal' : '✉ Dar acceso al portal'}
                   </button>
-                  {access && (
-                    <div className="mt-2 rounded-[9px] bg-card p-3 text-[12px]">
-                      <div className="font-bold text-navy">Acceso al portal del paciente</div>
-                      <div className="mt-1 text-muted">Portal: <span className="font-semibold text-ink">{access.portalUrl}</span></div>
-                      <div className="text-muted">Usuario: <span className="font-semibold text-ink">{access.login}</span></div>
-                      {access.tempPassword && <div className="text-muted">Contraseña: <span className="font-semibold text-ink">{access.tempPassword}</span></div>}
-                      {!access.tempPassword && <div className="text-faint">Ya tenía acceso · usa su contraseña actual.</div>}
+                  {accessGiven && (
+                    <div className="mt-2 rounded-[9px] bg-card p-3 text-center text-[12px]">
+                      <div className="font-bold text-navy">Acceso activado ✓</div>
+                      <div className="mt-0.5 text-muted">El paciente entra con su <b>correo</b> y <b>teléfono</b>.</div>
+                      {qr && <img src={qr} alt="QR del portal" className="mx-auto my-2 h-40 w-40 rounded-lg" />}
+                      {qr && <div className="text-faint">Escanea el QR para abrir el portal</div>}
                       {waUrl && (
                         <a href={waUrl} target="_blank" rel="noreferrer" className="mt-2.5 flex items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12.5px] font-bold text-white no-underline" style={{ background: '#25D366' }}>
                           <span>🟢</span> Enviar por WhatsApp

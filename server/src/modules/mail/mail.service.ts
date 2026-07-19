@@ -68,7 +68,11 @@ async function deliver(to: string, subject: string, html: string, replyTo?: stri
 export interface MailResult { sent: boolean; mode: 'live' | 'demo'; error?: string }
 
 /** Envía el correo de acceso al portal para que el paciente complete su ficha. */
-export async function sendPatientAccess(to: string, opts: { name: string; login: string; password?: string; replyTo?: string }): Promise<MailResult> {
+/**
+ * Acceso al portal del paciente. NO expone credenciales: el paciente entra con
+ * su propio CORREO (este) y su TELÉFONO. Incluye un breve instructivo.
+ */
+export async function sendPatientAccess(to: string, opts: { name: string; phone: string; replyTo?: string }): Promise<MailResult> {
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
       <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
@@ -76,18 +80,48 @@ export async function sendPatientAccess(to: string, opts: { name: string; login:
         <h2 style="margin:6px 0 0">Li Estetic Center</h2>
       </div>
       <div style="padding:24px;color:#1C2540">
-        <p>Hola <b>${opts.name}</b>,</p>
-        <p>Para agilizar tu atención, completa tu <b>ficha clínica</b> desde nuestro portal antes de tu cita.</p>
-        <p style="background:#FBEEF6;border-radius:10px;padding:12px 14px">
-          <b>Portal:</b> <a href="${PORTAL_URL}">${PORTAL_URL}</a><br/>
-          <b>Usuario:</b> ${opts.login}<br/>
-          ${opts.password ? `<b>Contraseña temporal:</b> ${opts.password}` : '<i>Usa la contraseña que ya tienes.</i>'}
-        </p>
-        <p>Al terminar, tu esteticista recibirá la ficha para validarla contigo. ¡Gracias! 💜</p>
+        <p>Hola <b>${opts.name}</b>, ¡ya tienes acceso a tu <b>portal del paciente</b>! 💜</p>
+        <p>Ahí ves tu proceso, tus citas, tu ficha y tus paquetes.</p>
+        <div style="background:#FBEEF6;border-radius:10px;padding:14px 16px">
+          <b>Cómo entrar (primera vez):</b>
+          <ol style="margin:8px 0 0;padding-left:18px">
+            <li>Abre: <a href="${PORTAL_URL}">${PORTAL_URL}</a></li>
+            <li>Escribe tu <b>correo</b> (este) y tu <b>teléfono</b> (${opts.phone}).</li>
+            <li>Toca <b>“Entrar a mi portal”</b>. ¡Listo!</li>
+          </ol>
+        </div>
+        <p style="margin-top:14px;font-size:12.5px;color:#6A7089">Por tu seguridad, tu acceso es personal. No compartas este correo.</p>
       </div>
     </div>`;
+  return deliver(to, 'Tu acceso al portal · Li Estetic Center', html, opts.replyTo);
+}
 
-  return deliver(to, 'Completa tu ficha clínica · Li Estetic Center', html, opts.replyTo);
+/**
+ * Confirmación de cita SIN acceso al portal (para cualquier agendamiento).
+ * El acceso al sistema y la ficha se entregan cuando el paciente se presenta y paga.
+ */
+export async function sendAppointmentConfirmation(
+  to: string,
+  opts: { name: string; service: string; date: string; time: string; code: string; branchName?: string; branchPlace?: string; replyTo?: string },
+): Promise<MailResult> {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
+        <div style="font-style:italic;color:#F3C3E0">Transformando Tu Cuerpo</div>
+        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
+      </div>
+      <div style="padding:24px;color:#1C2540">
+        <p>Hola <b>${opts.name}</b>, ¡tu cita quedó agendada! 💜</p>
+        <p style="background:#F0F6FB;border-radius:10px;padding:12px 14px">
+          <b>Servicio:</b> ${opts.service}<br/>
+          <b>Fecha:</b> ${opts.date} · <b>Hora:</b> ${opts.time}<br/>
+          ${opts.branchName ? `<b>Sucursal:</b> ${opts.branchName}${opts.branchPlace ? ` · ${opts.branchPlace}` : ''}<br/>` : ''}
+          <b>Código de tu turno:</b> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;color:#B31C86">${opts.code}</span>
+        </p>
+        <p>Preséntalo al llegar. Cuando visites la estética y realices tu primer servicio, te daremos acceso a tu <b>portal del paciente</b> para ver tu proceso y tu ficha. ¡Te esperamos!</p>
+      </div>
+    </div>`;
+  return deliver(to, `Tu cita en Li Estetic Center · código ${opts.code}`, html, opts.replyTo);
 }
 
 /** Confirmación de cita para cliente nuevo: código de la cita + acceso al portal para completar la ficha. */

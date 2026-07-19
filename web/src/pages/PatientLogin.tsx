@@ -5,16 +5,17 @@ import { useAuth } from '../auth/AuthContext';
 export default function PatientLogin() {
   const { loginPatient } = useAuth();
   const navigate = useNavigate();
-  const [login, setLogin] = useState('809-555-0142');
-  const [password, setPassword] = useState('paciente');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     setError('');
+    if (!email.trim() || !phone.trim()) { setError('Escribe tu correo y tu teléfono'); return; }
     setBusy(true);
     try {
-      await loginPatient(login.trim(), password);
+      await loginPatient(email.trim(), phone.trim());
       navigate('/portal');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
@@ -38,23 +39,23 @@ export default function PatientLogin() {
         </div>
         <div className="p-[30px]">
           <p className="mb-[22px] mt-0 text-center text-[13.5px] text-muted">
-            Consulta tu proceso, agenda citas y compra paquetes.
+            Entra con el <b>correo</b> y el <b>teléfono</b> que registraste en la estética.
           </p>
           <label className="mb-3.5 flex flex-col gap-1.5">
-            <span className="text-xs font-bold text-muted">Celular o cédula</span>
-            <input value={login} onChange={(e) => setLogin(e.target.value)}
+            <span className="text-xs font-bold text-muted">Correo</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off"
+              className="rounded-[11px] border border-line p-3.5 text-sm outline-none focus:border-magenta"
+              placeholder="tucorreo@ejemplo.com" />
+          </label>
+          <label className="mb-2 flex flex-col gap-1.5">
+            <span className="text-xs font-bold text-muted">Teléfono</span>
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off"
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
               className="rounded-[11px] border border-line p-3.5 text-sm outline-none focus:border-magenta"
               placeholder="809-000-0000" />
           </label>
-          <label className="mb-2 flex flex-col gap-1.5">
-            <span className="text-xs font-bold text-muted">Contraseña</span>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
-              className="rounded-[11px] border border-line p-3.5 text-sm outline-none focus:border-magenta"
-              placeholder="••••••••" />
-          </label>
-          <div className="mb-[18px] text-right">
-            <a href="#" className="text-xs font-semibold text-magenta">¿Olvidaste tu contraseña?</a>
+          <div className="mb-[18px] text-[12px] text-faint">
+            El acceso se activa cuando visitas la estética y pagas tu primer servicio.
           </div>
 
           {error && (
@@ -69,9 +70,6 @@ export default function PatientLogin() {
             style={{ boxShadow: '0 6px 18px rgba(179,28,134,.28)' }}>
             {busy ? 'Entrando…' : 'Entrar a mi portal →'}
           </button>
-          <div className="mt-4 text-center text-[12.5px] text-muted">
-            ¿Primera vez? <a href="#" className="font-bold text-magenta">Crea tu cuenta</a>
-          </div>
           <div className="mt-5 border-t border-line-2 pt-4 text-center">
             <button onClick={() => navigate('/login')} className="text-xs font-semibold text-faint">
               ← Soy personal de Li Estetic
