@@ -22,6 +22,7 @@ import ReportsPage from './pages/reports/ReportsPage';
 import SucursalesPage from './pages/SucursalesPage';
 import InventarioPage from './pages/inventory/InventarioPage';
 import EquiposPage from './pages/inventory/EquiposPage';
+import ChatPage from './pages/team/ChatPage';
 
 function StaffArea() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="catalogo" element={<CatalogPage />} />
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="equipos" element={<EquiposPage />} />
+            <Route path="chat" element={<ChatPage />} />
             <Route path="puntos" element={<PointsPage />} />
             <Route path="equipo" element={<EquipoPage />} />
             <Route path="configuracion" element={<ConfigPage />} />

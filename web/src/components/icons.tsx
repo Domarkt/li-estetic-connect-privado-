@@ -57,6 +57,7 @@ export const NAV_ICON: Record<string, string> = {
   pacientes: 'users',
   agenda: 'cal',
   mensajes: 'chat',
+  chat: 'chat',
   facturacion: 'money',
   catalogo: 'box',
   inventario: 'boxes',

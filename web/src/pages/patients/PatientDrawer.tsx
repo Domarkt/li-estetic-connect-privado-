@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
+import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Portal, stop } from '../../components/Modal';
 import { fmtRD, type PatientDetail } from '../../lib/types';
@@ -17,9 +18,13 @@ interface Props {
 
 export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenAddServices, onOpenBill, reloadKey }: Props) {
   const { staff } = useAuth();
+  const { branches } = useBranch();
   const toast = useToast();
   const [d, setD] = useState<PatientDetail | null>(null);
   const [sending, setSending] = useState(false);
+  const [transferTo, setTransferTo] = useState('');
+  const [transferNote, setTransferNote] = useState('');
+  const [transferring, setTransferring] = useState(false);
   const [accessGiven, setAccessGiven] = useState(false);
   const [waUrl, setWaUrl] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -34,6 +39,17 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const fichaComplete = d?.fichaStatus === 'COMPLETA';
   const fichaFilled = !!d?.fichaFilled; // el paciente ya completó su parte
   const paso1Done = d?.fichaStatus !== 'PENDIENTE';
+
+  async function transfer() {
+    if (!transferTo) { toast('Elige la sucursal destino'); return; }
+    setTransferring(true);
+    try {
+      const r = await api.post<{ message: string }>(`/patients/${patientId}/transfer`, { branchId: transferTo, note: transferNote.trim() || undefined });
+      toast(r.message);
+      setTransferTo(''); setTransferNote('');
+      onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setTransferring(false); }
+  }
 
   async function sendToPatient() {
     setSending(true);
@@ -101,6 +117,23 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Admin: transferir el paciente a otra sucursal (se mueve con su ficha e historial) */}
+              {staff?.role === 'ADMIN' && branches.length > 1 && (
+                <div className="rounded-[11px] border border-line px-4 py-3">
+                  <div className="mb-2 text-[12px] font-bold text-muted">Transferir a otra estética</div>
+                  <div className="flex flex-col gap-2">
+                    <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)} className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px]">
+                      <option value="">— Elegir sucursal destino —</option>
+                      {branches.filter((b) => b.id !== d.branchId).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                    <input value={transferNote} onChange={(e) => setTransferNote(e.target.value)} placeholder="Nota / instrucciones (opcional)" className="rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
+                    <button onClick={transfer} disabled={transferring || !transferTo} className="rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
+                      {transferring ? 'Transfiriendo…' : 'Transferir paciente'}
+                    </button>
+                  </div>
                 </div>
               )}
 

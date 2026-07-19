@@ -112,6 +112,36 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
   res.status(201).json(serializePatient(patient));
 });
 
+const transferSchema = z.object({ branchId: z.string(), note: z.string().optional() });
+
+/**
+ * Transferir un paciente a otra sucursal (solo Admin). Mueve al paciente con toda
+ * su ficha e historial; opcionalmente deja una nota en el chat de la sucursal destino.
+ */
+patientsRouter.post('/:id/transfer', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const { branchId, note } = transferSchema.parse(req.body);
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  const target = await prisma.branch.findUnique({ where: { id: branchId } });
+  if (!target) return res.status(404).json({ error: 'Sucursal destino no encontrada' });
+  if (patient.branchId === branchId) return res.status(400).json({ error: 'El paciente ya está en esa sucursal' });
+
+  await prisma.patient.update({ where: { id: patient.id }, data: { branchId } });
+
+  // Nota + aviso en el chat de la sucursal destino (etiquetando al paciente).
+  const body = note?.trim() || `Paciente transferido a esta sucursal. Revisa su ficha e historial.`;
+  await prisma.teamMessage.create({
+    data: {
+      branchId, senderId: req.staff!.sub, senderName: req.staff!.name, senderRole: req.staff!.role,
+      body, patientId: patient.id, patientName: patient.name,
+    },
+  });
+  await notifyRole('RECEPCIONISTA', { type: 'GENERAL', title: 'Paciente transferido', body: `${patient.name} · ${body}`, link: '/app/pacientes' }, branchId);
+  await notifyBranchTherapists(branchId, { type: 'GENERAL', title: 'Paciente transferido', body: `${patient.name} llegó por transferencia.`, link: '/app/pacientes' });
+
+  res.json({ ok: true, message: `${patient.name} transferido a ${target.name}` });
+});
+
 // ─────────────────────────────────────────────────────────────
 // FICHA CLÍNICA (4 pasos divididos por rol)
 // ─────────────────────────────────────────────────────────────

@@ -425,6 +425,33 @@ model AssetEvent {
   @@index([assetId, createdAt])
 }
 
+// Chat interno del equipo por sucursal (admin ↔ personal de la sucursal).
+// El hilo es la sucursal (branchId). Datos del emisor/paciente denormalizados
+// para no depender de relaciones (y sobrevivir a cambios de sucursal del paciente).
+model TeamMessage {
+  id          String   @id @default(cuid())
+  branchId    String // hilo = sucursal
+  senderId    String
+  senderName  String
+  senderRole  String // ADMIN | RECEPCIONISTA | ESTETICISTA
+  body        String
+  patientId   String? // paciente etiquetado (opcional)
+  patientName String?
+  createdAt   DateTime @default(now())
+
+  @@index([branchId, createdAt])
+}
+
+// Marca de "última lectura" por usuario y hilo (para el contador de no leídos).
+model TeamThreadRead {
+  id         String   @id @default(cuid())
+  userId     String
+  branchId   String
+  lastReadAt DateTime @default(now())
+
+  @@unique([userId, branchId])
+}
+
 // Movimiento de inventario (traza de entradas, ventas, consumo y ajustes) por sucursal.
 model StockMovement {
   id            String   @id @default(cuid())
