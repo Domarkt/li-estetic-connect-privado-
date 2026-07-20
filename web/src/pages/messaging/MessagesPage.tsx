@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
+import TeamChat from '../team/ChatPage';
 import type { ChatMessage, Conversation } from '../../lib/types';
 
 const ALL_FILTERS: { key: string; label: string }[] = [
@@ -17,6 +18,7 @@ export default function MessagesPage() {
   // El personal de sucursal solo ve WhatsApp; los demás canales son del admin.
   const FILTERS = isAdmin ? ALL_FILTERS : [{ key: 'WHATSAPP', label: 'WhatsApp' }];
   const [filter, setFilter] = useState(isAdmin ? 'all' : 'WHATSAPP');
+  const [pane, setPane] = useState<'clientes' | 'equipo'>('clientes');
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [current, setCurrent] = useState<Conversation | null>(null);
@@ -48,7 +50,24 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="grid animate-fade gap-4" style={{ gridTemplateColumns: '340px 1fr', height: 'calc(100vh - 150px)' }}>
+    <div className="animate-fade">
+      {/* Pestañas: mensajes de clientes vs chat interno del equipo */}
+      <div className="mb-3 flex gap-2">
+        {([['clientes', 'Clientes'], ['equipo', 'Chat del equipo']] as const).map(([k, label]) => {
+          const on = pane === k;
+          return (
+            <button key={k} onClick={() => setPane(k)} className="rounded-[10px] px-4 py-2 text-[13px] font-bold transition"
+              style={{ background: on ? 'var(--magenta)' : 'var(--card)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {pane === 'equipo' ? (
+        <TeamChat />
+      ) : (
+    <div className="grid gap-4" style={{ gridTemplateColumns: '340px 1fr', height: 'calc(100dvh - 200px)' }}>
       {/* Lista */}
       <div className="flex flex-col overflow-hidden rounded-base border border-line bg-card shadow-card">
         <div className="flex flex-wrap gap-1.5 border-b border-line-2 p-3.5">
@@ -112,6 +131,8 @@ export default function MessagesPage() {
           <div className="flex flex-1 items-center justify-center text-sm text-muted">Selecciona una conversación.</div>
         )}
       </div>
+    </div>
+      )}
     </div>
   );
 }

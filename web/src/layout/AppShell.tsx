@@ -20,7 +20,6 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'inventario', label: 'Inventario' },
     { key: 'puntos', label: 'Puntos & Comisiones' },
     { key: 'reportes', label: 'Reportes' },
-    { key: 'chat', label: 'Chat equipo' },
     { key: 'equipo', label: 'Equipo' },
     { key: 'cierre', label: 'Cierre de caja' },
     { key: 'configuracion', label: 'Configuración' },
