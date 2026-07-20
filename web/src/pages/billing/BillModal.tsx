@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import { fmtRD, type BillPatient, type PaymentMethod, type Receipt } from '../../lib/types';
+import { fmtRD, type BillPatient, type CatalogItem, type PaymentMethod, type Receipt } from '../../lib/types';
+
+const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
 
 const METHODS: PaymentMethod[] = ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'AZUL'];
 const METHOD_LABEL: Record<PaymentMethod, string> = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', TARJETA: 'Tarjeta', AZUL: 'Azul' };
@@ -14,8 +16,10 @@ interface Props { preselectId?: string; onClose: () => void; onEmitted: (r: Rece
 export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const toast = useToast();
   const [patients, setPatients] = useState<BillPatient[]>([]);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [selected, setSelected] = useState<string | null>(preselectId ?? null);
   const [concept, setConcept] = useState('');
+  const [catalogId, setCatalogId] = useState(''); // servicio/paquete elegido del catálogo
   const [amount, setAmount] = useState('');
   const [chargeIds, setChargeIds] = useState<string[]>([]);
   const [treatmentId, setTreatmentId] = useState<string | null>(null);
@@ -45,8 +49,19 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   }
   useEffect(() => {
     loadPatients();
+    // Catálogo real: solo servicios, paquetes y combos (para mantener la base de datos consistente).
+    api.get<CatalogItem[]>('/catalog').then((all) => setCatalog(all.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO'))).catch(() => setCatalog([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Elegir un ítem del catálogo fija el concepto y el monto desde el precio real.
+  function pickCatalog(id: string) {
+    setCatalogId(id);
+    const item = catalog.find((c) => c.id === id);
+    if (!item) { setConcept(''); return; }
+    setConcept(item.name);
+    setAmountDefault(String(item.price));
+  }
 
   const filteredPatients = patients.filter((p) => {
     const q = pQuery.trim().toLowerCase();
@@ -63,6 +78,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   function applyPatient(p?: BillPatient) {
     if (!p) return;
     setSelected(p.id);
+    setCatalogId('');
     if (p.pendingCharges.length) {
       setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
       setAmountDefault(String(p.pendingTotal)); setChargeIds(p.pendingCharges.map((c) => c.id));
@@ -206,7 +222,22 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               )}
             </div>
 
-            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Concepto</span><input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Servicio o paquete" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+            {/* Servicio/paquete: se elige del catálogo real para mantener la base de datos.
+                Si ya hay servicios pendientes o un tratamiento, el concepto viene de esos registros. */}
+            {(t || hasCharges) ? (
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio o paquete</span>
+                <div className="rounded-[9px] border border-line-2 bg-bg px-3.5 py-3 text-[13.5px] font-semibold">{concept || '—'}</div>
+                <span className="text-[11px] text-faint">Tomado de los servicios/tratamiento ya registrados del paciente.</span>
+              </label>
+            ) : (
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio o paquete</span>
+                <select value={catalogId} onChange={(e) => pickCatalog(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta">
+                  <option value="">Selecciona del catálogo…</option>
+                  {catalog.map((c) => <option key={c.id} value={c.id}>{KIND_TAG[c.kind] ?? c.kind} · {c.name} — {fmtRD(c.price)}</option>)}
+                </select>
+                {catalog.length === 0 && <span className="text-[11px] text-faint">No hay servicios en el catálogo todavía. Créalos en Catálogo.</span>}
+              </label>
+            )}
             <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">{freeAbono ? 'Monto a abonar' : 'Monto total'} (RD$) · ITBIS 18% incluido</span><input value={amount} onChange={(e) => setAmountDefault(e.target.value)} placeholder="18000" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] font-bold outline-none focus:border-magenta" /></label>
 
             {/* Pago dividido por método */}

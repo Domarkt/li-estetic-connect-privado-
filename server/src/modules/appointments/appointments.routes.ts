@@ -4,7 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
-import { sendWhatsAppText } from '../messaging/whatsapp.service.js';
+import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.js';
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
 import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
@@ -336,10 +336,13 @@ appointmentsRouter.post('/:id/remind', requireStaff, branchScope, async (req, re
   const text = `Hola ${appt.patient.name.split(' ')[0]} 💜 Te recordamos tu cita en ${appt.branch.name}: ${appt.serviceName} el ${when}. — Li Estetic Center`;
 
   const results: Record<string, string> = {};
+  let whatsappUrl: string | null = null;
   for (const ch of channels) {
     if (ch === 'whatsapp') {
       const r = await sendWhatsAppText(appt.patient.phone, text);
-      results.whatsapp = r.sent ? 'enviado' : r.mode === 'demo' ? 'simulado (sin credenciales)' : `error: ${r.error}`;
+      results.whatsapp = r.sent ? 'enviado' : r.mode === 'demo' ? 'listo para enviar por WhatsApp' : `error: ${r.error}`;
+      // Enlace wa.me con el mensaje precargado: recepción lo envía desde su WhatsApp.
+      if (appt.patient.phone) whatsappUrl = `https://wa.me/${normalizePhone(appt.patient.phone)}?text=${encodeURIComponent(text)}`;
     } else if (ch === 'correo') {
       results.correo = appt.patient.email ? 'enviado (correo)' : 'sin correo · simulado';
     } else if (ch === 'portal') {
@@ -347,5 +350,5 @@ appointmentsRouter.post('/:id/remind', requireStaff, branchScope, async (req, re
     }
   }
   await prisma.appointment.update({ where: { id: appt.id }, data: { reminderSentAt: new Date() } });
-  res.json({ ok: true, results, message: `Recordatorio enviado por: ${channels.join(', ')}` });
+  res.json({ ok: true, results, whatsappUrl, message: `Recordatorio enviado por: ${channels.join(', ')}` });
 });

@@ -326,7 +326,9 @@ function RemindModal({ appt, onClose, onSent }: { appt: Appointment; onClose: ()
     if (!sel.size) { toast('Selecciona al menos un canal'); return; }
     setBusy(true);
     try {
-      const r = await api.post<{ message: string; results: Record<string, string> }>(`/appointments/${appt.id}/remind`, { channels: [...sel] });
+      const r = await api.post<{ message: string; results: Record<string, string>; whatsappUrl: string | null }>(`/appointments/${appt.id}/remind`, { channels: [...sel] });
+      // Si se eligió WhatsApp, abrir el chat con el mensaje ya escrito para enviarlo.
+      if (sel.has('whatsapp') && r.whatsappUrl) window.open(r.whatsappUrl, '_blank', 'noopener');
       toast(r.message);
       onSent();
       onClose();
