@@ -80,7 +80,7 @@ const MAX_ATTACHMENT_CHARS = 14_000_000;
 const sendSchema = z.object({
   body: z.string().trim().max(4000).optional(),
   patientId: z.string().optional(),
-  targetRole: z.enum(['ALL', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
+  targetRole: z.enum(['ALL', 'ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
   attachment: z.object({
     data: z.string().startsWith('data:').max(MAX_ATTACHMENT_CHARS, 'El archivo supera el límite de 10 MB'),
     name: z.string().min(1).max(200),
@@ -132,10 +132,10 @@ teamRouter.post('/threads/:branchId/messages', requireStaff, async (req, res) =>
   const notify = (role: 'RECEPCIONISTA' | 'ESTETICISTA' | 'ADMIN', link: string) =>
     notifyRole(role, { type: 'GENERAL', title: `Mensaje de ${from}`, body: `${preview}${tag}`, link }, role === 'ADMIN' ? undefined : branchId);
 
-  // Avisar a la audiencia elegida (siempre incluye a la administración para que dé seguimiento).
+  // Avisar por la campana exactamente a la audiencia elegida (Todos = a los tres roles).
+  if (targetRole === 'ALL' || targetRole === 'ADMIN') await notify('ADMIN', '/app/mensajes');
   if (targetRole === 'ALL' || targetRole === 'RECEPCIONISTA') await notify('RECEPCIONISTA', '/app/mensajes');
   if (targetRole === 'ALL' || targetRole === 'ESTETICISTA') await notify('ESTETICISTA', '/app/chat');
-  if (req.staff!.role !== 'ADMIN') await notify('ADMIN', '/app/mensajes');
 
   res.status(201).json({ ok: true });
 });

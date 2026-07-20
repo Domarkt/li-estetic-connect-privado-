@@ -4,12 +4,16 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 
-type Target = 'ALL' | 'RECEPCIONISTA' | 'ESTETICISTA';
-const TARGETS: { k: Target; label: string }[] = [
-  { k: 'ALL', label: 'Todos' },
-  { k: 'RECEPCIONISTA', label: 'Recepción' },
-  { k: 'ESTETICISTA', label: 'Esteticista' },
-];
+type Target = 'ALL' | 'ADMIN' | 'RECEPCIONISTA' | 'ESTETICISTA';
+const TARGET_LABEL: Record<Target, string> = { ALL: 'Todos', ADMIN: 'Admin', RECEPCIONISTA: 'Recepción', ESTETICISTA: 'Esteticista' };
+
+// Destinatarios disponibles según el rol de quien escribe (nunca se incluye a sí mismo).
+function targetsFor(role?: string): Target[] {
+  if (role === 'ADMIN') return ['ALL', 'RECEPCIONISTA', 'ESTETICISTA'];
+  if (role === 'RECEPCIONISTA') return ['ALL', 'ADMIN', 'ESTETICISTA'];
+  if (role === 'ESTETICISTA') return ['ALL', 'ADMIN', 'RECEPCIONISTA'];
+  return ['ALL'];
+}
 
 interface Thread { branchId: string; name: string; place: string; dotColor: string; lastMessage: string | null; lastAt: string | null; unread: number }
 interface Attachment { data: string; name: string; kind: 'image' | 'video' | 'file'; mime: string }
@@ -149,12 +153,12 @@ export default function ChatPage() {
           {/* Destinatario: cualquier rol puede dirigir el mensaje. */}
           <div className="mb-2 flex items-center gap-1.5">
             <span className="text-[11.5px] font-bold text-muted">Para:</span>
-            {TARGETS.map((t) => {
-              const on = target === t.k;
+            {targetsFor(staff?.role).map((k) => {
+              const on = target === k;
               return (
-                <button key={t.k} onClick={() => setTarget(t.k)} className="rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+                <button key={k} onClick={() => setTarget(k)} className="rounded-full px-2.5 py-1 text-[11.5px] font-bold"
                   style={{ background: on ? 'var(--magenta)' : 'var(--bg)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
-                  {t.label}
+                  {TARGET_LABEL[k]}
                 </button>
               );
             })}
