@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
+import { Overlay, stop } from '../../components/Modal';
 import type { BranchGoal, IntegrationsView, PointsRule, RewardItem } from '../../lib/types';
 
-type Tab = 'negocio' | 'metas' | 'reglas' | 'premios' | 'integraciones';
+type Tab = 'negocio' | 'metas' | 'reglas' | 'premios' | 'integraciones' | 'mantenimiento';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'negocio', label: 'Negocio y sucursales' },
   { key: 'metas', label: 'Metas por sucursal' },
   { key: 'reglas', label: 'Reglas de puntos' },
   { key: 'premios', label: 'Premios' },
   { key: 'integraciones', label: 'Integraciones' },
+  { key: 'mantenimiento', label: 'Mantenimiento de datos' },
 ];
 
 export default function ConfigPage() {
@@ -30,7 +32,97 @@ export default function ConfigPage() {
       {tab === 'reglas' && <RulesTab />}
       {tab === 'premios' && <RewardsTab />}
       {tab === 'integraciones' && <IntegrationsTab />}
+      {tab === 'mantenimiento' && <MaintenanceTab />}
     </div>
+  );
+}
+
+// ── Mantenimiento de datos (solo admin): borrado por categoría, sin tocar la base de datos ──
+type SummaryItem = { label: string; count: number };
+type Summary = Record<string, SummaryItem>;
+const PURGE_ORDER: { key: string; title: string }[] = [
+  { key: 'patients', title: 'Pacientes e historial' },
+  { key: 'appointments', title: 'Citas (agenda)' },
+  { key: 'billing', title: 'Cobros y facturas' },
+  { key: 'messages', title: 'Mensajes' },
+  { key: 'cashclose', title: 'Cuadres de caja' },
+  { key: 'assets', title: 'Equipos' },
+  { key: 'inventory', title: 'Inventario (productos e insumos)' },
+];
+
+function MaintenanceTab() {
+  const toast = useToast();
+  const [summary, setSummary] = useState<Summary>({});
+  const [confirming, setConfirming] = useState<{ key: string; title: string; label: string; count: number } | null>(null);
+
+  const load = () => api.get<Summary>('/maintenance/summary').then(setSummary).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  return (
+    <div>
+      <div className="mb-3.5 rounded-base border px-4 py-3 text-[12.5px] font-semibold" style={{ background: 'var(--danger-soft)', borderColor: '#F0C9C9', color: 'var(--danger)' }}>
+        ⚠ Zona delicada. Cada botón elimina <b>definitivamente</b> esa categoría en <b>todas las sucursales</b>. No se puede deshacer. Se conservan sucursales, colaboradores y el catálogo de servicios/paquetes/combos.
+      </div>
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+        {PURGE_ORDER.map((p) => {
+          const s = summary[p.key];
+          return (
+            <div key={p.key} className="flex items-center gap-3 rounded-base border border-line bg-card p-4 shadow-card">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-bold">{p.title}</div>
+                <div className="text-[12px] text-muted">{s ? s.label : '—'}</div>
+                <div className="mt-1 text-[11.5px] font-bold text-navy">{s ? `${s.count} registro(s)` : 'Cargando…'}</div>
+              </div>
+              <button
+                onClick={() => s && setConfirming({ key: p.key, title: p.title, label: s.label, count: s.count })}
+                disabled={!s || s.count === 0}
+                className="flex-none rounded-[9px] border px-3 py-2 text-[12.5px] font-bold disabled:opacity-40"
+                style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-soft)' }}>
+                Borrar
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {confirming && (
+        <PurgeConfirm item={confirming} onClose={() => setConfirming(null)}
+          onDone={(msg) => { toast(msg); setConfirming(null); load(); }} />
+      )}
+    </div>
+  );
+}
+
+function PurgeConfirm({ item, onClose, onDone }: { item: { key: string; title: string; label: string; count: number }; onClose: () => void; onDone: (msg: string) => void }) {
+  const toast = useToast();
+  const [word, setWord] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = word.trim().toUpperCase() === 'BORRAR';
+
+  async function run() {
+    if (!ready || busy) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/maintenance/purge', { target: item.key, confirm: 'BORRAR' });
+      onDone(r.message);
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error al borrar'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Overlay onClose={onClose} z={130}>
+      <div onClick={stop} className="w-[440px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="border-b border-line px-6 py-5 text-base font-extrabold" style={{ color: 'var(--danger)' }}>Eliminar: {item.title}</div>
+        <div className="flex flex-col gap-3 px-6 py-5">
+          <div className="text-[13px] text-muted">Vas a borrar <b>{item.label.toLowerCase()}</b> — <b style={{ color: 'var(--danger)' }}>{item.count} registro(s)</b> en todas las sucursales. Esta acción <b>no se puede deshacer</b>.</div>
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Para confirmar, escribe <b>BORRAR</b></span>
+            <input autoFocus value={word} onChange={(e) => setWord(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} placeholder="BORRAR" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+          <button onClick={run} disabled={!ready || busy} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-40" style={{ background: 'var(--danger)' }}>{busy ? 'Borrando…' : 'Borrar definitivamente'}</button>
+        </div>
+      </div>
+    </Overlay>
   );
 }
 
