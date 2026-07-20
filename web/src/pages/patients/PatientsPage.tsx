@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
@@ -24,6 +25,17 @@ export default function PatientsPage() {
   const [billId, setBillId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Abrir directamente la ficha de un paciente al llegar con ?open=<id> (p. ej. desde el chat).
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId) {
+      setDetailId(openId);
+      searchParams.delete('open');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
 

@@ -434,6 +434,7 @@ model TeamMessage {
   senderId    String
   senderName  String
   senderRole  String // ADMIN | RECEPCIONISTA | ESTETICISTA
+  targetRole  String   @default("ALL") // ALL | RECEPCIONISTA | ESTETICISTA — a quién va dirigido
   body        String
   patientId   String? // paciente etiquetado (opcional)
   patientName String?
