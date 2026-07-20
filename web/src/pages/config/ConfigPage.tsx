@@ -52,10 +52,16 @@ const PURGE_ORDER: { key: string; title: string }[] = [
 
 function MaintenanceTab() {
   const toast = useToast();
-  const [summary, setSummary] = useState<Summary>({});
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ key: string; title: string; label: string; count: number } | null>(null);
 
-  const load = () => api.get<Summary>('/maintenance/summary').then(setSummary).catch(() => {});
+  const load = () => {
+    setErr(null);
+    api.get<Summary>('/maintenance/summary')
+      .then((s) => setSummary(s))
+      .catch((e) => setErr(e instanceof Error ? e.message : 'No se pudo cargar'));
+  };
   useEffect(() => { load(); }, []);
 
   return (
@@ -63,15 +69,21 @@ function MaintenanceTab() {
       <div className="mb-3.5 rounded-base border px-4 py-3 text-[12.5px] font-semibold" style={{ background: 'var(--danger-soft)', borderColor: '#F0C9C9', color: 'var(--danger)' }}>
         ⚠ Zona delicada. Cada botón elimina <b>definitivamente</b> esa categoría en <b>todas las sucursales</b>. No se puede deshacer. Se conservan sucursales, colaboradores y el catálogo de servicios/paquetes/combos.
       </div>
+      {err && (
+        <div className="mb-3.5 flex items-center justify-between gap-3 rounded-base border border-line bg-card px-4 py-3 text-[12.5px] shadow-card">
+          <span className="text-muted">No se pudieron cargar los datos: <b className="text-danger">{err}</b>. Si acabas de subir cambios, falta el deploy del servidor.</span>
+          <button onClick={load} className="flex-none rounded-[9px] border border-line bg-bg px-3 py-2 text-[12.5px] font-bold text-magenta">Reintentar</button>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
         {PURGE_ORDER.map((p) => {
-          const s = summary[p.key];
+          const s = summary?.[p.key];
           return (
             <div key={p.key} className="flex items-center gap-3 rounded-base border border-line bg-card p-4 shadow-card">
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] font-bold">{p.title}</div>
                 <div className="text-[12px] text-muted">{s ? s.label : '—'}</div>
-                <div className="mt-1 text-[11.5px] font-bold text-navy">{s ? `${s.count} registro(s)` : 'Cargando…'}</div>
+                <div className="mt-1 text-[11.5px] font-bold text-navy">{s ? `${s.count} registro(s)` : (err ? 'No disponible' : 'Cargando…')}</div>
               </div>
               <button
                 onClick={() => s && setConfirming({ key: p.key, title: p.title, label: s.label, count: s.count })}
