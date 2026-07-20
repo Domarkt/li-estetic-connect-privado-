@@ -12,8 +12,16 @@ const TARGETS: { k: Target; label: string }[] = [
 ];
 
 interface Thread { branchId: string; name: string; place: string; dotColor: string; lastMessage: string | null; lastAt: string | null; unread: number }
-interface Msg { id: string; body: string; senderName: string; senderRole: string; target: string; mine: boolean; patient: { id: string; name: string } | null; time: string }
+interface Attachment { data: string; name: string; kind: 'image' | 'video' | 'file'; mime: string }
+interface Msg { id: string; body: string; senderName: string; senderRole: string; target: string; mine: boolean; patient: { id: string; name: string } | null; attachment: Attachment | null; time: string }
 interface PatientLite { id: string; name: string; phone: string }
+
+const MAX_FILE_MB = 8;
+function fileKind(mime: string): Attachment['kind'] {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  return 'file';
+}
 
 const ROLE_LABEL: Record<string, string> = { ADMIN: 'Admin', RECEPCIONISTA: 'Recepción', ESTETICISTA: 'Esteticista' };
 
@@ -29,7 +37,10 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('');
   const [tagged, setTagged] = useState<PatientLite | null>(null);
   const [showTag, setShowTag] = useState(false);
+  const [file, setFile] = useState<Attachment | null>(null);
+  const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const loadThreads = useCallback(() => {
     api.get<Thread[]>('/team-chat/threads').then((t) => {
@@ -51,13 +62,26 @@ export default function ChatPage() {
   }, [active, loadMessages]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo
+    if (!f) return;
+    if (f.size > MAX_FILE_MB * 1024 * 1024) { toast(`El archivo supera el límite de ${MAX_FILE_MB} MB`); return; }
+    const reader = new FileReader();
+    reader.onload = () => setFile({ data: String(reader.result), name: f.name, kind: fileKind(f.type), mime: f.type || 'application/octet-stream' });
+    reader.onerror = () => toast('No se pudo leer el archivo');
+    reader.readAsDataURL(f);
+  }
+
   async function send() {
-    if (!draft.trim() || !active) return;
+    if ((!draft.trim() && !file) || !active || sending) return;
+    setSending(true);
     try {
-      await api.post(`/team-chat/threads/${active}/messages`, { body: draft.trim(), patientId: tagged?.id, targetRole: isAdmin ? target : undefined });
-      setDraft(''); setTagged(null); setShowTag(false);
+      await api.post(`/team-chat/threads/${active}/messages`, { body: draft.trim() || undefined, patientId: tagged?.id, targetRole: target, attachment: file ?? undefined });
+      setDraft(''); setTagged(null); setShowTag(false); setFile(null);
       loadMessages(active); loadThreads();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+    finally { setSending(false); }
   }
 
   const activeThread = threads.find((t) => t.branchId === active) ?? null;
@@ -110,7 +134,8 @@ export default function ChatPage() {
                       🏷 {m.patient.name} ›
                     </button>
                   )}
-                  <div>{m.body}</div>
+                  {m.attachment && <AttachmentView att={m.attachment} mine={m.mine} />}
+                  {m.body && <div className={m.attachment ? 'mt-1.5' : ''}>{m.body}</div>}
                 </div>
                 <div className="mt-1 text-[10.5px] text-faint" style={{ textAlign: m.mine ? 'right' : 'left' }}>{m.time}</div>
               </div>
@@ -121,35 +146,60 @@ export default function ChatPage() {
 
         {/* Composer */}
         <div className="border-t border-line p-3.5">
-          {isAdmin && (
-            <div className="mb-2 flex items-center gap-1.5">
-              <span className="text-[11.5px] font-bold text-muted">Para:</span>
-              {TARGETS.map((t) => {
-                const on = target === t.k;
-                return (
-                  <button key={t.k} onClick={() => setTarget(t.k)} className="rounded-full px-2.5 py-1 text-[11.5px] font-bold"
-                    style={{ background: on ? 'var(--magenta)' : 'var(--bg)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* Destinatario: cualquier rol puede dirigir el mensaje. */}
+          <div className="mb-2 flex items-center gap-1.5">
+            <span className="text-[11.5px] font-bold text-muted">Para:</span>
+            {TARGETS.map((t) => {
+              const on = target === t.k;
+              return (
+                <button key={t.k} onClick={() => setTarget(t.k)} className="rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+                  style={{ background: on ? 'var(--magenta)' : 'var(--bg)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
           {tagged && (
             <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-magenta-soft px-3 py-1 text-[12px] font-bold text-magenta">
               🏷 {tagged.name}
               <button onClick={() => setTagged(null)} className="text-magenta">×</button>
             </div>
           )}
+          {file && (
+            <div className="mb-2 flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2 text-[12px]">
+              <span>{file.kind === 'image' ? '📷' : file.kind === 'video' ? '🎬' : '📎'}</span>
+              <span className="flex-1 truncate font-semibold">{file.name}</span>
+              <button onClick={() => setFile(null)} className="font-bold text-muted hover:text-danger">Quitar</button>
+            </div>
+          )}
           {showTag && active && <PatientPicker branchId={isAdmin ? active : undefined} onPick={(p) => { setTagged(p); setShowTag(false); }} onClose={() => setShowTag(false)} />}
+          <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" onChange={onPickFile} className="hidden" />
           <div className="flex items-center gap-2.5">
             <button onClick={() => setShowTag((v) => !v)} title="Etiquetar paciente" className="flex-none rounded-[11px] border border-line bg-bg px-3 py-3 text-[13px] font-bold text-muted">🏷</button>
+            <button onClick={() => fileRef.current?.click()} title="Adjuntar foto, video o documento" className="flex-none rounded-[11px] border border-line bg-bg px-3 py-3 text-[13px] font-bold text-muted">📎</button>
             <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder="Escribe una instrucción…" className="flex-1 rounded-[11px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" />
-            <button onClick={send} className="rounded-[11px] bg-magenta px-5 py-3 text-[13.5px] font-bold text-white">Enviar</button>
+            <button onClick={send} disabled={sending} className="rounded-[11px] bg-magenta px-5 py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{sending ? '…' : 'Enviar'}</button>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function AttachmentView({ att, mine }: { att: Attachment; mine: boolean }) {
+  if (att.kind === 'image') {
+    return <a href={att.data} target="_blank" rel="noopener noreferrer"><img src={att.data} alt={att.name} className="max-h-[240px] max-w-full rounded-[10px]" /></a>;
+  }
+  if (att.kind === 'video') {
+    return <video src={att.data} controls className="max-h-[260px] max-w-full rounded-[10px]" />;
+  }
+  return (
+    <a href={att.data} download={att.name}
+      className={`flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12.5px] font-bold ${mine ? 'bg-white/20 text-white' : 'bg-bg text-navy'}`}>
+      <span className="text-[15px]">📎</span>
+      <span className="truncate">{att.name}</span>
+      <span className={`ml-1 text-[11px] ${mine ? 'text-white/80' : 'text-muted'}`}>Descargar</span>
+    </a>
   );
 }
 

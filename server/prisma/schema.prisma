@@ -435,9 +435,14 @@ model TeamMessage {
   senderName  String
   senderRole  String // ADMIN | RECEPCIONISTA | ESTETICISTA
   targetRole  String   @default("ALL") // ALL | RECEPCIONISTA | ESTETICISTA — a quién va dirigido
-  body        String
+  body        String   @default("") // puede ir vacío si el mensaje es solo un adjunto
   patientId   String? // paciente etiquetado (opcional)
   patientName String?
+  // Adjunto (foto/video/documento) guardado como data URL base64 en la propia DB.
+  attachmentData String? // data:...;base64,... (límite ~10 MB)
+  attachmentName String? // nombre original del archivo
+  attachmentKind String? // image | video | file
+  attachmentMime String? // tipo MIME original
   createdAt   DateTime @default(now())
 
   @@index([branchId, createdAt])

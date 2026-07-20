@@ -62,10 +62,11 @@ export default function EquipoPage() {
             <div className="flex-1"><div className="text-[13.5px] font-bold">{u.name}</div><div className="text-xs text-muted">{u.email}</div></div>
             <span className="text-xs font-semibold text-muted">{u.branch}</span>
             <span className={roleChip}>{u.role}</span>
+            {u.protected && <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[11px] font-bold text-navy" title="Correo base del sistema (Domarkt). No se puede eliminar ni desactivar.">🔒 Base</span>}
             {!u.active && <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-bold text-danger">Inactivo</span>}
             <div className="flex items-center gap-1.5">
               <button onClick={() => setEditing(u)} className="rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[12px] font-bold text-muted hover:text-magenta hover:border-magenta">Editar</button>
-              <button onClick={() => removeUser(u)} className="rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[12px] font-bold text-muted hover:text-danger hover:border-danger">Eliminar</button>
+              {!u.protected && <button onClick={() => removeUser(u)} className="rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[12px] font-bold text-muted hover:text-danger hover:border-danger">Eliminar</button>}
             </div>
           </div>
         ))}
@@ -148,9 +149,9 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
             )}
           </div>
           {isEdit && (
-            <label className="flex items-center gap-2.5 rounded-[9px] border border-line px-3.5 py-3">
-              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 accent-magenta" />
-              <span className="text-[13px] font-semibold">Usuario activo (puede iniciar sesión)</span>
+            <label className="flex items-center gap-2.5 rounded-[9px] border border-line px-3.5 py-3" style={user?.protected ? { opacity: 0.6 } : undefined}>
+              <input type="checkbox" checked={user?.protected ? true : active} disabled={user?.protected} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 accent-magenta" />
+              <span className="text-[13px] font-semibold">Usuario activo (puede iniciar sesión){user?.protected ? ' · correo base (no se puede desactivar)' : ''}</span>
             </label>
           )}
         </div>

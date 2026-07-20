@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope } from '../../middleware/auth.js';
 import { hashPassword } from '../../utils/password.js';
 import { commissionFor } from '../points/points.service.js';
+import { isBaseAdmin } from '../../config/baseAccounts.js';
 
 export const usersRouter = Router();
 
@@ -46,6 +47,8 @@ usersRouter.get('/team', requireStaff, requireRole('ADMIN'), branchScope, async 
   const systemUsers = users.map((u) => ({
     id: u.id, name: u.name, email: u.email, role: ROLE_LABEL[u.role], roleKey: u.role,
     branch: u.branch?.name ?? 'Todas', branchId: u.branchId, avatarColor: u.avatarColor, active: u.active,
+    // Correo base de Domarkt: no se puede eliminar ni desactivar desde aquí.
+    protected: isBaseAdmin(u.email),
   }));
 
   res.json({ collaborators, systemUsers });
@@ -102,6 +105,13 @@ usersRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) =
   const current = await prisma.user.findUnique({ where: { id: req.params.id }, include: { therapistProfile: true } });
   if (!current) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+  // Los correos base de Domarkt no se pueden desactivar ni cambiar de correo/rol de admin.
+  if (isBaseAdmin(current.email)) {
+    if (b.active === false) return res.status(400).json({ error: 'Este es un correo base del sistema y no se puede desactivar' });
+    if (b.email !== undefined && b.email.toLowerCase() !== current.email) return res.status(400).json({ error: 'No se puede cambiar el correo de una cuenta base del sistema' });
+    if (b.role !== undefined && b.role !== 'ADMIN') return res.status(400).json({ error: 'Una cuenta base del sistema debe seguir siendo administrador' });
+  }
+
   const data: Record<string, unknown> = {};
   if (b.name !== undefined) data.name = b.name.trim();
   if (b.email !== undefined) {
@@ -137,6 +147,7 @@ usersRouter.delete('/:id', requireStaff, requireRole('ADMIN'), async (req, res) 
   if (req.params.id === req.staff!.sub) return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
   const target = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+  if (isBaseAdmin(target.email)) return res.status(400).json({ error: 'Este es un correo base del sistema y no se puede eliminar' });
   if (target.role === 'ADMIN') {
     const admins = await prisma.user.count({ where: { role: 'ADMIN', active: true } });
     if (admins <= 1) return res.status(400).json({ error: 'Debe quedar al menos un administrador activo' });
