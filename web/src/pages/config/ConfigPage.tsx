@@ -45,6 +45,7 @@ const PURGE_ORDER: { key: string; title: string }[] = [
   { key: 'appointments', title: 'Citas (agenda)' },
   { key: 'billing', title: 'Cobros y facturas' },
   { key: 'messages', title: 'Mensajes' },
+  { key: 'seguimiento', title: 'Seguimiento (tablero de leads)' },
   { key: 'cashclose', title: 'Cuadres de caja' },
   { key: 'assets', title: 'Equipos' },
   { key: 'inventory', title: 'Inventario (productos e insumos)' },

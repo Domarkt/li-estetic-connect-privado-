@@ -7,7 +7,7 @@ export const maintenanceRouter = Router();
 
 // Categorías de limpieza. Las listas de tablas son constantes fijas (no entran del usuario),
 // así que es seguro usarlas con TRUNCATE. CASCADE resuelve las llaves foráneas hijas.
-type TargetKey = 'patients' | 'appointments' | 'billing' | 'messages' | 'cashclose' | 'assets' | 'inventory';
+type TargetKey = 'patients' | 'appointments' | 'billing' | 'messages' | 'seguimiento' | 'cashclose' | 'assets' | 'inventory';
 
 const TARGETS: Record<TargetKey, {
   label: string;
@@ -34,9 +34,14 @@ const TARGETS: Record<TargetKey, {
     run: async () => { await prisma.$executeRawUnsafe('TRUNCATE TABLE "Invoice", "InvoiceItem", "ChargeItem", "InvoiceSequence" RESTART IDENTITY CASCADE'); },
   },
   messages: {
-    label: 'Mensajes (chat de equipo, conversaciones, leads y notificaciones)',
+    label: 'Mensajes (chat de equipo, conversaciones y notificaciones)',
     count: () => prisma.teamMessage.count(),
-    run: async () => { await prisma.$executeRawUnsafe('TRUNCATE TABLE "TeamMessage", "TeamThreadRead", "Conversation", "Message", "Lead", "Notification" RESTART IDENTITY CASCADE'); },
+    run: async () => { await prisma.$executeRawUnsafe('TRUNCATE TABLE "TeamMessage", "TeamThreadRead", "Conversation", "Message", "Notification" RESTART IDENTITY CASCADE'); },
+  },
+  seguimiento: {
+    label: 'Seguimiento (tarjetas del tablero de leads)',
+    count: () => prisma.lead.count(),
+    run: async () => { await prisma.$executeRawUnsafe('TRUNCATE TABLE "Lead" RESTART IDENTITY CASCADE'); },
   },
   cashclose: {
     label: 'Cuadres de caja (cierres y deducciones)',
@@ -67,7 +72,7 @@ maintenanceRouter.get('/summary', requireStaff, requireRole('ADMIN'), async (_re
 });
 
 const purgeSchema = z.object({
-  target: z.enum(['patients', 'appointments', 'billing', 'messages', 'cashclose', 'assets', 'inventory']),
+  target: z.enum(['patients', 'appointments', 'billing', 'messages', 'seguimiento', 'cashclose', 'assets', 'inventory']),
   confirm: z.literal('BORRAR'),
 });
 
