@@ -9,6 +9,7 @@ import { notify, notifyBranchTherapists } from '../notifications/notifications.s
 import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
+import { upsertLead } from '../messaging/leads.service.js';
 
 export const appointmentsRouter = Router();
 
@@ -157,6 +158,9 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     },
     include: apptInclude,
   });
+
+  // Seguimiento automático: la cita agendada crea/avanza la tarjeta del paciente.
+  await upsertLead({ branchId: appt.branchId, patientId: patient.id, name: patient.name, stage: 'CITA_AGENDADA', summary: `Cita: ${serviceName}` });
 
   // Push al Google Calendar de la SUCURSAL (cada estética conecta su propio calendario
   // en Configuración → Integraciones). Si no está conectado / demo => no-op.

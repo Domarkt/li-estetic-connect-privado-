@@ -8,6 +8,7 @@ import { decrypt } from '../../utils/crypto.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
+import { upsertLead } from '../messaging/leads.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
@@ -109,6 +110,8 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
     },
     include: patientInclude,
   });
+  // Seguimiento automático: cliente nuevo con ficha pendiente entra al tablero.
+  await upsertLead({ branchId, patientId: patient.id, name: patient.name, stage: 'EN_CONVERSACION', summary: 'Cliente nuevo · ficha pendiente' });
   res.status(201).json(serializePatient(patient));
 });
 

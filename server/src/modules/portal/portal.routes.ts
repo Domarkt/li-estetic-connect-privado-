@@ -8,6 +8,7 @@ import { awardFiveStar } from '../points/points.automation.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '../mail/mail.service.js';
 import { decryptJson, encryptJson } from '../../utils/crypto.js';
+import { upsertLead } from '../messaging/leads.service.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -269,6 +270,9 @@ portalRouter.post('/appointments', async (req, res) => {
       startsAt: new Date(`${b.date}T${b.time}:00`), patientType: patient.type, status: 'SIN_CONFIRMAR',
     },
   });
+  // Seguimiento automático: la solicitud del portal entra al tablero para que recepción la contacte.
+  await upsertLead({ branchId: patient.branchId, patientId: patient.id, name: patient.name, stage: 'NUEVO_MENSAJE', summary: `Solicitó cita: ${b.serviceName}` });
+
   res.status(201).json({ ok: true, code: created.code, message: `Solicitud enviada · tu código de turno es ${created.code}` });
 });
 

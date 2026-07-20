@@ -654,6 +654,7 @@ model Message {
 model Lead {
   id        String        @id @default(cuid())
   branchId  String
+  patientId String? // vincula la tarjeta a un paciente para no duplicar (seguimiento automático)
   name      String
   summary   String?
   stage     PipelineStage @default(NUEVO_MENSAJE)
@@ -664,6 +665,7 @@ model Lead {
   branch Branch @relation(fields: [branchId], references: [id])
 
   @@index([branchId, stage])
+  @@index([patientId])
 }
 
 // ─────────────────────────────────────────────────────────────

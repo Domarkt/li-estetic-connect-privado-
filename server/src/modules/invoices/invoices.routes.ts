@@ -9,6 +9,7 @@ import { awardSalePoints } from '../points/points.automation.js';
 import { decrementSoldProducts } from '../inventory/inventory.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess } from '../mail/mail.service.js';
+import { upsertLead } from '../messaging/leads.service.js';
 
 export const invoicesRouter = Router();
 
@@ -201,6 +202,10 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
         await sendPatientAccess(pat.email, { name: pat.name, phone: pat.phone, replyTo: pat.branch?.email ?? undefined });
       }
     } catch { /* el acceso no debe bloquear la facturación */ }
+
+    // Seguimiento automático: el pago mueve la tarjeta del paciente a "Vendido".
+    const leadPat = await prisma.patient.findUnique({ where: { id: b.patientId }, select: { name: true, branchId: true } });
+    if (leadPat) await upsertLead({ branchId: leadPat.branchId, patientId: b.patientId, name: leadPat.name, stage: 'VENDIDO', summary: 'Compra registrada' });
   }
 
   const msg = saldoServicios > 0
