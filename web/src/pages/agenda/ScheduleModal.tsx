@@ -35,6 +35,8 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [loadingP, setLoadingP] = useState(true);
   const [errP, setErrP] = useState(false);
   const [pQuery, setPQuery] = useState('');
+  // Tras agendar: pantalla de confirmación con el botón de WhatsApp precargado.
+  const [done, setDone] = useState<{ whatsappUrl: string | null; patientName: string; emailSent: boolean } | null>(null);
 
   function loadPatients() {
     setLoadingP(true); setErrP(false);
@@ -79,15 +81,45 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
         if (!patientId) { toast('Selecciona un paciente'); setBusy(false); return; }
         payload.patientId = patientId;
       }
-      const r = await api.post<{ message: string }>('/appointments', payload);
+      const r = await api.post<{ message: string; whatsappUrl: string | null; patientName: string; emailSent: boolean }>('/appointments', payload);
       toast(r.message);
-      onSaved();
-      onClose();
+      onSaved(); // refresca la agenda por detrás
+      // No cerramos: mostramos la confirmación con el botón de WhatsApp al paciente.
+      setDone({ whatsappUrl: r.whatsappUrl, patientName: r.patientName, emailSent: r.emailSent });
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error al agendar');
     } finally {
       setBusy(false);
     }
+  }
+
+  // Pantalla de confirmación: la cita ya se creó; ofrece enviar el WhatsApp al paciente.
+  if (done) {
+    return (
+      <Overlay onClose={onClose} z={110}>
+        <div onClick={stop} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+          <div className="flex flex-col items-center gap-2 px-6 pt-7 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full text-[26px]" style={{ background: 'var(--ok-soft)' }}>✓</div>
+            <div className="text-base font-extrabold">Cita agendada</div>
+            <div className="text-[13px] text-muted">{done.patientName}{done.emailSent ? ' · confirmación enviada por correo' : ''}</div>
+          </div>
+          <div className="flex flex-col gap-2.5 px-6 py-6">
+            {done.whatsappUrl ? (
+              <>
+                <a href={done.whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => { onClose(); }}
+                  className="flex items-center justify-center gap-2 rounded-[11px] py-3.5 text-[14px] font-bold text-white" style={{ background: '#25D366' }}>
+                  <span className="text-[17px]">💬</span> Enviar confirmación por WhatsApp
+                </a>
+                <div className="text-center text-[11.5px] text-faint">Se abre WhatsApp con el mensaje ya escrito; solo toca <b>Enviar</b>.</div>
+              </>
+            ) : (
+              <div className="rounded-[10px] bg-bg px-3.5 py-3 text-center text-[12.5px] text-muted">Este paciente no tiene celular registrado, no se puede enviar por WhatsApp.</div>
+            )}
+            <button onClick={onClose} className="rounded-[11px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
+          </div>
+        </div>
+      </Overlay>
+    );
   }
 
   return (

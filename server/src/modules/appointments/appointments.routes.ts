@@ -205,10 +205,20 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     });
   }
 
+  // Enlace de WhatsApp con la confirmación ya escrita: recepción la envía al paciente
+  // con un solo clic al terminar de agendar (mensaje precargado, sin depender de Meta).
+  let whatsappUrl: string | null = null;
+  if (patient.phone) {
+    const cuando = startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
+    const codigo = appt.code ? ` Tu código de cita es ${appt.code}.` : '';
+    const confirmText = `Hola ${patient.name.split(' ')[0]} 💜 Confirmamos tu cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. — Li Estetic Center`;
+    whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(confirmText)}`;
+  }
+
   const message = patient.email
     ? (emailSent ? `Cita agendada · confirmación enviada a ${patient.email}` : `Cita agendada · no se pudo enviar el correo`)
     : 'Cita agendada y confirmada';
-  res.status(201).json({ ...serializeAppt(appt), emailSent, message });
+  res.status(201).json({ ...serializeAppt(appt), emailSent, message, whatsappUrl, patientName: patient.name });
 });
 
 const checkinSchema = z.object({ code: z.string().min(4) });
