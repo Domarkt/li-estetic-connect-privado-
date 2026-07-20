@@ -91,10 +91,28 @@ export default function ChatPage() {
   const activeThread = threads.find((t) => t.branchId === active) ?? null;
 
   return (
-    <div className="grid animate-fade gap-4" style={{ gridTemplateColumns: isAdmin ? '300px 1fr' : '1fr', height: 'calc(100dvh - 150px)' }}>
-      {/* Lista de hilos (solo admin ve varias sucursales) */}
+    <div className={`animate-fade flex h-[calc(100dvh-170px)] flex-col gap-3 md:h-[calc(100dvh-150px)] md:gap-4 ${isAdmin ? 'md:grid md:grid-cols-[300px_1fr]' : ''}`}>
+      {/* Móvil: selector de sucursal en chips horizontales (la barra lateral se oculta) */}
       {isAdmin && (
-        <div className="flex flex-col overflow-hidden rounded-base border border-line bg-card shadow-card">
+        <div className="flex flex-none gap-2 overflow-x-auto pb-0.5 md:hidden">
+          {threads.map((t) => {
+            const on = active === t.branchId;
+            return (
+              <button key={t.branchId} onClick={() => setActive(t.branchId)}
+                className="flex flex-none items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-bold"
+                style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                <span className="h-2 w-2 flex-none rounded-full" style={{ background: t.dotColor }} />
+                {t.name}
+                {t.unread > 0 && <span className="rounded-full bg-magenta px-1.5 text-[10px] font-bold text-white">{t.unread}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Lista de hilos (solo admin, solo escritorio) */}
+      {isAdmin && (
+        <div className="hidden flex-col overflow-hidden rounded-base border border-line bg-card shadow-card md:flex">
           <div className="border-b border-line-2 px-4 py-3 text-[13px] font-extrabold">Sucursales</div>
           <div className="flex-1 overflow-y-auto p-2">
             {threads.map((t) => {
@@ -115,18 +133,18 @@ export default function ChatPage() {
       )}
 
       {/* Chat */}
-      <div className="flex flex-col overflow-hidden rounded-base border border-line bg-card shadow-card">
-        <div className="flex items-center gap-3 border-b border-line px-[18px] py-3.5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-base border border-line bg-card shadow-card">
+        <div className="flex items-center gap-3 border-b border-line px-3.5 py-3 md:px-[18px] md:py-3.5">
           <div className="flex-1">
             <div className="text-[15px] font-extrabold">Chat del equipo{activeThread ? ` · ${activeThread.name}` : ''}</div>
             <div className="text-xs text-muted">Instrucciones internas del equipo. Puedes etiquetar a un paciente.</div>
           </div>
         </div>
-        <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-5" style={{ background: 'var(--bg)' }}>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3.5 md:p-5" style={{ background: 'var(--bg)' }}>
           {messages.length === 0 && <div className="py-10 text-center text-sm text-muted">Sin mensajes. Escribe el primero. 💬</div>}
           {messages.map((m) => (
             <div key={m.id} className="flex" style={{ justifyContent: m.mine ? 'flex-end' : 'flex-start' }}>
-              <div className="max-w-[440px]">
+              <div className="max-w-[85%] md:max-w-[440px]">
                 {!m.mine && <div className="mb-0.5 text-[11px] font-bold text-muted">{m.senderName} · {ROLE_LABEL[m.senderRole] ?? m.senderRole}</div>}
                 {m.mine && m.target !== 'ALL' && <div className="mb-0.5 text-right text-[10.5px] font-bold text-faint">Para: {ROLE_LABEL[m.target] ?? m.target}</div>}
                 <div className="rounded-2xl px-3.5 py-2.5 text-[13.5px]" style={m.mine ? { background: 'var(--magenta)', color: '#fff', borderBottomRightRadius: 4 } : { background: '#fff', border: '1px solid var(--line)', borderBottomLeftRadius: 4 }}>
@@ -149,9 +167,9 @@ export default function ChatPage() {
         </div>
 
         {/* Composer */}
-        <div className="border-t border-line p-3.5">
+        <div className="flex-none border-t border-line p-2.5 md:p-3.5">
           {/* Destinatario: cualquier rol puede dirigir el mensaje. */}
-          <div className="mb-2 flex items-center gap-1.5">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
             <span className="text-[11.5px] font-bold text-muted">Para:</span>
             {targetsFor(staff?.role).map((k) => {
               const on = target === k;
@@ -178,11 +196,11 @@ export default function ChatPage() {
           )}
           {showTag && active && <PatientPicker branchId={isAdmin ? active : undefined} onPick={(p) => { setTagged(p); setShowTag(false); }} onClose={() => setShowTag(false)} />}
           <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" onChange={onPickFile} className="hidden" />
-          <div className="flex items-center gap-2.5">
-            <button onClick={() => setShowTag((v) => !v)} title="Etiquetar paciente" className="flex-none rounded-[11px] border border-line bg-bg px-3 py-3 text-[13px] font-bold text-muted">🏷</button>
-            <button onClick={() => fileRef.current?.click()} title="Adjuntar foto, video o documento" className="flex-none rounded-[11px] border border-line bg-bg px-3 py-3 text-[13px] font-bold text-muted">📎</button>
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder="Escribe una instrucción…" className="flex-1 rounded-[11px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" />
-            <button onClick={send} disabled={sending} className="rounded-[11px] bg-magenta px-5 py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{sending ? '…' : 'Enviar'}</button>
+          <div className="flex items-center gap-1.5 md:gap-2.5">
+            <button onClick={() => setShowTag((v) => !v)} title="Etiquetar paciente" className="flex-none rounded-[11px] border border-line bg-bg px-2.5 py-2.5 text-[13px] font-bold text-muted md:px-3 md:py-3">🏷</button>
+            <button onClick={() => fileRef.current?.click()} title="Adjuntar foto, video o documento" className="flex-none rounded-[11px] border border-line bg-bg px-2.5 py-2.5 text-[13px] font-bold text-muted md:px-3 md:py-3">📎</button>
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder="Escribe…" className="min-w-0 flex-1 rounded-[11px] border border-line px-3 py-2.5 text-[16px] outline-none focus:border-magenta md:px-3.5 md:py-3 md:text-[13.5px]" />
+            <button onClick={send} disabled={sending} className="flex-none rounded-[11px] bg-magenta px-3.5 py-2.5 text-[13px] font-bold text-white disabled:opacity-60 md:px-5 md:py-3 md:text-[13.5px]">{sending ? '…' : 'Enviar'}</button>
           </div>
         </div>
       </div>

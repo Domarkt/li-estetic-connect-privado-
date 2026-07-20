@@ -5,10 +5,11 @@ import { api } from '../lib/api';
 import { Icon } from '../components/icons';
 import type { Role, Branch } from '../lib/types';
 
-const ROLE_TILES: { key: Role; label: string; desc: string; icon: string; email: string }[] = [
-  { key: 'ADMIN', label: 'Administradora', desc: 'Vista general', icon: 'grid', email: 'direccion@liestetic.do' },
-  { key: 'RECEPCIONISTA', label: 'Recepcionista', desc: 'Agenda · cobro', icon: 'cal', email: 'recepcion.sv@liestetic.do' },
-  { key: 'ESTETICISTA', label: 'Esteticista', desc: 'Fichas · atención', icon: 'star', email: 'yerlin@liestetic.do' },
+// Sin correos de ejemplo: cada quien escribe sus credenciales (nunca precargadas).
+const ROLE_TILES: { key: Role; label: string; desc: string; icon: string }[] = [
+  { key: 'ADMIN', label: 'Administradora', desc: 'Vista general', icon: 'grid' },
+  { key: 'RECEPCIONISTA', label: 'Recepcionista', desc: 'Agenda · cobro', icon: 'cal' },
+  { key: 'ESTETICISTA', label: 'Esteticista', desc: 'Fichas · atención', icon: 'star' },
 ];
 
 const BRANCH_DOTS: Record<string, string> = { e1: '#B31C86', e2: '#2C7FB8', e3: '#1F9D6B' };
@@ -21,7 +22,7 @@ export default function StaffLogin() {
   const [branchId, setBranchId] = useState<string>('');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('liestetic');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -44,12 +45,6 @@ export default function StaffLogin() {
         setBranchId('e1');
       });
   }, []);
-
-  // Autocompleta el correo demo al elegir rol (comodidad).
-  useEffect(() => {
-    const tile = ROLE_TILES.find((t) => t.key === role);
-    if (tile) setEmail(tile.email);
-  }, [role]);
 
   const isAdmin = role === 'ADMIN';
   const branchHint = isAdmin
