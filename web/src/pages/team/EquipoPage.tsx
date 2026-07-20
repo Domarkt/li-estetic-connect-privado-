@@ -88,6 +88,7 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
   const [role, setRole] = useState<Role>(user?.roleKey ?? 'RECEPCIONISTA');
   const [branchId, setBranchId] = useState(user?.branchId ?? branches[0]?.id ?? '');
   const [active, setActive] = useState(user?.active ?? true);
+  const [canCatalog, setCanCatalog] = useState(user?.canManageCatalog ?? false);
   const [busy, setBusy] = useState(false);
 
   function genPassword() { setPassword('Li' + Math.random().toString(36).slice(2, 8) + '!'); }
@@ -99,14 +100,14 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
     try {
       if (isEdit) {
         const r = await api.patch<{ message: string }>(`/users/${user!.id}`, {
-          name: name.trim(), email: email.trim(), role, active,
+          name: name.trim(), email: email.trim(), role, active, canManageCatalog: canCatalog,
           branchId: role === 'ADMIN' ? null : branchId,
           ...(password.trim() ? { password } : {}),
         });
         toast(r.message);
       } else {
         const r = await api.post<{ message: string }>('/users', {
-          name: name.trim(), email: email.trim(), password, role,
+          name: name.trim(), email: email.trim(), password, role, canManageCatalog: canCatalog,
           branchId: role === 'ADMIN' ? undefined : branchId,
         });
         toast(r.message);
@@ -148,6 +149,15 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
               </label>
             )}
           </div>
+          {role !== 'ADMIN' && (
+            <label className="flex items-start gap-2.5 rounded-[9px] border border-line px-3.5 py-3">
+              <input type="checkbox" checked={canCatalog} onChange={(e) => setCanCatalog(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
+              <span className="text-[13px]">
+                <b className="font-semibold">Puede gestionar el catálogo</b>
+                <span className="block text-[11.5px] text-muted">Crear y editar servicios, combos y productos. Ojo: el catálogo es común a las 3 sucursales.</span>
+              </span>
+            </label>
+          )}
           {isEdit && (
             <label className="flex items-center gap-2.5 rounded-[9px] border border-line px-3.5 py-3" style={user?.protected ? { opacity: 0.6 } : undefined}>
               <input type="checkbox" checked={user?.protected ? true : active} disabled={user?.protected} onChange={(e) => setActive(e.target.checked)} className="h-4 w-4 accent-magenta" />

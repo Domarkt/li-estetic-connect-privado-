@@ -60,7 +60,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     const item = catalog.find((c) => c.id === id);
     if (!item) { setConcept(''); return; }
     setConcept(item.name);
-    setAmountDefault(String(item.price));
+    // Sin precio en el catálogo (0): se deja vacío para escribir el monto del día.
+    setAmountDefault(item.price ? String(item.price) : '');
   }
 
   const filteredPatients = patients.filter((p) => {
@@ -233,7 +234,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio o paquete</span>
                 <select value={catalogId} onChange={(e) => pickCatalog(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta">
                   <option value="">Selecciona del catálogo…</option>
-                  {catalog.map((c) => <option key={c.id} value={c.id}>{KIND_TAG[c.kind] ?? c.kind} · {c.name} — {fmtRD(c.price)}</option>)}
+                  {catalog.map((c) => <option key={c.id} value={c.id}>{KIND_TAG[c.kind] ?? c.kind} · {c.name} — {c.price ? fmtRD(c.price) : 'sin precio'}</option>)}
                 </select>
                 {catalog.length === 0 && <span className="text-[11px] text-faint">No hay servicios en el catálogo todavía. Créalos en Catálogo.</span>}
               </label>

@@ -198,7 +198,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio / paquete</span>
             <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
               {!isNew && <option value={FOLLOWUP}>— Seguimiento de tratamiento (continuación, sin cargo) —</option>}
-              {services.map((s) => <option key={s.id} value={s.id}>{s.name} — {fmtRD(s.price)}</option>)}
+              {services.map((s) => <option key={s.id} value={s.id}>{s.name} — {s.price ? fmtRD(s.price) : "sin precio"}</option>)}
             </select>
           </label>
           {!isNew && serviceId === FOLLOWUP && (

@@ -51,7 +51,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
                 style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
                 <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>
                 <div className="flex-1"><div className="text-[13.5px] font-bold">{it.name}</div><div className="text-[11.5px] capitalize text-muted">{it.kind.toLowerCase()}</div></div>
-                <div className="text-[13.5px] font-extrabold text-magenta">{fmtRD(it.price)}</div>
+                <div className="text-[13.5px] font-extrabold text-magenta">{it.price ? fmtRD(it.price) : <span className="text-[12px] text-muted">Sin precio</span>}</div>
               </div>
             );
           })}

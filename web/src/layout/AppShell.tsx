@@ -72,7 +72,11 @@ export default function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!staff) return null;
-  const items = NAV[staff.role];
+  // Con el permiso de catálogo, el colaborador ve "Catálogo" aunque no sea admin.
+  const base = NAV[staff.role];
+  const items = staff.canManageCatalog && !base.some((i) => i.key === 'catalogo')
+    ? [...base, { key: 'catalogo', label: 'Catálogo' }]
+    : base;
   const current = location.pathname.split('/')[2] ?? 'dashboard';
   const page = PAGE_TITLE[current] ?? PAGE_TITLE.dashboard;
 

@@ -61,7 +61,7 @@ export default function CatalogPage() {
             </div>
             <div className="mb-1.5 text-sm font-bold leading-tight">{it.name}</div>
             <div className="mb-3 text-xs text-faint">{it.kind === 'INSUMO' ? 'Insumo operativo' : it.sessions > 1 ? `${it.sessions} sesiones` : it.tag || '1 sesión'}</div>
-            <div className="text-[19px] font-extrabold text-magenta">{it.kind === 'INSUMO' && !it.price ? '—' : fmtRD(it.price)}</div>
+            <div className="text-[19px] font-extrabold text-magenta">{!it.price ? <span className="text-[13px] font-bold text-muted">Sin precio</span> : fmtRD(it.price)}</div>
 
             {isAdmin && (
               <div className="mt-3 flex gap-2 border-t border-line pt-3">
@@ -135,7 +135,7 @@ function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
 
   async function save() {
     if (!name.trim()) { toast('El nombre es requerido'); return; }
-    if (!stockable && !price) { toast('El precio es requerido'); return; }
+    // El precio es opcional: la directora crea combos a diario y define el monto al cobrar.
     setBusy(true);
     const payload = {
       kind, name: name.trim(),
@@ -172,7 +172,7 @@ function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
           </label>
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'INSUMO' ? 'Ej. Toallas / Papel de baño' : 'Ej. Radiofrecuencia facial'} /></label>
           <div className="flex gap-3">
-            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">{kind === 'INSUMO' ? 'Costo (opcional)' : 'Precio (RD$)'}</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} placeholder={kind === 'INSUMO' ? '0' : '4000'} /></label>
+            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">{kind === 'INSUMO' ? 'Costo (opcional)' : 'Precio RD$ (opcional)'}</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} placeholder="Dejar vacío = sin precio" /></label>
             {stockable ? (
               <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Unidad</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="unidad, rollo, litro…" /></label>
             ) : (

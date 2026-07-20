@@ -47,6 +47,7 @@ usersRouter.get('/team', requireStaff, requireRole('ADMIN'), branchScope, async 
   const systemUsers = users.map((u) => ({
     id: u.id, name: u.name, email: u.email, role: ROLE_LABEL[u.role], roleKey: u.role,
     branch: u.branch?.name ?? 'Todas', branchId: u.branchId, avatarColor: u.avatarColor, active: u.active,
+    canManageCatalog: u.canManageCatalog,
     // Correo base de Domarkt: no se puede eliminar ni desactivar desde aquí.
     protected: isBaseAdmin(u.email),
   }));
@@ -60,6 +61,7 @@ const createSchema = z.object({
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
   role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']),
   branchId: z.string().nullish(),
+  canManageCatalog: z.boolean().optional(),
 });
 
 /** Crear colaborador (Admin): asigna correo + contraseña de acceso al sistema. */
@@ -77,6 +79,7 @@ usersRouter.post('/', requireStaff, requireRole('ADMIN'), async (req, res) => {
   const user = await prisma.user.create({
     data: {
       name: b.name, email, passwordHash: await hashPassword(b.password), role: b.role, branchId,
+      canManageCatalog: b.canManageCatalog ?? false,
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
       ...(b.role === 'ESTETICISTA' ? { therapistProfile: { create: {} } } : {}),
     },
@@ -96,6 +99,7 @@ const updateSchema = z.object({
   role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
   branchId: z.string().nullish(),
   active: z.boolean().optional(),
+  canManageCatalog: z.boolean().optional(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
 });
 
@@ -123,6 +127,7 @@ usersRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) =
     data.email = email;
   }
   if (b.active !== undefined) data.active = b.active;
+  if (b.canManageCatalog !== undefined) data.canManageCatalog = b.canManageCatalog;
   if (b.password) data.passwordHash = await hashPassword(b.password);
 
   const role = b.role ?? current.role;

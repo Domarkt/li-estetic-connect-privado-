@@ -57,6 +57,7 @@ authRouter.post('/staff/login', async (req, res) => {
         ? { id: user.branch.id, code: user.branch.code, name: user.branch.name, place: user.branch.place, dotColor: user.branch.dotColor }
         : null,
       avatarColor: user.avatarColor,
+      canManageCatalog: user.canManageCatalog,
     },
   });
 });
@@ -78,6 +79,7 @@ authRouter.get('/staff/me', requireStaff, async (req, res) => {
       ? { id: user.branch.id, code: user.branch.code, name: user.branch.name, place: user.branch.place, dotColor: user.branch.dotColor }
       : null,
     avatarColor: user.avatarColor,
+    canManageCatalog: user.canManageCatalog,
   });
 });
 
