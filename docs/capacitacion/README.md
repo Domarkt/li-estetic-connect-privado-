@@ -66,3 +66,14 @@ La estructura de cada módulo es siempre la misma, para que el equipo sepa dónd
 | **Paso a paso** | La secuencia exacta, numerada |
 | **Ojo con esto** | Errores que cuestan dinero o tiempo |
 | **Atajos y dudas frecuentes** | Lo que preguntan siempre |
+
+## Generar los PDF automáticamente
+
+En vez de imprimir uno por uno, se convierten todos con Chrome en modo headless:
+
+```bash
+node generar.mjs        # 1. genera los HTML en salida/
+node a-pdf.mjs          # 2. convierte todo a PDF en pdf/
+```
+
+Los PDF quedan en `pdf/` (A4, listos para imprimir o enviar por WhatsApp).
