@@ -1,16 +1,36 @@
 import { prisma } from '../../db/prisma.js';
 
 /**
- * Áreas del cuerpo que cubren los paquetes y combos. Incluyen 2 y la 3ra es adicional.
+ * Áreas que cubren los paquetes y combos, en dos familias:
+ *  - Corporal: combos reductores (abdomen, espalda, lateral).
+ *  - Láser: depilación (piernas, axilas, brazos, cuerpo completo, bozo, cara, etc.).
+ * En el corporal se incluyen 2 y la 3ra es adicional; en láser se eligen las que cubra el paquete.
  */
-export const AREAS = ['ABDOMEN', 'ESPALDA', 'ABDOMEN_LATERAL'] as const;
+export const AREAS = [
+  'ABDOMEN', 'ESPALDA', 'ABDOMEN_LATERAL',
+  'PIERNAS', 'AXILAS', 'BRAZOS', 'CUERPO_COMPLETO', 'BOZO', 'CARA', 'ENTREPIERNAS', 'INTIMOS',
+] as const;
 export type Area = (typeof AREAS)[number];
 
 export const AREA_LABEL: Record<string, string> = {
   ABDOMEN: 'Abdomen',
   ESPALDA: 'Espalda',
   ABDOMEN_LATERAL: 'Abdomen lateral',
+  PIERNAS: 'Piernas',
+  AXILAS: 'Axilas',
+  BRAZOS: 'Brazos',
+  CUERPO_COMPLETO: 'Cuerpo completo',
+  BOZO: 'Bozo',
+  CARA: 'Cara',
+  ENTREPIERNAS: 'Entrepiernas',
+  INTIMOS: 'Íntimos',
 };
+
+/** Familias de áreas para agrupar el selector. */
+export const AREA_GROUPS: { label: string; areas: Area[] }[] = [
+  { label: 'Corporal', areas: ['ABDOMEN', 'ESPALDA', 'ABDOMEN_LATERAL'] },
+  { label: 'Láser', areas: ['PIERNAS', 'AXILAS', 'BRAZOS', 'CUERPO_COMPLETO', 'BOZO', 'CARA', 'ENTREPIERNAS', 'INTIMOS'] },
+];
 
 /** Precio de la 3ra área (se cobra en recepción como cargo pendiente). */
 export const AREA_EXTRA_PRECIO = 1500;

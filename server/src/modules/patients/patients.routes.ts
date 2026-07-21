@@ -152,7 +152,7 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
 const areasRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'] as const;
 
 const definirAreasSchema = z.object({
-  areas: z.array(z.enum(AREAS)).min(1, 'Elige al menos un área').max(3),
+  areas: z.array(z.enum(AREAS)).min(1, 'Elige al menos un área').max(8),
 });
 
 /** Definir las áreas incluidas del combo y repartir sus sesiones (12 → 6 y 6). */
