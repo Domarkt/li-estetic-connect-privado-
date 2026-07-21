@@ -82,6 +82,8 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         areas: serializeAreas(t.areas ?? []),
         // Técnicas que cubre el combo/paquete: la esteticista marca cuáles aplicó.
         services: (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name })),
+        // Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector.
+        areaGroup: t.catalogItem?.areaGroup ?? null,
       })),
     // Historial de sesiones atendidas: qué se le aplicó y en qué áreas, para que la
     // esteticista sepa qué le viene dando y qué toca en la próxima visita.
@@ -170,14 +172,18 @@ patientsRouter.patch('/treatments/:treatmentId/areas', requireStaff, requireRole
   });
 });
 
-const extraSchema = z.object({ area: z.enum(AREAS) });
+// El precio de la área adicional es editable (láser varía: no cuesta igual "bozo" que "cuerpo completo").
+const extraSchema = z.object({
+  area: z.enum(AREAS),
+  price: z.number().int().nonnegative().optional(),
+});
 
 /**
- * Agregar la 3ra área (adicional). Crea el cargo de RD$1,500 pendiente de cobrar
- * en recepción y le asigna sesiones equivalentes a las de un área incluida.
+ * Agregar un área adicional al paquete. Crea el cargo (precio editable, por defecto
+ * RD$1,500) pendiente de cobrar en recepción y le asigna sesiones como un área incluida.
  */
 patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, requireRole(...areasRoles), async (req, res) => {
-  const { area } = extraSchema.parse(req.body);
+  const { area, price } = extraSchema.parse(req.body);
   const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true, areas: true } });
   if (!t) return res.status(404).json({ error: 'Paquete no encontrado' });
   if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
@@ -185,23 +191,28 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
 
   const incluidas = t.areas.filter((a) => !a.isExtra);
   const sesiones = incluidas[0]?.totalSessions ?? Math.max(1, Math.round(t.totalSessions / 2));
+  const monto = price ?? AREA_EXTRA_PRECIO;
 
   await prisma.treatmentArea.create({
     data: { treatmentId: t.id, area, totalSessions: sesiones, isExtra: true },
   });
 
-  // Queda como cargo pendiente para que recepción lo cobre.
-  await prisma.chargeItem.create({
-    data: {
-      branchId: t.patient.branchId, patientId: t.patientId,
-      name: `Área adicional: ${AREA_LABEL[area]} (${t.name})`,
-      price: AREA_EXTRA_PRECIO, createdById: req.staff!.sub,
-    },
-  });
+  // Cargo pendiente (solo si el monto es > 0) para que recepción lo cobre.
+  if (monto > 0) {
+    await prisma.chargeItem.create({
+      data: {
+        branchId: t.patient.branchId, patientId: t.patientId,
+        name: `Área adicional: ${AREA_LABEL[area]} (${t.name})`,
+        price: monto, createdById: req.staff!.sub,
+      },
+    });
+  }
 
   res.status(201).json({
     ok: true,
-    message: `${AREA_LABEL[area]} agregada · RD$${AREA_EXTRA_PRECIO.toLocaleString('en-US')} pendiente de cobrar en recepción`,
+    message: monto > 0
+      ? `${AREA_LABEL[area]} agregada · RD$${monto.toLocaleString('en-US')} pendiente de cobrar en recepción`
+      : `${AREA_LABEL[area]} agregada (sin cargo)`,
   });
 });
 

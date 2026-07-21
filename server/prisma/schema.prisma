@@ -380,6 +380,7 @@ model CatalogItem {
   stock     Int? // (legacy) stock global; el stock real es por sucursal en StockLevel
   unit      String? // unidad de medida del producto/insumo: "unidad", "rollo", "litro", "caja"...
   tag       String? // "Ahorro RD$2,000", "Popular"
+  areaGroup String? // combos/paquetes: familia de áreas — CORPORAL | LASER (para el selector)
   active    Boolean     @default(true)
   createdAt DateTime    @default(now())
 

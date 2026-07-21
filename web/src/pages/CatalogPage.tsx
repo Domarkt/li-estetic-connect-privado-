@@ -181,6 +181,8 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const componible = kind === 'COMBO' || kind === 'PAQUETE';
   const [servicios, setServicios] = useState<CatalogItem[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>((item?.services ?? []).map((s) => s.id));
+  // Familia de áreas: define qué grupo se muestra al asignar áreas al paciente.
+  const [areaGroup, setAreaGroup] = useState<'' | 'CORPORAL' | 'LASER'>(item?.areaGroup ?? '');
 
   useEffect(() => {
     if (!componible) return;
@@ -200,7 +202,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
       sessions: Number(sessions) || 1,
       unit: stockable ? (unit.trim() || undefined) : undefined,
       // Solo se envían cuando aplica, para no borrar las técnicas de otros tipos.
-      ...(componible ? { serviceIds } : {}),
+      ...(componible ? { serviceIds, areaGroup: areaGroup || null } : {}),
     };
     try {
       if (mode === 'edit' && item) {
@@ -239,6 +241,17 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             )}
           </div>
           {stockable && <p className="text-[11.5px] text-faint">El stock se controla por sucursal en la pestaña <b>Inventario</b>.</p>}
+
+          {/* Tipo de áreas del combo: define qué grupo se ofrece al asignar áreas al paciente. */}
+          {componible && (
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Tipo de áreas</span>
+              <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={areaGroup} onChange={(e) => setAreaGroup(e.target.value as '' | 'CORPORAL' | 'LASER')}>
+                <option value="">Sin áreas (no aplica)</option>
+                <option value="CORPORAL">Corporal (abdomen, espalda, lateral)</option>
+                <option value="LASER">Láser (piernas, axilas, cara…)</option>
+              </select>
+            </label>
+          )}
 
           {/* Técnicas del combo/paquete: es el checklist que la esteticista marca por sesión. */}
           {componible && (

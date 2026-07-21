@@ -304,7 +304,6 @@ const AREA_GRUPOS: { label: string; areas: { key: string; label: string }[] }[] 
     { key: 'INTIMOS', label: 'Íntimos' },
   ] },
 ];
-const LABEL_AREA: Record<string, string> = Object.fromEntries(AREA_GRUPOS.flatMap((g) => g.areas.map((a) => [a.key, a.label])));
 const PRECIO_AREA_EXTRA = 1500;
 
 /**
@@ -317,6 +316,14 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
   const extras = (pkg.areas ?? []).filter((a) => a.isExtra).map((a) => a.area);
   const [sel, setSel] = useState<string[]>(incluidas.length ? incluidas : []);
   const [busy, setBusy] = useState(false);
+  // Área adicional con precio editable (láser varía según la zona).
+  const [extraFor, setExtraFor] = useState<string | null>(null);
+  const [extraPrice, setExtraPrice] = useState(String(PRECIO_AREA_EXTRA));
+
+  // Muestra solo el grupo del combo (Corporal/Láser); si no está definido, muestra todos.
+  const grupos = pkg.areaGroup
+    ? AREA_GRUPOS.filter((g) => g.label.toUpperCase() === (pkg.areaGroup === 'LASER' ? 'LÁSER' : 'CORPORAL'))
+    : AREA_GRUPOS;
 
   const toggle = (k: string) => {
     if (extras.includes(k)) return; // ya es adicional
@@ -333,14 +340,14 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
 
-  async function agregarExtra(area: string) {
-    if (!window.confirm(`Agregar ${LABEL_AREA[area]} como área adicional. Se generará un cargo de ${fmtRD(PRECIO_AREA_EXTRA)} para cobrar en recepción. ¿Continuar?`)) return;
+  async function confirmarExtra() {
+    if (!extraFor) return;
     setBusy(true);
     try {
-      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/extra-area`, { area });
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/extra-area`, { area: extraFor, price: Number(extraPrice) || 0 });
       toast(r.message);
       onSaved();
-    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); setExtraFor(null); }
   }
 
   const porArea = sel.length ? Math.floor(pkg.total / sel.length) : 0;
@@ -355,28 +362,41 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
 
         <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
           <div className="text-xs font-bold text-muted">Marca las áreas que cubre este paquete</div>
-          {AREA_GRUPOS.map((g) => (
+          {grupos.map((g) => (
             <div key={g.label} className="flex flex-col gap-1.5">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-faint">{g.label}</div>
+              {grupos.length > 1 && <div className="text-[11px] font-bold uppercase tracking-wide text-faint">{g.label}</div>}
               {g.areas.map((a) => {
                 const esExtra = extras.includes(a.key);
                 const on = sel.includes(a.key);
+                const editando = extraFor === a.key;
                 return (
-                  <div key={a.key} className="flex items-center gap-2">
-                    <button onClick={() => toggle(a.key)} disabled={esExtra}
-                      className="flex flex-1 items-center gap-3 rounded-[11px] border px-4 py-2.5 text-left disabled:opacity-60"
-                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
-                      <span className="flex-1 text-[13.5px] font-bold">{a.label}</span>
-                      {esExtra
-                        ? <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[10.5px] font-bold text-warn">adicional</span>
-                        : <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>}
-                    </button>
-                    {!esExtra && !on && sel.length >= 1 && (
-                      <button onClick={() => agregarExtra(a.key)} disabled={busy}
-                        className="flex-none rounded-[9px] border px-2.5 py-2 text-[11.5px] font-bold"
-                        style={{ borderColor: 'var(--warn)', color: 'var(--warn)', background: 'var(--warn-soft)' }}>
-                        +{fmtRD(PRECIO_AREA_EXTRA)}
+                  <div key={a.key} className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => toggle(a.key)} disabled={esExtra}
+                        className="flex flex-1 items-center gap-3 rounded-[11px] border px-4 py-2.5 text-left disabled:opacity-60"
+                        style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                        <span className="flex-1 text-[13.5px] font-bold">{a.label}</span>
+                        {esExtra
+                          ? <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[10.5px] font-bold text-warn">adicional</span>
+                          : <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>}
                       </button>
+                      {!esExtra && !on && sel.length >= 1 && (
+                        <button onClick={() => { setExtraFor(editando ? null : a.key); setExtraPrice(String(PRECIO_AREA_EXTRA)); }} disabled={busy}
+                          className="flex-none rounded-[9px] border px-2.5 py-2 text-[11.5px] font-bold"
+                          style={{ borderColor: 'var(--warn)', color: 'var(--warn)', background: editando ? 'var(--warn)' : 'var(--warn-soft)', ...(editando ? { color: '#fff' } : {}) }}>
+                          + adicional
+                        </button>
+                      )}
+                    </div>
+                    {/* Área adicional con precio editable, se cobra en recepción. */}
+                    {editando && (
+                      <div className="flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2">
+                        <span className="text-[12px] font-bold text-muted">RD$</span>
+                        <input autoFocus value={extraPrice} onChange={(e) => setExtraPrice(e.target.value.replace(/\D/g, ''))}
+                          className="w-24 rounded-[8px] border border-line px-2.5 py-1.5 text-[13px] outline-none focus:border-magenta" placeholder="1500" />
+                        <button onClick={confirmarExtra} disabled={busy} className="ml-auto rounded-[8px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">Agregar y cobrar</button>
+                        <button onClick={() => setExtraFor(null)} className="rounded-[8px] px-2 py-1.5 text-[12px] font-bold text-muted">×</button>
+                      </div>
                     )}
                   </div>
                 );
@@ -388,7 +408,7 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
               Las {pkg.total} sesiones se reparten: <b>{porArea} por área</b> ({sel.length} área{sel.length === 1 ? '' : 's'}).
             </div>
           )}
-          <div className="text-[11px] text-faint">Las áreas marcadas van incluidas. El botón <b>+{fmtRD(PRECIO_AREA_EXTRA)}</b> agrega un área adicional que se cobra en recepción.</div>
+          <div className="text-[11px] text-faint">Las áreas marcadas van incluidas. <b>+ adicional</b> agrega un área con precio editable que se cobra en recepción.</div>
         </div>
 
         <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">

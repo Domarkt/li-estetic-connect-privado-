@@ -45,6 +45,8 @@ export interface PatientPackage {
   areas?: TreatmentArea[];
   /** Técnicas que cubre el combo/paquete (cavitación, radiofrecuencia, lipoláser…). */
   services?: { id: string; name: string }[];
+  /** Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector. */
+  areaGroup?: 'CORPORAL' | 'LASER' | null;
 }
 
 export interface TreatmentArea {
@@ -109,6 +111,8 @@ export interface CatalogItem {
   tag: string | null;
   /** Si es combo/paquete: técnicas que incluye. */
   services?: { id: string; name: string }[];
+  /** Combo/paquete: familia de áreas (CORPORAL | LASER). */
+  areaGroup?: 'CORPORAL' | 'LASER' | null;
 }
 
 export const fmtRD = (n: number) => 'RD$' + Math.round(n).toLocaleString('en-US');

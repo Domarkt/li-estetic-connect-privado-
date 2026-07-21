@@ -53,6 +53,8 @@ const catalogSchema = z.object({
   category: z.string().optional(),
   unit: z.string().optional(),
   tag: z.string().optional(),
+  // Combos/paquetes: familia de áreas para el selector (o null si no aplica).
+  areaGroup: z.enum(['CORPORAL', 'LASER']).nullish(),
   // Técnicas que incluye un combo/paquete (ids de ítems SERVICIO del catálogo).
   serviceIds: z.array(z.string()).optional(),
 });
