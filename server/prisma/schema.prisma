@@ -488,6 +488,7 @@ model Appointment {
   therapistId   String?
   serviceName   String
   catalogItemId String?
+  treatmentId   String? // paquete/combo al que pertenece esta sesión (para descontarla al cerrar)
   startsAt      DateTime
   durationMin   Int               @default(60)
   status        AppointmentStatus @default(SIN_CONFIRMAR)

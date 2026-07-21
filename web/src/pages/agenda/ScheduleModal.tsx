@@ -35,6 +35,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [loadingP, setLoadingP] = useState(true);
   const [errP, setErrP] = useState(false);
   const [pQuery, setPQuery] = useState('');
+  const [treatmentId, setTreatmentId] = useState(''); // paquete cuya sesión consume la cita
   // Tras agendar: pantalla de confirmación con el botón de WhatsApp precargado.
   const [done, setDone] = useState<{ whatsappUrl: string | null; patientName: string; emailSent: boolean } | null>(null);
 
@@ -66,6 +67,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
         isFollowUp: followUp,
         serviceName: followUp ? 'Seguimiento de tratamiento' : (svc?.name ?? 'Valoración inicial'),
         catalogItemId: followUp ? null : (svc?.id ?? null),
+        treatmentId: treatmentId || null,
       };
       if (isNew) {
         if (!newName.trim() || !newPhone.trim()) { toast('Nombre y celular del paciente nuevo requeridos'); setBusy(false); return; }
@@ -201,6 +203,22 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
               {services.map((s) => <option key={s.id} value={s.id}>{s.name} — {s.price ? fmtRD(s.price) : "sin precio"}</option>)}
             </select>
           </label>
+          {/* Si el paciente tiene paquetes comprados, se elige cuál consume esta sesión.
+              Así el sistema descuenta la sesión al cerrar el turno (antes se llevaba en papel). */}
+          {(() => {
+            const pk = patients.find((p) => p.id === patientId)?.packages ?? [];
+            if (isNew || pk.length === 0) return null;
+            return (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-muted">¿De cuál paquete es esta sesión?</span>
+                <select value={treatmentId} onChange={(e) => setTreatmentId(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]">
+                  <option value="">— Ninguno (servicio suelto) —</option>
+                  {pk.map((t) => <option key={t.id} value={t.id}>{t.name} · quedan {t.remaining} de {t.total}</option>)}
+                </select>
+                <span className="text-[11px] text-faint">Al cerrar el turno se descuenta 1 sesión del paquete elegido.</span>
+              </label>
+            );
+          })()}
           {!isNew && serviceId === FOLLOWUP && (
             <div className="rounded-[10px] border px-3.5 py-2.5 text-xs font-semibold" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0', color: '#1E5A82' }}>
               ↻ Solo se agenda la próxima sesión del tratamiento actual. No se carga ningún servicio nuevo.

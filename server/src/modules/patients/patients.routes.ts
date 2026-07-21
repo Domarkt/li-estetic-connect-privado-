@@ -67,6 +67,18 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
           balance: treatment.balance,
         }
       : null,
+    // TODOS los paquetes/combos activos: el paciente puede tener varios comprados
+    // y sin consumir (antes solo se veía uno y el control se llevaba en papel).
+    packages: patient.treatments
+      .filter((t) => t.active)
+      .map((t) => ({
+        id: t.id, name: t.name,
+        total: t.totalSessions, done: t.doneSessions,
+        remaining: Math.max(0, t.totalSessions - t.doneSessions),
+        pct: t.totalSessions > 0 ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0,
+        price: t.price,
+        balance: t.balance,
+      })),
     // Cargos pendientes que la esteticista mandó a recepción
     pendingCharges: await prisma.chargeItem.findMany({
       where: { patientId: patient.id, status: 'PENDIENTE_FACTURAR' },
@@ -143,8 +155,12 @@ function parseBirth(raw?: string): Date | null {
  * Escribe a través de Prisma para que la PII quede CIFRADA (nunca por SQL directo).
  * Con dryRun sólo valida y reporta: no escribe nada.
  */
-patientsRouter.post('/import', requireStaff, requireRole('ADMIN'), async (req, res) => {
+patientsRouter.post('/import', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), async (req, res) => {
   const b = importSchema.parse(req.body);
+  // Recepción solo puede cargar en SU sucursal: se ignora la columna "sucursal" del archivo.
+  const isAdmin = req.staff!.role === 'ADMIN';
+  const forcedBranchId = isAdmin ? null : req.staff!.branchId;
+  if (!isAdmin && !forcedBranchId) return res.status(400).json({ error: 'Tu usuario no tiene sucursal asignada' });
 
   const branches = await prisma.branch.findMany({ select: { id: true, code: true, name: true } });
   const byCode = new Map(branches.map((x) => [x.code.toLowerCase(), x.id]));
@@ -174,7 +190,7 @@ patientsRouter.post('/import', requireStaff, requireRole('ADMIN'), async (req, r
     if (seen.has(key)) { duplicates++; continue; } // ya existe (o repetido en el archivo)
 
     const rawBranch = str('branch').toLowerCase();
-    const branchId = rawBranch ? (byCode.get(rawBranch) ?? byName.get(rawBranch)) : b.branchId;
+    const branchId = forcedBranchId ?? (rawBranch ? (byCode.get(rawBranch) ?? byName.get(rawBranch)) : b.branchId);
     if (!branchId) { errors.push({ line, name, reason: rawBranch ? `Sucursal no encontrada: ${rawBranch}` : 'Sin sucursal' }); continue; }
 
     const sexRaw = str('sex').toUpperCase().charAt(0);

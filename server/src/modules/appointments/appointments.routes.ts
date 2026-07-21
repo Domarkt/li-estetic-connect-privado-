@@ -82,6 +82,7 @@ const createSchema = z.object({
   serviceName: z.string().min(1),
   catalogItemId: z.string().nullish(),
   isFollowUp: z.boolean().optional(), // "Seguimiento": continúa tratamiento, sin cargar servicio
+  treatmentId: z.string().nullish(), // paquete/combo cuya sesión consume esta cita
   date: z.string(), // YYYY-MM-DD
   time: z.string(), // HH:MM
   therapistId: z.string().nullish(),
@@ -127,25 +128,40 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   const catalogItemId = b.isFollowUp ? null : (b.catalogItemId ?? null);
   const startsAt = new Date(`${b.date}T${b.time}:00`);
 
-  // Regla: un CLIENTE NUEVO necesita ≥40 min de separación (requiere ficha/valoración).
-  // Se valida contra la misma esteticista (si hay) o contra otros clientes nuevos de la sucursal.
-  if (patient.type === 'NUEVO') {
-    const GAP = 40 * 60 * 1000;
+  // Disponibilidad. La sucursal tiene VARIAS esteticistas: la capacidad del horario es
+  // el número de esteticistas activas, no una sola. Un CLIENTE NUEVO necesita además
+  // 40 min de separación (requiere ficha/valoración).
+  const windowMs = (patient.type === 'NUEVO' ? 40 : b.durationMin) * 60 * 1000;
+  const desde = new Date(startsAt.getTime() - windowMs);
+  const hasta = new Date(startsAt.getTime() + windowMs);
+  const solapadas = { startsAt: { gt: desde, lt: hasta }, status: { not: 'CANCELADA' as const } };
+
+  if (b.therapistId) {
+    // Con esteticista asignada: esa persona no puede tener dos citas a la vez.
     const conflict = await prisma.appointment.findFirst({
-      where: {
-        startsAt: { gt: new Date(startsAt.getTime() - GAP), lt: new Date(startsAt.getTime() + GAP) },
-        status: { not: 'CANCELADA' },
-        ...(b.therapistId
-          ? { therapistId: b.therapistId }
-          : { branchId: patient.branchId, patientType: 'NUEVO' }),
-      },
+      where: { ...solapadas, therapistId: b.therapistId },
       include: { patient: true, therapist: true },
     });
     if (conflict) {
       const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
-      const quien = b.therapistId ? (conflict.therapist?.name ?? 'la esteticista') : 'otro cliente nuevo';
+      const quien = conflict.therapist?.name ?? 'la esteticista';
       return res.status(409).json({
-        error: `Un cliente nuevo requiere 40 min libres. Hay una cita (${quien}) a las ${h}. Elige un horario con al menos 40 min de diferencia.`,
+        error: patient.type === 'NUEVO'
+          ? `Un cliente nuevo requiere 40 min libres. ${quien} tiene una cita a las ${h}. Elige otro horario u otra esteticista.`
+          : `${quien} ya tiene una cita a las ${h}. Elige otro horario u otra esteticista.`,
+      });
+    }
+  } else {
+    // Sin asignar: se llena solo si TODAS las esteticistas de la sucursal están ocupadas.
+    const capacidad = await prisma.user.count({
+      where: { role: 'ESTETICISTA', active: true, branchId: patient.branchId },
+    });
+    const ocupadas = await prisma.appointment.count({ where: { ...solapadas, branchId: patient.branchId } });
+    if (ocupadas >= Math.max(1, capacidad)) {
+      return res.status(409).json({
+        error: capacidad > 1
+          ? `A esa hora las ${capacidad} esteticistas están ocupadas. Elige otro horario.`
+          : 'Ya hay una cita a esa hora. Elige otro horario.',
       });
     }
   }
@@ -153,7 +169,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   const appt = await prisma.appointment.create({
     data: {
       branchId: patient.branchId, patientId: patient.id, therapistId: b.therapistId ?? null,
-      serviceName, catalogItemId, code: genApptCode(),
+      serviceName, catalogItemId, treatmentId: b.treatmentId ?? null, code: genApptCode(),
       startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
     },
     include: apptInclude,
@@ -262,11 +278,35 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
 
   const endedAt = new Date();
   const durationSec = Math.max(0, Math.round((endedAt.getTime() - appt.serviceStartedAt.getTime()) / 1000));
+
+  // Consumir una sesión del paquete: el de la cita, o el único activo si solo hay uno.
+  const activos = appt.patient.treatments.filter((t) => t.active && t.doneSessions < t.totalSessions);
+  const target = appt.treatmentId
+    ? activos.find((t) => t.id === appt.treatmentId) ?? null
+    : (activos.length === 1 ? activos[0] : null);
+
+  let sessionMsg = '';
+  if (target) {
+    const done = Math.min(target.totalSessions, target.doneSessions + 1);
+    const restantes = target.totalSessions - done;
+    await prisma.treatment.update({
+      where: { id: target.id },
+      // Al agotar las sesiones el paquete se cierra y deja de aparecer como activo.
+      data: { doneSessions: done, ...(restantes === 0 ? { active: false } : {}) },
+    });
+    await prisma.appointment.update({ where: { id: appt.id }, data: { sessionNo: done, treatmentId: target.id } });
+    sessionMsg = restantes === 0
+      ? ` · ${target.name}: completado (${done}/${target.totalSessions}) 🎉`
+      : ` · ${target.name}: sesión ${done}/${target.totalSessions} (quedan ${restantes})`;
+  } else if (activos.length > 1) {
+    sessionMsg = ' · Ojo: el paciente tiene varios paquetes, no se descontó sesión (elige el paquete al agendar)';
+  }
+
   await prisma.appointment.update({
     where: { id: appt.id },
     data: { serviceEndedAt: endedAt, serviceDurationSec: durationSec, status: 'COMPLETADA' },
   });
-  res.json({ ok: true, message: 'Proceso terminado. ¡Gracias!' });
+  res.json({ ok: true, message: `Proceso terminado.${sessionMsg}` });
 });
 
 const cancelSchema = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo de la cancelación') });

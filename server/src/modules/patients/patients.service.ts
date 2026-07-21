@@ -28,7 +28,20 @@ export function serializePatient(
     };
   }>,
 ) {
-  const treatment = p.treatments.find((t) => t.active) ?? p.treatments[0] ?? null;
+  // Un paciente puede tener VARIOS paquetes/combos comprados y sin consumir a la vez
+  // (antes solo se mostraba uno y por eso el control se llevaba en papel).
+  const activos = p.treatments.filter((t) => t.active);
+  const treatment = activos[0] ?? p.treatments[0] ?? null;
+  const packages = activos.map((t) => ({
+    id: t.id,
+    name: t.name,
+    total: t.totalSessions,
+    done: t.doneSessions,
+    remaining: Math.max(0, t.totalSessions - t.doneSessions),
+    pct: t.totalSessions > 0 ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0,
+    price: t.price,
+    balance: t.balance,
+  }));
   const upcoming = p.appointments
     .filter((a) => a.startsAt >= new Date() && a.status !== 'CANCELADA')
     .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
@@ -53,10 +66,12 @@ export function serializePatient(
       : FICHA_LABEL[p.clinicalRecord?.status ?? 'PENDIENTE'],
     fichaSent: !!p.clinicalRecord?.sentToPatientAt,
     fichaFilled: !!p.clinicalRecord?.patientFilledAt,
-    plan: treatment?.name ?? 'Sin paquete',
+    plan: packages.length > 1 ? `${packages.length} paquetes activos` : (treatment?.name ?? 'Sin paquete'),
     progLabel: treatment ? `${treatment.doneSessions}/${treatment.totalSessions}` : '—',
     progPct,
-    balance: treatment?.balance ?? 0,
+    // Saldo total: suma de lo pendiente en TODOS los paquetes activos.
+    balance: packages.reduce((s, x) => s + x.balance, 0),
+    packages,
     next: upcoming
       ? upcoming.startsAt.toLocaleString('es-DO', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
       : 'No agendada',

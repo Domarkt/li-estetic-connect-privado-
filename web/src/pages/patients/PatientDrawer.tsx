@@ -178,27 +178,32 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                 </div>
               )}
 
-              {d.treatment && (
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm font-bold">{d.treatment.name}</div>
-                    <div className="text-[12.5px] font-semibold text-muted">{d.treatment.done}/{d.treatment.total}</div>
+              {/* Todos los paquetes/combos comprados y sin consumir (ya no hace falta grapar fichas). */}
+              {(d.packages ?? []).length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold">Paquetes activos</div>
+                    <span className="rounded-full bg-magenta-soft px-2 py-0.5 text-[11px] font-bold text-magenta">{d.packages!.length}</span>
                   </div>
-                  <div className="mb-3 h-2 overflow-hidden rounded-md" style={{ background: 'var(--navy-soft)' }}>
-                    <div className="h-full rounded-md bg-magenta" style={{ width: `${Math.round((d.treatment.done / d.treatment.total) * 100)}%` }} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {Array.from({ length: d.treatment.total }, (_, i) => i + 1).map((n) => {
-                      const done = n <= d.treatment!.done;
-                      return (
-                        <div key={n} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5" style={{ background: done ? 'var(--magenta-soft)' : 'var(--bg)' }}>
-                          <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: done ? 'var(--magenta)' : 'var(--faint)' }}>{n}</span>
-                          <span className="flex-1 text-[12.5px] font-semibold">Sesión {n}</span>
-                          <span className="text-xs text-muted">{done ? 'Realizada' : 'Pendiente'}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {d.packages!.map((pk) => (
+                    <div key={pk.id} className="rounded-[11px] border border-line p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1 truncate text-[13.5px] font-bold">{pk.name}</div>
+                        <div className="flex-none text-[12.5px] font-semibold text-muted">{pk.done}/{pk.total}</div>
+                      </div>
+                      <div className="mb-2 h-2 overflow-hidden rounded-md" style={{ background: 'var(--navy-soft)' }}>
+                        <div className="h-full rounded-md bg-magenta" style={{ width: `${pk.total ? Math.round((pk.done / pk.total) * 100) : 0}%` }} />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
+                        <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
+                          Quedan {pk.remaining} sesión{pk.remaining === 1 ? '' : 'es'}
+                        </span>
+                        {pk.balance > 0
+                          ? <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Saldo {fmtRD(pk.balance)}</span>
+                          : <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Pagado</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 

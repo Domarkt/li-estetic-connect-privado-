@@ -9,6 +9,8 @@ import PatientDrawer from './PatientDrawer';
 import FichaWizard from './FichaWizard';
 import AddServicesModal from './AddServicesModal';
 import NewPatientModal from './NewPatientModal';
+import ImportPatientsPanel from './ImportPatientsPanel';
+import { Overlay, stop } from '../../components/Modal';
 import BillModal from '../billing/BillModal';
 import ReceiptModal from '../billing/ReceiptModal';
 import type { Receipt } from '../../lib/types';
@@ -22,6 +24,7 @@ export default function PatientsPage() {
   const [ficha, setFicha] = useState<{ id: string; name: string } | null>(null);
   const [addSvc, setAddSvc] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [billId, setBillId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -57,9 +60,14 @@ export default function PatientsPage() {
             className="w-full bg-transparent text-[13.5px] text-ink outline-none placeholder:text-faint" />
         </div>
         {canCreate && (
-          <button onClick={() => setNewOpen(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white">
-            <span className="text-base">+</span> Nuevo paciente
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-[13.5px] font-bold text-navy hover:border-magenta hover:text-magenta">
+              ⬆ Importar
+            </button>
+            <button onClick={() => setNewOpen(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white">
+              <span className="text-base">+</span> Nuevo paciente
+            </button>
+          </div>
         )}
       </div>
 
@@ -107,6 +115,17 @@ export default function PatientsPage() {
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={refresh} />}
       {addSvc && <AddServicesModal patientId={addSvc} canBillNow={canCreate} afterAdd={(id) => setBillId(id)} onClose={() => setAddSvc(null)} onSaved={refresh} />}
       {newOpen && <NewPatientModal onClose={() => setNewOpen(false)} onCreated={(p) => { refresh(); setFicha({ id: p.id, name: p.name }); }} />}
+      {importOpen && (
+        <Overlay onClose={() => { setImportOpen(false); refresh(); }} z={110}>
+          <div onClick={stop} className="max-h-[88vh] w-[720px] max-w-full overflow-y-auto rounded-2xl bg-card p-5 animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+            <div className="mb-3 flex items-center">
+              <div className="flex-1 text-base font-extrabold">Importar pacientes</div>
+              <button onClick={() => { setImportOpen(false); refresh(); }} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+            </div>
+            <ImportPatientsPanel />
+          </div>
+        </Overlay>
+      )}
       {billId && <BillModal preselectId={billId} onClose={() => setBillId(null)} onEmitted={(r) => { setReceipt(r); refresh(); }} />}
       {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />}
     </div>

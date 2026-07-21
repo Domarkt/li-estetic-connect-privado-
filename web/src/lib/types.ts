@@ -36,6 +36,13 @@ export const ROLE_LABEL: Record<Role, string> = {
 export type FichaStatus = 'PENDIENTE' | 'PASO1_OK' | 'COMPLETA';
 export type PatientType = 'NUEVO' | 'RECURRENTE';
 
+/** Paquete/combo comprado por el paciente, con su avance de sesiones y saldo. */
+export interface PatientPackage {
+  id: string; name: string;
+  total: number; done: number; remaining: number;
+  pct: number; price: number; balance: number;
+}
+
 export interface PatientRow {
   id: string;
   name: string;
@@ -50,6 +57,8 @@ export interface PatientRow {
   fichaSent: boolean;
   fichaFilled: boolean;
   plan: string;
+  /** Paquetes/combos activos del paciente (puede tener varios comprados sin consumir). */
+  packages?: PatientPackage[];
   progLabel: string;
   progPct: number;
   balance: number;
