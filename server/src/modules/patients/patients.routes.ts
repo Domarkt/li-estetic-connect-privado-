@@ -115,6 +115,102 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
   res.status(201).json(serializePatient(patient));
 });
 
+// ── Importación masiva de pacientes (digitación de fichas de papel) ──
+const importSchema = z.object({
+  rows: z.array(z.record(z.string(), z.unknown())).max(500),
+  branchId: z.string().optional(), // sucursal por defecto si la fila no trae una
+  dryRun: z.boolean().optional(),
+});
+
+const digits = (s: string) => s.replace(/\D/g, '');
+
+/** Acepta 1990-05-23 y 23/05/1990. Devuelve null si no es una fecha válida. */
+function parseBirth(raw?: string): Date | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(v);
+  let d: Date | null = null;
+  if (iso) d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  else if (dmy) d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+  if (!d || Number.isNaN(d.getTime())) return null;
+  if (d.getFullYear() < 1900 || d > new Date()) return null;
+  return d;
+}
+
+/**
+ * Carga pacientes en lote desde una hoja de cálculo (solo Admin).
+ * Escribe a través de Prisma para que la PII quede CIFRADA (nunca por SQL directo).
+ * Con dryRun sólo valida y reporta: no escribe nada.
+ */
+patientsRouter.post('/import', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const b = importSchema.parse(req.body);
+
+  const branches = await prisma.branch.findMany({ select: { id: true, code: true, name: true } });
+  const byCode = new Map(branches.map((x) => [x.code.toLowerCase(), x.id]));
+  const byName = new Map(branches.map((x) => [x.name.toLowerCase(), x.id]));
+
+  // Teléfonos ya existentes (normalizados) para no duplicar pacientes.
+  const existing = await prisma.patient.findMany({ select: { phone: true } });
+  const seen = new Set(existing.map((p) => digits(p.phone)).filter(Boolean));
+
+  const colors = ['#B31C86', '#8E1268', '#2C7FB8', '#1F9D6B', '#245E85', '#C9880E'];
+  const errors: { line: number; name: string; reason: string }[] = [];
+  let created = 0;
+  let duplicates = 0;
+
+  for (let i = 0; i < b.rows.length; i++) {
+    const r = b.rows[i];
+    const line = Number(r.__line) || i + 1;
+    const str = (k: string) => String(r[k] ?? '').trim();
+    const name = str('name');
+    const phone = str('phone');
+
+    if (!name) { errors.push({ line, name: '(sin nombre)', reason: 'Falta el nombre' }); continue; }
+    if (!phone) { errors.push({ line, name, reason: 'Falta el teléfono' }); continue; }
+
+    const key = digits(phone);
+    if (key.length < 7) { errors.push({ line, name, reason: `Teléfono inválido: ${phone}` }); continue; }
+    if (seen.has(key)) { duplicates++; continue; } // ya existe (o repetido en el archivo)
+
+    const rawBranch = str('branch').toLowerCase();
+    const branchId = rawBranch ? (byCode.get(rawBranch) ?? byName.get(rawBranch)) : b.branchId;
+    if (!branchId) { errors.push({ line, name, reason: rawBranch ? `Sucursal no encontrada: ${rawBranch}` : 'Sin sucursal' }); continue; }
+
+    const sexRaw = str('sex').toUpperCase().charAt(0);
+    const sex = sexRaw === 'F' || sexRaw === 'M' ? sexRaw : null;
+    const birthDate = parseBirth(str('birthDate'));
+    const email = str('email') || null;
+    const cedula = str('cedula') || null;
+
+    seen.add(key); // evita duplicados dentro del mismo archivo
+    if (b.dryRun) { created++; continue; }
+
+    await prisma.patient.create({
+      data: {
+        branchId, name, phone, email, sex, birthDate,
+        age: ageFromBirth(birthDate),
+        ...encryptPatientWrite({ cedula, address: null }),
+        type: 'NUEVO',
+        avatarColor: colors[Math.floor(Math.random() * colors.length)],
+        clinicalRecord: { create: { status: 'PENDIENTE' } },
+      },
+    });
+    created++;
+  }
+
+  res.json({
+    ok: true,
+    dryRun: !!b.dryRun,
+    created,
+    duplicates,
+    errors,
+    message: b.dryRun
+      ? `Simulación: ${created} se cargarían · ${duplicates} duplicados · ${errors.length} con error`
+      : `${created} pacientes cargados · ${duplicates} duplicados omitidos · ${errors.length} con error`,
+  });
+});
+
 const transferSchema = z.object({ branchId: z.string(), note: z.string().optional() });
 
 /**
