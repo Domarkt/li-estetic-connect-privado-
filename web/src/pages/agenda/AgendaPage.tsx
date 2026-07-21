@@ -323,6 +323,7 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
   const [pkg, setPkg] = useState<PatientPackage | null>(null);
   const [cargando, setCargando] = useState(true);
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [tec, setTec] = useState<Set<string>>(new Set()); // técnicas aplicadas hoy
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -338,12 +339,14 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
   }, [appt.patientId, appt.treatmentId]);
 
   const areas = pkg?.areas ?? [];
+  const tecnicas = pkg?.services ?? [];
   const toggle = (k: string) => { const n = new Set(sel); n.has(k) ? n.delete(k) : n.add(k); setSel(n); };
+  const toggleTec = (k: string) => { const n = new Set(tec); n.has(k) ? n.delete(k) : n.add(k); setTec(n); };
 
   async function cerrar() {
     setBusy(true);
     try {
-      const r = await api.post<{ message: string }>(`/appointments/${appt.id}/finish`, { areas: [...sel] });
+      const r = await api.post<{ message: string }>(`/appointments/${appt.id}/finish`, { areas: [...sel], techniques: [...tec] });
       toast(r.message);
       onDone();
       onClose();
@@ -393,6 +396,25 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
                   Se descontarán <b>{sel.size || 1}</b> sesión{(sel.size || 1) === 1 ? '' : 'es'} de <b>{pkg?.name}</b>.
                 </div>
               </>
+            )}
+
+            {/* Checklist de lo aplicado hoy: queda en el historial de la sesión. */}
+            {!cargando && tecnicas.length > 0 && (
+              <div className="mt-1 border-t border-line-2 pt-3">
+                <div className="mb-2 text-xs font-bold text-muted">¿Qué le aplicaste hoy?</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {tecnicas.map((t) => {
+                    const on = tec.has(t.name);
+                    return (
+                      <button key={t.id} onClick={() => toggleTec(t.name)}
+                        className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                        style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                        {on ? '✓ ' : ''}{t.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
 

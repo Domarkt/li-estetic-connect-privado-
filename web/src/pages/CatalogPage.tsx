@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import ViewToggle, { useViewMode } from '../components/ViewToggle';
+import { puedeGestionarCatalogo } from '../lib/permisos';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
@@ -18,8 +19,7 @@ const STOCKABLE = (k: CatalogKind) => k === 'PRODUCTO' || k === 'INSUMO';
 
 export default function CatalogPage() {
   const { staff } = useAuth();
-  // Puede editar el admin y quien tenga el permiso de catálogo (p. ej. una recepcionista).
-  const isAdmin = staff?.role === 'ADMIN' || !!staff?.canManageCatalog;
+  const isAdmin = puedeGestionarCatalogo(staff);
   const [tab, setTab] = useState<CatalogKind>('SERVICIO');
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; item?: CatalogItem } | null>(null);
@@ -177,6 +177,18 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const [unit, setUnit] = useState(item?.unit ?? '');
   const [busy, setBusy] = useState(false);
   const stockable = STOCKABLE(kind);
+  // Un combo/paquete incluye varias técnicas; la esteticista marca cuáles aplica por sesión.
+  const componible = kind === 'COMBO' || kind === 'PAQUETE';
+  const [servicios, setServicios] = useState<CatalogItem[]>([]);
+  const [serviceIds, setServiceIds] = useState<string[]>((item?.services ?? []).map((s) => s.id));
+
+  useEffect(() => {
+    if (!componible) return;
+    api.get<CatalogItem[]>('/catalog?kind=SERVICIO').then(setServicios).catch(() => setServicios([]));
+  }, [componible]);
+
+  const toggleServicio = (id: string) =>
+    setServiceIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   async function save() {
     if (!name.trim()) { toast('El nombre es requerido'); return; }
@@ -187,6 +199,8 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
       price: Number(price) || 0,
       sessions: Number(sessions) || 1,
       unit: stockable ? (unit.trim() || undefined) : undefined,
+      // Solo se envían cuando aplica, para no borrar las técnicas de otros tipos.
+      ...(componible ? { serviceIds } : {}),
     };
     try {
       if (mode === 'edit' && item) {
@@ -225,6 +239,34 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             )}
           </div>
           {stockable && <p className="text-[11.5px] text-faint">El stock se controla por sucursal en la pestaña <b>Inventario</b>.</p>}
+
+          {/* Técnicas del combo/paquete: es el checklist que la esteticista marca por sesión. */}
+          {componible && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">¿Qué incluye? <span className="font-semibold text-faint">({serviceIds.length} seleccionadas)</span></span>
+              {servicios.length === 0 ? (
+                <div className="rounded-[9px] bg-bg px-3.5 py-3 text-[12px] text-muted">
+                  Primero crea los servicios (vacumterapia, cavitación, radiofrecuencia…) en la pestaña <b>Servicios</b>.
+                </div>
+              ) : (
+                <div className="flex max-h-[190px] flex-col gap-1 overflow-y-auto rounded-[9px] border border-line p-2">
+                  {servicios.map((s) => {
+                    const on = serviceIds.includes(s.id);
+                    return (
+                      <button key={s.id} type="button" onClick={() => toggleServicio(s.id)}
+                        className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left"
+                        style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
+                        <span className="flex h-4.5 w-4.5 flex-none items-center justify-center rounded-[5px] text-[10px] font-extrabold text-white"
+                          style={{ background: on ? 'var(--magenta)' : 'var(--line)', height: 18, width: 18 }}>✓</span>
+                        <span className="flex-1 text-[13px] font-semibold">{s.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <span className="text-[11px] text-faint">La esteticista marcará en cada sesión cuáles le aplicó al paciente.</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2.5 border-t border-line px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>

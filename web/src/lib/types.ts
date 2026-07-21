@@ -43,6 +43,8 @@ export interface PatientPackage {
   pct: number; price: number; balance: number;
   /** Áreas del cuerpo del combo (2 incluidas + posible 3ra adicional). */
   areas?: TreatmentArea[];
+  /** Técnicas que cubre el combo/paquete (cavitación, radiofrecuencia, lipoláser…). */
+  services?: { id: string; name: string }[];
 }
 
 export interface TreatmentArea {
@@ -100,6 +102,8 @@ export interface CatalogItem {
   stock: number | null;
   unit: string | null;
   tag: string | null;
+  /** Si es combo/paquete: técnicas que incluye. */
+  services?: { id: string; name: string }[];
 }
 
 export const fmtRD = (n: number) => 'RD$' + Math.round(n).toLocaleString('en-US');

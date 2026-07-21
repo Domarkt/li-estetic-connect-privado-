@@ -285,7 +285,10 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
 /** Proceso terminado: cierra el contador de atención y marca la cita como completada. */
 appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), branchScope, async (req, res) => {
   // La esteticista indica qué áreas trabajó: se consume 1 sesión por área.
-  const b = z.object({ areas: z.array(z.string()).optional() }).parse(req.body ?? {});
+  const b = z.object({
+    areas: z.array(z.string()).optional(),
+    techniques: z.array(z.string()).optional(), // checklist de lo aplicado ese día
+  }).parse(req.body ?? {});
   const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: apptInclude });
   if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
@@ -339,9 +342,14 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
 
   await prisma.appointment.update({
     where: { id: appt.id },
-    data: { serviceEndedAt: endedAt, serviceDurationSec: durationSec, status: 'COMPLETADA' },
+    data: {
+      serviceEndedAt: endedAt, serviceDurationSec: durationSec, status: 'COMPLETADA',
+      ...(b.techniques?.length ? { techniques: b.techniques } : {}),
+    },
   });
-  res.json({ ok: true, message: `Proceso terminado.${sessionMsg}` });
+
+  const tecnicasMsg = b.techniques?.length ? ` · Aplicado: ${b.techniques.join(', ')}` : '';
+  res.json({ ok: true, message: `Proceso terminado.${sessionMsg}${tecnicasMsg}` });
 });
 
 const cancelSchema = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo de la cancelación') });

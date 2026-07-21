@@ -7,6 +7,7 @@ import { Overlay, stop } from '../../components/Modal';
 import AssetsPanel from './AssetsPanel';
 import ViewToggle, { useViewMode } from '../../components/ViewToggle';
 import { CatalogModal } from '../CatalogPage';
+import { puedeGestionarCatalogo } from '../../lib/permisos';
 
 type Kind = 'PRODUCTO' | 'INSUMO';
 type TabKey = 'PRODUCTO' | 'INSUMO' | 'EQUIPO' | 'SUMINISTRO';
@@ -38,8 +39,7 @@ export default function InventarioPage() {
   const [q, setQ] = useState('');
   const [view, setView] = useViewMode('inventario', 'lista');
   const [nuevo, setNuevo] = useState(false); // alta de producto/insumo desde aquí
-  // Crear productos/insumos es crear catálogo (común a las 3 sucursales): mismo permiso.
-  const puedeCrear = staff?.role === 'ADMIN' || !!staff?.canManageCatalog;
+  const puedeCrear = puedeGestionarCatalogo(staff);
 
   const isAsset = tab === 'EQUIPO' || tab === 'SUMINISTRO';
   const branchQ = activeBranch !== 'all' ? `?branch=${activeBranch}` : '';

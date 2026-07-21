@@ -17,7 +17,7 @@ export function genApptCode(): string {
 }
 
 export const apptInclude = {
-  patient: { include: { clinicalRecord: true, treatments: { include: { areas: true } } } },
+  patient: { include: { clinicalRecord: true, treatments: { include: { areas: true, catalogItem: { include: { incluye: { include: { service: true } } } } } } } },
   therapist: true,
   branch: true,
 } satisfies Prisma.AppointmentInclude;
