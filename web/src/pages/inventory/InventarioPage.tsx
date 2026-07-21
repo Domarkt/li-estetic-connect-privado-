@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import AssetsPanel from './AssetsPanel';
 import ViewToggle, { useViewMode } from '../../components/ViewToggle';
+import { CatalogModal } from '../CatalogPage';
 
 type Kind = 'PRODUCTO' | 'INSUMO';
 type TabKey = 'PRODUCTO' | 'INSUMO' | 'EQUIPO' | 'SUMINISTRO';
@@ -36,6 +37,9 @@ export default function InventarioPage() {
   const [reload, setReload] = useState(0);
   const [q, setQ] = useState('');
   const [view, setView] = useViewMode('inventario', 'lista');
+  const [nuevo, setNuevo] = useState(false); // alta de producto/insumo desde aquí
+  // Crear productos/insumos es crear catálogo (común a las 3 sucursales): mismo permiso.
+  const puedeCrear = staff?.role === 'ADMIN' || !!staff?.canManageCatalog;
 
   const isAsset = tab === 'EQUIPO' || tab === 'SUMINISTRO';
   const branchQ = activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
@@ -68,6 +72,11 @@ export default function InventarioPage() {
             <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[12px] font-bold text-amber-700">⚠ {lowCount} en stock bajo</span>
           )}
           {!isAsset && <ViewToggle mode={view} onChange={setView} />}
+          {!isAsset && puedeCrear && (
+            <button onClick={() => setNuevo(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white">
+              <span className="text-base">+</span> Nuevo {tab === 'PRODUCTO' ? 'producto' : 'insumo'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -162,7 +171,10 @@ export default function InventarioPage() {
             ))}
             {rows.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-10 text-center text-muted">
-                No hay {tab === 'PRODUCTO' ? 'productos' : 'insumos'}. Créalos en <b>Catálogo</b>.
+                No hay {tab === 'PRODUCTO' ? 'productos' : 'insumos'}.{' '}
+                {puedeCrear
+                  ? <>Créalos con <b>Nuevo {tab === 'PRODUCTO' ? 'producto' : 'insumo'}</b> arriba.</>
+                  : <>Pídele a la administración que los cree en <b>Catálogo</b>.</>}
               </td></tr>
             )}
           </tbody>
@@ -170,6 +182,12 @@ export default function InventarioPage() {
       </div>
       )}
       </>}
+
+      {/* Alta de producto/insumo sin salir del inventario (crea el ítem en el catálogo). */}
+      {nuevo && (
+        <CatalogModal mode="add" defaultKind={tab as 'PRODUCTO' | 'INSUMO'}
+          onClose={() => setNuevo(false)} onSaved={() => setReload((n) => n + 1)} />
+      )}
 
       {edit && !allBranches && (
         <AdjustModal

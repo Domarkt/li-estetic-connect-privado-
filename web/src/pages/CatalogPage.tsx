@@ -161,7 +161,8 @@ function DeleteButton({ item, onDone }: { item: CatalogItem; onDone: () => void 
   );
 }
 
-function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
+/** Alta/edición de un ítem del catálogo. Se reutiliza desde Inventario. */
+export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   mode: 'add' | 'edit';
   item?: CatalogItem;
   defaultKind: CatalogKind;
