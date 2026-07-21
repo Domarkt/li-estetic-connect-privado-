@@ -1,7 +1,7 @@
 import { prisma } from '../../db/prisma.js';
 
 /**
- * Áreas del cuerpo que cubren los combos. Un combo incluye 2 y la 3ra es adicional.
+ * Áreas del cuerpo que cubren los paquetes y combos. Incluyen 2 y la 3ra es adicional.
  */
 export const AREAS = ['ABDOMEN', 'ESPALDA', 'ABDOMEN_LATERAL'] as const;
 export type Area = (typeof AREAS)[number];
@@ -16,7 +16,7 @@ export const AREA_LABEL: Record<string, string> = {
 export const AREA_EXTRA_PRECIO = 1500;
 
 /**
- * Reparte las sesiones del combo entre las áreas elegidas.
+ * Reparte las sesiones del paquete/combo entre las áreas elegidas.
  * 12 sesiones con 2 áreas → 6 y 6. Si no divide exacto, la primera se queda con el resto.
  */
 export function repartirSesiones(total: number, cantidadAreas: number): number[] {

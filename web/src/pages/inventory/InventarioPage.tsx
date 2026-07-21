@@ -5,6 +5,7 @@ import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import AssetsPanel from './AssetsPanel';
+import ViewToggle, { useViewMode } from '../../components/ViewToggle';
 
 type Kind = 'PRODUCTO' | 'INSUMO';
 type TabKey = 'PRODUCTO' | 'INSUMO' | 'EQUIPO' | 'SUMINISTRO';
@@ -33,6 +34,8 @@ export default function InventarioPage() {
   const [edit, setEdit] = useState<Row | null>(null);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [reload, setReload] = useState(0);
+  const [q, setQ] = useState('');
+  const [view, setView] = useViewMode('inventario', 'lista');
 
   const isAsset = tab === 'EQUIPO' || tab === 'SUMINISTRO';
   const branchQ = activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
@@ -41,7 +44,8 @@ export default function InventarioPage() {
     api.get<InvResp>(`/inventory${branchQ}`).then(setData).catch(() => setData(null));
   }, [reload, branchQ, isAsset]);
 
-  const rows = (data?.items ?? []).filter((i) => i.kind === (tab as Kind));
+  const texto = q.trim().toLowerCase();
+  const rows = (data?.items ?? []).filter((i) => i.kind === (tab as Kind) && (!texto || i.name.toLowerCase().includes(texto)));
   const lowCount = rows.filter((r) => r.low && r.qty <= r.minQty && r.minQty > 0).length;
 
   return (
@@ -59,10 +63,23 @@ export default function InventarioPage() {
             );
           })}
         </div>
-        {!isAsset && lowCount > 0 && (
-          <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[12px] font-bold text-amber-700">⚠ {lowCount} en stock bajo</span>
-        )}
+        <div className="flex items-center gap-2">
+          {!isAsset && lowCount > 0 && (
+            <span className="rounded-full bg-amber-100 px-3 py-1.5 text-[12px] font-bold text-amber-700">⚠ {lowCount} en stock bajo</span>
+          )}
+          {!isAsset && <ViewToggle mode={view} onChange={setView} />}
+        </div>
       </div>
+
+      {/* Buscador: el inventario crece y la tabla se vuelve larga. */}
+      {!isAsset && (
+        <div className="mb-3.5 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5">
+          <span className="text-faint">🔍</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre…"
+            className="w-full bg-transparent text-[13.5px] outline-none placeholder:text-faint" />
+          <span className="flex-none text-[12px] font-bold text-muted">{rows.length}</span>
+        </div>
+      )}
 
       {isAsset && <AssetsPanel kind={tab as 'EQUIPO' | 'SUMINISTRO'} canManage={!!isAdmin} branchQ={branchQ} />}
 
@@ -73,6 +90,38 @@ export default function InventarioPage() {
         </div>
       )}
 
+      {view === 'tarjetas' ? (
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((r) => (
+            <div key={r.id} className="rounded-base border border-line bg-card p-4 shadow-card">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 text-[13.5px] font-bold leading-tight">{r.name}</div>
+                {r.low && r.minQty > 0 && <span className="flex-none rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">bajo</span>}
+              </div>
+              <div className="mb-2 flex items-baseline gap-1.5">
+                <span className="text-[26px] font-extrabold" style={{ color: r.low && r.minQty > 0 ? '#e11d48' : 'var(--navy)' }}>{r.qty}</span>
+                <span className="text-[12px] text-muted">{r.unit ?? 'unidades'}</span>
+              </div>
+              {allBranches && r.levels && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {r.levels.map((l) => (
+                    <span key={l.branchId} className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-semibold" style={{ color: l.low ? '#e11d48' : 'var(--muted)' }}>
+                      {l.branch}: {l.qty}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!allBranches && (
+                <>
+                  <div className="mb-2.5 text-[11.5px] text-muted">Mínimo: {r.minQty || '—'}</div>
+                  <button onClick={() => setEdit(r)} className="w-full rounded-lg bg-magenta py-2 text-[12.5px] font-bold text-white">{isAdmin ? 'Ajustar' : 'Entrada / Salida'}</button>
+                </>
+              )}
+            </div>
+          ))}
+          {rows.length === 0 && <div className="col-span-full py-10 text-center text-sm text-muted">Sin resultados.</div>}
+        </div>
+      ) : (
       <div className="overflow-hidden rounded-base border border-line bg-card shadow-card">
         <table className="w-full text-[13px]">
           <thead>
@@ -119,6 +168,7 @@ export default function InventarioPage() {
           </tbody>
         </table>
       </div>
+      )}
       </>}
 
       {edit && !allBranches && (

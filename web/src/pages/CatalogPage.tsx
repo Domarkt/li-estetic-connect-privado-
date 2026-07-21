@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import ViewToggle, { useViewMode } from '../components/ViewToggle';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
@@ -17,17 +18,21 @@ const STOCKABLE = (k: CatalogKind) => k === 'PRODUCTO' || k === 'INSUMO';
 
 export default function CatalogPage() {
   const { staff } = useAuth();
-  const isAdmin = staff?.role === 'ADMIN';
+  // Puede editar el admin y quien tenga el permiso de catálogo (p. ej. una recepcionista).
+  const isAdmin = staff?.role === 'ADMIN' || !!staff?.canManageCatalog;
   const [tab, setTab] = useState<CatalogKind>('SERVICIO');
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; item?: CatalogItem } | null>(null);
   const [reload, setReload] = useState(0);
+  const [q, setQ] = useState('');
+  const [view, setView] = useViewMode('catalogo');
 
   useEffect(() => {
     api.get<CatalogItem[]>('/catalog').then(setItems).catch(() => setItems([]));
   }, [reload]);
 
-  const shown = items.filter((i) => i.kind === tab);
+  const texto = q.trim().toLowerCase();
+  const shown = items.filter((i) => i.kind === tab && (!texto || i.name.toLowerCase().includes(texto)));
   const refresh = () => setReload((r) => r + 1);
 
   return (
@@ -45,11 +50,49 @@ export default function CatalogPage() {
             );
           })}
         </div>
-        {isAdmin && (
-          <button onClick={() => setModal({ mode: 'add' })} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Agregar</button>
-        )}
+        <div className="flex items-center gap-2">
+          <ViewToggle mode={view} onChange={setView} />
+          {isAdmin && (
+            <button onClick={() => setModal({ mode: 'add' })} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Agregar</button>
+          )}
+        </div>
       </div>
 
+      {/* Buscador: imprescindible cuando el catálogo crece. */}
+      <div className="mb-3.5 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5">
+        <span className="text-faint">🔍</span>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre…"
+          className="w-full bg-transparent text-[13.5px] outline-none placeholder:text-faint" />
+        <span className="flex-none text-[12px] font-bold text-muted">{shown.length}</span>
+      </div>
+
+      {view === 'lista' ? (
+        <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
+          <div className="min-w-[620px]">
+            <div className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] gap-3 border-b border-line px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+              <div>Nombre</div><div>Detalle</div><div>Precio</div><div className="w-[130px]" />
+            </div>
+            {shown.map((it) => (
+              <div key={it.id} className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line-2 px-4 py-2.5 hover:bg-bg">
+                <div className="truncate text-[13px] font-bold">{it.name}</div>
+                <div className="truncate text-[12px] text-muted">
+                  {STOCKABLE(it.kind) ? (it.unit ? `Por ${it.unit}` : 'Inventariable') : it.sessions > 1 ? `${it.sessions} sesiones` : it.category ?? it.tag ?? '1 sesión'}
+                </div>
+                <div className="text-[13px] font-extrabold text-magenta">{!it.price ? <span className="text-[12px] font-bold text-muted">Sin precio</span> : fmtRD(it.price)}</div>
+                <div className="flex w-[130px] justify-end gap-1.5">
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => setModal({ mode: 'edit', item: it })} className="rounded-lg border border-line bg-bg px-2.5 py-1.5 text-[11.5px] font-bold text-muted hover:text-magenta">Editar</button>
+                      <DeleteButton item={it} onDone={refresh} />
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+            {shown.length === 0 && <div className="py-10 text-center text-sm text-muted">Sin ítems en esta categoría.</div>}
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
         {shown.map((it) => (
           <div key={it.id} className="group relative rounded-base border border-line bg-card p-[18px] shadow-card">
@@ -73,6 +116,7 @@ export default function CatalogPage() {
         ))}
         {shown.length === 0 && <div className="col-span-full py-10 text-center text-sm text-muted">Sin ítems en esta categoría.</div>}
       </div>
+      )}
 
       {modal && (
         <CatalogModal

@@ -28,7 +28,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [accessGiven, setAccessGiven] = useState(false);
   const [waUrl, setWaUrl] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
-  const [areasFor, setAreasFor] = useState<PatientPackage | null>(null); // combo al que se le definen áreas
+  const [areasFor, setAreasFor] = useState<PatientPackage | null>(null); // paquete/combo al que se le definen áreas
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -204,10 +204,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                           : <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Pagado</span>}
                       </div>
 
-                      {/* Áreas del combo: 2 incluidas, la 3ra es adicional (RD$1,500). */}
+                      {/* Áreas del paquete/combo: 2 incluidas, la 3ra es adicional (RD$1,500). */}
                       <div className="mt-2.5 border-t border-line-2 pt-2.5">
                         {(pk.areas ?? []).length === 0 ? (
-                          <button onClick={() => setAreasFor(pk)} className="text-[12px] font-bold text-magenta">+ Definir áreas del combo</button>
+                          <button onClick={() => setAreasFor(pk)} className="text-[12px] font-bold text-magenta">+ Definir áreas</button>
                         ) : (
                           <>
                             <div className="mb-1.5 flex items-center justify-between">
@@ -291,7 +291,7 @@ const AREAS_DISPONIBLES = [
 const PRECIO_AREA_EXTRA = 1500;
 
 /**
- * Define las 2 áreas incluidas del combo (sus sesiones se reparten entre ellas)
+ * Define las 2 áreas incluidas del paquete/combo (sus sesiones se reparten entre ellas)
  * y permite agregar una 3ra área adicional, que se cobra en recepción.
  */
 function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
@@ -333,7 +333,7 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
     <div onClick={onClose} className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ background: 'rgba(28,37,64,.5)' }}>
       <div onClick={stop} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="flex items-center border-b border-line px-6 py-5">
-          <div className="flex-1"><div className="text-base font-extrabold">Áreas del combo</div><div className="text-[12.5px] text-muted">{pkg.name} · {pkg.total} sesiones</div></div>
+          <div className="flex-1"><div className="text-base font-extrabold">Áreas del paquete</div><div className="text-[12.5px] text-muted">{pkg.name} · {pkg.total} sesiones</div></div>
           <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
         </div>
 
