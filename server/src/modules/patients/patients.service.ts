@@ -23,7 +23,7 @@ export function serializePatient(
     include: {
       branch: true;
       clinicalRecord: true;
-      treatments: true;
+      treatments: { include: { areas: true } };
       appointments: { include: { therapist: true } };
     };
   }>,
@@ -84,7 +84,7 @@ export function serializePatient(
 export const patientInclude = {
   branch: true,
   clinicalRecord: true,
-  treatments: true,
+  treatments: { include: { areas: true } },
   appointments: { include: { therapist: true } },
 } satisfies Prisma.PatientInclude;
 

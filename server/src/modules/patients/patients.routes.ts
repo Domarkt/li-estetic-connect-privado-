@@ -9,6 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
+import { AREAS, AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas } from './areas.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
@@ -78,6 +79,7 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         pct: t.totalSessions > 0 ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0,
         price: t.price,
         balance: t.balance,
+        areas: serializeAreas(t.areas ?? []),
       })),
     // Cargos pendientes que la esteticista mandó a recepción
     pendingCharges: await prisma.chargeItem.findMany({
@@ -125,6 +127,65 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
   // Seguimiento automático: cliente nuevo con ficha pendiente entra al tablero.
   await upsertLead({ branchId, patientId: patient.id, name: patient.name, stage: 'EN_CONVERSACION', summary: 'Cliente nuevo · ficha pendiente' });
   res.status(201).json(serializePatient(patient));
+});
+
+// ── Áreas del cuerpo dentro de un combo ──
+// Recepción y esteticista pueden definirlas: a veces la clienta las pide en recepción
+// antes de pasar a cabina, y a veces se definen en la cabina misma.
+const areasRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'] as const;
+
+const definirAreasSchema = z.object({
+  areas: z.array(z.enum(AREAS)).min(1, 'Elige al menos un área').max(3),
+});
+
+/** Definir las áreas incluidas del combo y repartir sus sesiones (12 → 6 y 6). */
+patientsRouter.patch('/treatments/:treatmentId/areas', requireStaff, requireRole(...areasRoles), async (req, res) => {
+  const { areas } = definirAreasSchema.parse(req.body);
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Paquete no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const actualizado = await definirAreas(t.id, areas);
+  res.json({
+    ok: true,
+    areas: serializeAreas(actualizado?.areas ?? []),
+    message: `Áreas definidas · ${areas.map((a) => AREA_LABEL[a]).join(' y ')}`,
+  });
+});
+
+const extraSchema = z.object({ area: z.enum(AREAS) });
+
+/**
+ * Agregar la 3ra área (adicional). Crea el cargo de RD$1,500 pendiente de cobrar
+ * en recepción y le asigna sesiones equivalentes a las de un área incluida.
+ */
+patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, requireRole(...areasRoles), async (req, res) => {
+  const { area } = extraSchema.parse(req.body);
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true, areas: true } });
+  if (!t) return res.status(404).json({ error: 'Paquete no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (t.areas.some((a) => a.area === area)) return res.status(409).json({ error: 'Esa área ya está en el paquete' });
+
+  const incluidas = t.areas.filter((a) => !a.isExtra);
+  const sesiones = incluidas[0]?.totalSessions ?? Math.max(1, Math.round(t.totalSessions / 2));
+
+  await prisma.treatmentArea.create({
+    data: { treatmentId: t.id, area, totalSessions: sesiones, isExtra: true },
+  });
+
+  // Queda como cargo pendiente para que recepción lo cobre.
+  await prisma.chargeItem.create({
+    data: {
+      branchId: t.patient.branchId, patientId: t.patientId,
+      name: `Área adicional: ${AREA_LABEL[area]} (${t.name})`,
+      price: AREA_EXTRA_PRECIO, createdById: req.staff!.sub,
+    },
+  });
+
+  res.status(201).json({
+    ok: true,
+    message: `${AREA_LABEL[area]} agregada · RD$${AREA_EXTRA_PRECIO.toLocaleString('en-US')} pendiente de cobrar en recepción`,
+  });
 });
 
 // ── Importación masiva de pacientes (digitación de fichas de papel) ──

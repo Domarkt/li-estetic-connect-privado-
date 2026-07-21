@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Portal } from '../../components/Modal';
-import { fmtRD, type AgendaResponse, type Appointment, type CalendarStatus } from '../../lib/types';
+import { fmtRD, type AgendaResponse, type Appointment, type CalendarStatus, type PatientPackage } from '../../lib/types';
 import ScheduleModal from './ScheduleModal';
 import FichaWizard from '../patients/FichaWizard';
 import CalendarView from './CalendarView';
@@ -22,6 +22,7 @@ export default function AgendaPage() {
   const [view, setView] = useState<'dia' | 'mes'>('dia');
   const [date, setDate] = useState(todayISO());
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
+  const [finishFor, setFinishFor] = useState<Appointment | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [checkinFor, setCheckinFor] = useState<Appointment | null>(null);
   const [cancelFor, setCancelFor] = useState<Appointment | null>(null);
@@ -63,7 +64,10 @@ export default function AgendaPage() {
     }
   }, [load, toast]);
 
+  // Si la cita pertenece a un combo con áreas, se pregunta cuáles se trabajaron
+  // (cada área consume una sesión). Si no, se cierra directo.
   async function finishService(a: Appointment) {
+    if (a.treatmentId) { setFinishFor(a); return; }
     if (!window.confirm(`¿Cerrar el turno de ${a.patient}? Quedarás libre para el siguiente paciente y ${a.patient} podrá calificar el servicio.`)) return;
     try {
       const r = await api.post<{ message: string }>(`/appointments/${a.id}/finish`);
@@ -220,6 +224,7 @@ export default function AgendaPage() {
       {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
+      {finishFor && <FinishModal appt={finishFor} onClose={() => setFinishFor(null)} onDone={load} />}
       {(checkinOpen || checkinFor) && <CheckinModal appt={checkinFor} onClose={() => { setCheckinOpen(false); setCheckinFor(null); }} onDone={load} />}
       {cancelFor && <CancelModal appt={cancelFor} onClose={() => setCancelFor(null)} onDone={load} />}
     </div>
@@ -305,6 +310,100 @@ function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; on
         </div>
       </div>
     </div>
+    </Portal>
+  );
+}
+
+/**
+ * Cierre de turno de una cita que pertenece a un combo: la esteticista marca qué
+ * áreas trabajó. Cada área marcada consume una sesión del combo.
+ */
+function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [pkg, setPkg] = useState<PatientPackage | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get<{ packages?: PatientPackage[] }>(`/patients/${appt.patientId}`)
+      .then((d) => {
+        const p = (d.packages ?? []).find((x) => x.id === appt.treatmentId) ?? null;
+        setPkg(p);
+        // Por defecto se marcan las áreas que aún tienen sesiones disponibles.
+        setSel(new Set((p?.areas ?? []).filter((a) => a.remaining > 0).map((a) => a.area)));
+      })
+      .catch(() => setPkg(null))
+      .finally(() => setCargando(false));
+  }, [appt.patientId, appt.treatmentId]);
+
+  const areas = pkg?.areas ?? [];
+  const toggle = (k: string) => { const n = new Set(sel); n.has(k) ? n.delete(k) : n.add(k); setSel(n); };
+
+  async function cerrar() {
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>(`/appointments/${appt.id}/finish`, { areas: [...sel] });
+      toast(r.message);
+      onDone();
+      onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Portal>
+      <div onClick={onClose} className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+        <div onClick={(e) => e.stopPropagation()} className="my-auto w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+          <div className="flex items-center border-b border-line px-6 py-5">
+            <div className="flex-1">
+              <div className="text-base font-extrabold">Cerrar turno</div>
+              <div className="text-[12.5px] text-muted">{appt.patient} · {appt.time}</div>
+            </div>
+            <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+          </div>
+
+          <div className="flex flex-col gap-3 px-6 py-5">
+            {cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
+            {!cargando && areas.length === 0 && (
+              <div className="rounded-[10px] bg-bg px-3.5 py-3 text-[12.5px] text-muted">
+                Este paquete no tiene áreas definidas. Se descontará <b>una sesión</b> al cerrar.
+              </div>
+            )}
+            {!cargando && areas.length > 0 && (
+              <>
+                <div className="text-xs font-bold text-muted">¿Qué áreas trabajaste? Cada una descuenta una sesión.</div>
+                {areas.map((a) => {
+                  const on = sel.has(a.area);
+                  const agotada = a.remaining === 0;
+                  return (
+                    <button key={a.id} onClick={() => !agotada && toggle(a.area)} disabled={agotada}
+                      className="flex items-center gap-3 rounded-[11px] border px-4 py-3 text-left disabled:opacity-45"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                      <span className="flex-1">
+                        <span className="text-[13.5px] font-bold">{a.label}</span>
+                        {a.isExtra && <span className="ml-1.5 rounded-full bg-warn-soft px-1.5 py-0.5 text-[10px] font-bold text-warn">adicional</span>}
+                        <span className="block text-[11.5px] text-muted">{agotada ? 'Sin sesiones disponibles' : `Quedan ${a.remaining} de ${a.total}`}</span>
+                      </span>
+                      <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>
+                    </button>
+                  );
+                })}
+                <div className="rounded-[10px] bg-bg px-3 py-2 text-[11.5px] text-muted">
+                  Se descontarán <b>{sel.size || 1}</b> sesión{(sel.size || 1) === 1 ? '' : 'es'} de <b>{pkg?.name}</b>.
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex gap-2.5 border-t border-line px-6 py-4">
+            <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+            <button onClick={cerrar} disabled={busy || cargando} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--navy)' }}>
+              {busy ? 'Cerrando…' : '✓ Cerrar turno'}
+            </button>
+          </div>
+        </div>
+      </div>
     </Portal>
   );
 }

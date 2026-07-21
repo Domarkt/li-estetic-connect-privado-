@@ -41,6 +41,13 @@ export interface PatientPackage {
   id: string; name: string;
   total: number; done: number; remaining: number;
   pct: number; price: number; balance: number;
+  /** Áreas del cuerpo del combo (2 incluidas + posible 3ra adicional). */
+  areas?: TreatmentArea[];
+}
+
+export interface TreatmentArea {
+  id: string; area: string; label: string;
+  total: number; done: number; remaining: number; isExtra: boolean;
 }
 
 export interface PatientRow {
@@ -119,6 +126,7 @@ export interface Appointment {
   fichaComplete: boolean;
   balance: number;
   code: string | null;
+  treatmentId?: string | null; // paquete cuya sesión consume esta cita
   checkedIn: boolean;
   inService: boolean;
   finished: boolean;

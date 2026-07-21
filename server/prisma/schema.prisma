@@ -343,8 +343,27 @@ model Treatment {
   patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
   invoices    Invoice[]
+  areas       TreatmentArea[]
 
   @@index([patientId])
+}
+
+// Área del cuerpo dentro de un combo. Un combo cubre 2 áreas y sus sesiones se
+// reparten entre ellas (12 sesiones = 6 por área). Una 3ra área es adicional y
+// se cobra aparte (RD$1,500): entra marcada como isExtra.
+model TreatmentArea {
+  id            String   @id @default(cuid())
+  treatmentId   String
+  area          String // ABDOMEN | ESPALDA | ABDOMEN_LATERAL
+  totalSessions Int
+  doneSessions  Int      @default(0)
+  isExtra       Boolean  @default(false) // 3ra área: se cobra por separado
+  createdAt     DateTime @default(now())
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@unique([treatmentId, area])
+  @@index([treatmentId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -489,6 +508,7 @@ model Appointment {
   serviceName   String
   catalogItemId String?
   treatmentId   String? // paquete/combo al que pertenece esta sesión (para descontarla al cerrar)
+  areas         String[] @default([]) // áreas trabajadas en esta cita (consume 1 sesión por área)
   startsAt      DateTime
   durationMin   Int               @default(60)
   status        AppointmentStatus @default(SIN_CONFIRMAR)

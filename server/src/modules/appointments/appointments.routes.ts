@@ -10,6 +10,7 @@ import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/m
 import { notifyRole } from '../notifications/notifications.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
+import { AREA_LABEL } from '../patients/areas.service.js';
 
 export const appointmentsRouter = Router();
 
@@ -283,6 +284,8 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
 
 /** Proceso terminado: cierra el contador de atención y marca la cita como completada. */
 appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+  // La esteticista indica qué áreas trabajó: se consume 1 sesión por área.
+  const b = z.object({ areas: z.array(z.string()).optional() }).parse(req.body ?? {});
   const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: apptInclude });
   if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
@@ -292,7 +295,7 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
   const endedAt = new Date();
   const durationSec = Math.max(0, Math.round((endedAt.getTime() - appt.serviceStartedAt.getTime()) / 1000));
 
-  // Consumir una sesión del paquete: el de la cita, o el único activo si solo hay uno.
+  // Consumir sesiones del paquete: el de la cita, o el único activo si solo hay uno.
   const activos = appt.patient.treatments.filter((t) => t.active && t.doneSessions < t.totalSessions);
   const target = appt.treatmentId
     ? activos.find((t) => t.id === appt.treatmentId) ?? null
@@ -300,17 +303,36 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
 
   let sessionMsg = '';
   if (target) {
-    const done = Math.min(target.totalSessions, target.doneSessions + 1);
+    // Las áreas trabajadas se indican al cerrar; si no se indican, se usan las de la cita.
+    const trabajadas = (b.areas?.length ? b.areas : appt.areas) ?? [];
+    const conAreas = target.areas.filter((a) => trabajadas.includes(a.area) && a.doneSessions < a.totalSessions);
+
+    // Se consume 1 sesión POR ÁREA trabajada (un combo de 12 con 2 áreas son 6 y 6).
+    const consumidas = conAreas.length || 1;
+    const detalle: string[] = [];
+
+    for (const a of conAreas) {
+      const done = Math.min(a.totalSessions, a.doneSessions + 1);
+      await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: done } });
+      detalle.push(`${AREA_LABEL[a.area] ?? a.area} ${done}/${a.totalSessions}`);
+    }
+
+    const done = Math.min(target.totalSessions, target.doneSessions + consumidas);
     const restantes = target.totalSessions - done;
     await prisma.treatment.update({
       where: { id: target.id },
       // Al agotar las sesiones el paquete se cierra y deja de aparecer como activo.
       data: { doneSessions: done, ...(restantes === 0 ? { active: false } : {}) },
     });
-    await prisma.appointment.update({ where: { id: appt.id }, data: { sessionNo: done, treatmentId: target.id } });
+    await prisma.appointment.update({
+      where: { id: appt.id },
+      data: { sessionNo: done, treatmentId: target.id, ...(b.areas?.length ? { areas: b.areas } : {}) },
+    });
+
     sessionMsg = restantes === 0
       ? ` · ${target.name}: completado (${done}/${target.totalSessions}) 🎉`
-      : ` · ${target.name}: sesión ${done}/${target.totalSessions} (quedan ${restantes})`;
+      : ` · ${target.name}: ${done}/${target.totalSessions} (quedan ${restantes})`;
+    if (detalle.length) sessionMsg += ` · ${detalle.join(' · ')}`;
   } else if (activos.length > 1) {
     sessionMsg = ' · Ojo: el paciente tiene varios paquetes, no se descontó sesión (elige el paquete al agendar)';
   }

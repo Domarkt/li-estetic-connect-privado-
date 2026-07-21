@@ -17,7 +17,7 @@ export function genApptCode(): string {
 }
 
 export const apptInclude = {
-  patient: { include: { clinicalRecord: true, treatments: true } },
+  patient: { include: { clinicalRecord: true, treatments: { include: { areas: true } } } },
   therapist: true,
   branch: true,
 } satisfies Prisma.AppointmentInclude;
@@ -64,6 +64,7 @@ export function serializeAppt(
     balance,
     // Código de turno + si ya fue validado en cabina.
     code: a.code,
+    treatmentId: a.treatmentId,
     checkedIn: !!a.codeUsedAt,
     // Turno abierto (validado en cabina) y aún sin cerrar → se puede "Cerrar turno".
     inService: !!a.codeUsedAt && !a.serviceEndedAt,
