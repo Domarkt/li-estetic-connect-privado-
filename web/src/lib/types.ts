@@ -88,6 +88,11 @@ export interface PatientDetail extends PatientRow {
     observaciones: string | null;
   };
   treatment: { id: string; name: string; total: number; done: number; balance: number } | null;
+  /** Sesiones ya atendidas: qué se aplicó y en qué áreas (de la más reciente a la más vieja). */
+  sessions?: {
+    id: string; date: string; service: string; therapist: string | null;
+    sessionNo: number | null; areas: string[]; techniques: string[];
+  }[];
   pendingCharges: { id: string; name: string; price: number }[];
 }
 

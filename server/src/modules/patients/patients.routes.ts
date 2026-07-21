@@ -83,6 +83,21 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         // Técnicas que cubre el combo/paquete: la esteticista marca cuáles aplicó.
         services: (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name })),
       })),
+    // Historial de sesiones atendidas: qué se le aplicó y en qué áreas, para que la
+    // esteticista sepa qué le viene dando y qué toca en la próxima visita.
+    sessions: patient.appointments
+      .filter((a) => a.serviceEndedAt)
+      .sort((a, b) => (b.serviceEndedAt!.getTime() - a.serviceEndedAt!.getTime()))
+      .slice(0, 30)
+      .map((a) => ({
+        id: a.id,
+        date: a.serviceEndedAt!.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+        service: a.serviceName,
+        therapist: a.therapist?.name ?? null,
+        sessionNo: a.sessionNo,
+        areas: a.areas.map((x) => AREA_LABEL[x] ?? x),
+        techniques: a.techniques,
+      })),
     // Cargos pendientes que la esteticista mandó a recepción
     pendingCharges: await prisma.chargeItem.findMany({
       where: { patientId: patient.id, status: 'PENDIENTE_FACTURAR' },

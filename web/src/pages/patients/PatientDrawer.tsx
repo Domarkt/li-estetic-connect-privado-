@@ -233,6 +233,9 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                 </div>
               )}
 
+              {/* Historial de sesiones: qué se le viene aplicando y en qué áreas. */}
+              {(d.sessions ?? []).length > 0 && <SessionHistory sessions={d.sessions!} />}
+
               {/* Cargos pendientes enviados a recepción */}
               {d.pendingCharges.length > 0 && (
                 <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
@@ -375,6 +378,75 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
           <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Guardar áreas</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+type Sesion = NonNullable<PatientDetail['sessions']>[number];
+
+/**
+ * Historial de sesiones atendidas. Lo primero que necesita ver la esteticista es
+ * qué se aplicó la última vez, así que esa va destacada y el resto se despliega.
+ */
+function SessionHistory({ sessions }: { sessions: Sesion[] }) {
+  const [abierto, setAbierto] = useState(false);
+  const [ultima, ...previas] = sessions;
+
+  const Detalle = ({ s }: { s: Sesion }) => (
+    <>
+      {s.techniques.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {s.techniques.map((t) => (
+            <span key={t} className="rounded-full bg-magenta-soft px-2 py-0.5 text-[11px] font-bold text-magenta">{t}</span>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-1 text-[11.5px] text-faint">No se registró qué se aplicó.</div>
+      )}
+      {s.areas.length > 0 && (
+        <div className="mt-1 text-[11.5px] text-muted">Áreas: {s.areas.join(' · ')}</div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="rounded-[11px] border border-line px-4 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[13px] font-bold">Historial de sesiones</span>
+        <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[11px] font-bold text-navy">{sessions.length}</span>
+      </div>
+
+      {/* Última sesión: lo que la esteticista necesita antes de empezar. */}
+      <div className="rounded-[10px] bg-bg px-3 py-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[12px] font-bold">Última · {ultima.date}</span>
+          {ultima.sessionNo && <span className="text-[11px] text-muted">sesión {ultima.sessionNo}</span>}
+        </div>
+        <div className="text-[11.5px] text-muted">{ultima.service}{ultima.therapist ? ` · ${ultima.therapist}` : ''}</div>
+        <Detalle s={ultima} />
+      </div>
+
+      {previas.length > 0 && (
+        <>
+          <button onClick={() => setAbierto((v) => !v)} className="mt-2 text-[12px] font-bold text-magenta">
+            {abierto ? 'Ocultar anteriores' : `Ver ${previas.length} sesión${previas.length === 1 ? '' : 'es'} anterior${previas.length === 1 ? '' : 'es'}`}
+          </button>
+          {abierto && (
+            <div className="mt-2 flex flex-col gap-2">
+              {previas.map((s) => (
+                <div key={s.id} className="border-t border-line-2 pt-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[12px] font-bold">{s.date}</span>
+                    {s.sessionNo && <span className="text-[11px] text-muted">sesión {s.sessionNo}</span>}
+                  </div>
+                  <div className="text-[11.5px] text-muted">{s.service}{s.therapist ? ` · ${s.therapist}` : ''}</div>
+                  <Detalle s={s} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
