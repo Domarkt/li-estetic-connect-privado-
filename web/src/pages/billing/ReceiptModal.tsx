@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type Receipt } from '../../lib/types';
@@ -14,9 +15,36 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
   const [size, setSize] = useState('carta');
   const width = SIZES.find((s) => s.key === size)!.width;
 
+  // Envío del recibo al paciente (sustituye a imprimirlo).
+  const [porWhatsapp, setPorWhatsapp] = useState(true);
+  const [porCorreo, setPorCorreo] = useState(!!receipt.patientEmail);
+  const [correo, setCorreo] = useState(receipt.patientEmail ?? '');
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
   function print() {
     try { window.print(); } catch { /* ignore */ }
     toast('Enviando a impresora (' + SIZES.find((s) => s.key === size)!.label + ')');
+  }
+
+  async function enviar() {
+    const channels = [...(porWhatsapp ? ['whatsapp'] : []), ...(porCorreo ? ['correo'] : [])];
+    if (!channels.length) { toast('Selecciona al menos una vía'); return; }
+    if (porCorreo && !correo.trim()) { toast('Escribe el correo del paciente'); return; }
+    if (!receipt.invoiceId) { toast('Este recibo no se puede reenviar'); return; }
+    setEnviando(true);
+    try {
+      const r = await api.post<{ message: string; whatsappUrl: string | null }>(
+        `/invoices/${receipt.invoiceId}/send`,
+        { channels, email: porCorreo ? correo.trim() : undefined },
+      );
+      // WhatsApp se abre con el recibo ya redactado; solo hay que tocar Enviar.
+      if (porWhatsapp && r.whatsappUrl) window.open(r.whatsappUrl, '_blank', 'noopener');
+      toast(r.message);
+      setEnviado(true);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'No se pudo enviar el recibo');
+    } finally { setEnviando(false); }
   }
 
   return (
@@ -78,9 +106,45 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
           </div>
         </div>
 
+        {/* Enviar al paciente: reemplaza la impresión cuando no hay impresora.
+            Al imprimir no aparece: el CSS de impresión solo deja visible #li-receipt. */}
+        <div className="border-t border-line bg-card px-[22px] py-4">
+          <div className="mb-2.5 flex items-center gap-2">
+            <span className="text-[13px] font-extrabold">Enviar el recibo al paciente</span>
+            {enviado && <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[11px] font-bold text-ok">✓ Enviado</span>}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2.5 rounded-[10px] border px-3.5 py-2.5"
+              style={{ borderColor: porWhatsapp ? 'var(--magenta)' : 'var(--line)', background: porWhatsapp ? 'var(--magenta-soft)' : 'var(--card)' }}>
+              <input type="checkbox" checked={porWhatsapp} onChange={(e) => setPorWhatsapp(e.target.checked)} className="h-4 w-4 accent-magenta" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px]" style={{ background: '#25D366' }}>💬</span>
+              <span className="flex-1 text-[13px]">
+                <b className="font-bold">WhatsApp</b>
+                <span className="block text-[11.5px] text-muted">{receipt.patientPhone ? receipt.patientPhone : 'Sin celular registrado'}</span>
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2.5 rounded-[10px] border px-3.5 py-2.5"
+              style={{ borderColor: porCorreo ? 'var(--magenta)' : 'var(--line)', background: porCorreo ? 'var(--magenta-soft)' : 'var(--card)' }}>
+              <input type="checkbox" checked={porCorreo} onChange={(e) => setPorCorreo(e.target.checked)} className="h-4 w-4 accent-magenta" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[13px] text-white" style={{ background: 'var(--teal)' }}>✉</span>
+              <span className="flex-1 text-[13px]"><b className="font-bold">Correo</b></span>
+            </label>
+            {porCorreo && (
+              <input value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo@delpaciente.com"
+                className="rounded-[10px] border border-line px-3.5 py-2.5 text-[13px] outline-none focus:border-magenta" />
+            )}
+          </div>
+          <button onClick={enviar} disabled={enviando}
+            className="mt-2.5 w-full rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">
+            {enviando ? 'Enviando…' : 'Enviar recibo'}
+          </button>
+          <div className="mt-1.5 text-center text-[11px] text-faint">El correo se envía solo. El WhatsApp se abre con el recibo escrito: solo toca <b>Enviar</b>.</div>
+        </div>
+
         <div className="flex gap-2.5 border-t border-line bg-card px-[22px] py-3.5">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
-          <button onClick={print} className="flex flex-[2] items-center justify-center gap-2 rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">🖨 Imprimir recibo</button>
+          <button onClick={print} className="flex flex-[2] items-center justify-center gap-2 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-navy">🖨 Imprimir</button>
         </div>
       </div>
     </Overlay>

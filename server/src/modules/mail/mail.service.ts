@@ -124,6 +124,71 @@ export async function sendAppointmentConfirmation(
   return deliver(to, `Tu cita en Li Estetic Center · código ${opts.code}`, html, opts.replyTo);
 }
 
+export interface ReceiptMail {
+  id: string; ncf: string | null; date: string; patient: string;
+  items: { name: string; qty: number; total: number }[];
+  subtotal: number; itbis: number; total: number; method: string;
+  payments?: { method: string; amount: number }[];
+  branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; rnc: string;
+}
+
+const rd = (n: number) => `RD$${n.toLocaleString('en-US')}`;
+
+/**
+ * Recibo de pago por correo. Reemplaza al recibo impreso: incluye NCF, el detalle
+ * por servicio, el desglose de métodos de pago y los datos fiscales de la sucursal.
+ */
+export async function sendReceipt(to: string, r: ReceiptMail, replyTo?: string): Promise<MailResult> {
+  const lineas = r.items
+    .map((it) => `<tr>
+      <td style="padding:7px 0;border-bottom:1px solid #EFF1F7">${it.name}${it.qty > 1 ? ` <span style="color:#6A7089">x${it.qty}</span>` : ''}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #EFF1F7;text-align:right;white-space:nowrap">${rd(it.total)}</td>
+    </tr>`)
+    .join('');
+
+  const desglose = (r.payments ?? []).length > 1
+    ? `<p style="margin:10px 0 0;color:#6A7089;font-size:13px">Pago dividido: ${(r.payments ?? []).map((p) => `${p.method} ${rd(p.amount)}`).join(' · ')}</p>`
+    : '';
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:22px;text-align:center">
+        <div style="font-style:italic;color:#F3C3E0">Transformando Tu Cuerpo</div>
+        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
+        <div style="font-size:13px;color:#F3C3E0;margin-top:4px">${r.branchName} · ${r.branchPlace}</div>
+      </div>
+      <div style="padding:22px;color:#1C2540">
+        <p style="margin:0 0 4px">Hola <b>${r.patient}</b>, gracias por tu visita 💜</p>
+        <p style="margin:0 0 16px;color:#6A7089;font-size:13px">Este es tu comprobante de pago.</p>
+
+        <div style="background:#F5F6FB;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:16px">
+          <b>Recibo:</b> ${r.id}${r.ncf ? ` &nbsp;·&nbsp; <b>NCF:</b> ${r.ncf}` : ''}<br/>
+          <b>Fecha:</b> ${r.date}
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:14px">${lineas}</table>
+
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px">
+          <tr><td style="padding:3px 0;color:#6A7089">Subtotal</td><td style="padding:3px 0;text-align:right">${rd(r.subtotal)}</td></tr>
+          <tr><td style="padding:3px 0;color:#6A7089">ITBIS (18%)</td><td style="padding:3px 0;text-align:right">${rd(r.itbis)}</td></tr>
+          <tr>
+            <td style="padding:9px 0 0;font-weight:bold;font-size:16px;border-top:2px solid #1C2540">Total</td>
+            <td style="padding:9px 0 0;font-weight:bold;font-size:16px;text-align:right;border-top:2px solid #1C2540;color:#B31C86">${rd(r.total)}</td>
+          </tr>
+        </table>
+        <p style="margin:10px 0 0;font-size:13px"><b>Forma de pago:</b> ${r.method}</p>
+        ${desglose}
+
+        <div style="margin-top:20px;padding-top:14px;border-top:1px solid #E7E9F2;color:#9AA0B4;font-size:12px;line-height:1.6">
+          ${r.branchName} · ${r.branchAddress}<br/>
+          Tel. ${r.branchPhone} · RNC ${r.rnc}<br/>
+          Conserva este comprobante. Si tienes alguna duda, respóndenos este correo.
+        </div>
+      </div>
+    </div>`;
+  return deliver(to, `Tu recibo ${r.id} · Li Estetic Center`, html, replyTo);
+}
+
 /** Confirmación de cita para cliente nuevo: código de la cita + acceso al portal para completar la ficha. */
 export async function sendAppointmentAccess(
   to: string,

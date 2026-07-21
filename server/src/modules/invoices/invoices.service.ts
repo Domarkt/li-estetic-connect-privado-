@@ -74,6 +74,7 @@ export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeo
 export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>) {
   return {
     id: i.number,
+    invoiceId: i.id, // id real, para reenviar el recibo por correo/WhatsApp
     ncf: i.ncf,
     branchName: i.branch.name,
     branchPlace: i.branch.place,
@@ -83,6 +84,9 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     rnc: RNC,
     date: i.issuedAt.toLocaleString('es-DO', { timeZone: TZ_RD, day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
     patient: i.patient?.name ?? 'Cliente',
+    // Contacto para enviarle el recibo (sustituye a imprimirlo).
+    patientEmail: i.patient?.email ?? null,
+    patientPhone: i.patient?.phone ?? null,
     concept: i.concept,
     items: i.items.map((it) => ({ name: it.name, qty: it.qty, total: it.total })),
     subtotal: i.subtotal,

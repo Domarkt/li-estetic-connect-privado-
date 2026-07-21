@@ -158,9 +158,9 @@ export interface BillPatient {
   pendingTotal: number;
 }
 export interface Receipt {
-  id: string; ncf: string | null;
+  id: string; invoiceId?: string; ncf: string | null;
   branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; branchEmail?: string | null; rnc: string;
-  date: string; patient: string; concept: string;
+  date: string; patient: string; patientEmail?: string | null; patientPhone?: string | null; concept: string;
   items: { name: string; qty: number; total: number }[];
   subtotal: number; itbis: number; total: number; method: string;
   payments?: { method: string; amount: number }[];

@@ -8,7 +8,8 @@ import {
 import { awardSalePoints } from '../points/points.automation.js';
 import { decrementSoldProducts } from '../inventory/inventory.service.js';
 import { hashPassword } from '../../utils/password.js';
-import { sendPatientAccess } from '../mail/mail.service.js';
+import { sendPatientAccess, sendReceipt } from '../mail/mail.service.js';
+import { normalizePhone } from '../messaging/whatsapp.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
 
 export const invoicesRouter = Router();
@@ -222,4 +223,62 @@ invoicesRouter.get('/:id/receipt', requireStaff, requireRole(...billers), branch
   if (!invoice) return res.status(404).json({ error: 'Recibo no encontrado' });
   if (!assertBranchAccess(req, invoice.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
   res.json(serializeReceipt(invoice));
+});
+
+const sendReceiptSchema = z.object({
+  channels: z.array(z.enum(['whatsapp', 'correo'])).min(1, 'Selecciona al menos una vía'),
+  email: z.string().email().optional(), // permite corregir/completar el correo al vuelo
+  phone: z.string().optional(),         // permite enviar a otro número (familiar, etc.)
+});
+
+/**
+ * Enviar el recibo al paciente por correo y/o WhatsApp (sustituye a imprimirlo).
+ * El correo se manda desde el servidor; para WhatsApp se devuelve el enlace wa.me
+ * con el mensaje ya redactado, que recepción abre y envía con un toque.
+ */
+invoicesRouter.post('/:id/send', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  const b = sendReceiptSchema.parse(req.body);
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: invoiceInclude });
+  if (!invoice) return res.status(404).json({ error: 'Recibo no encontrado' });
+  if (!assertBranchAccess(req, invoice.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
+
+  const r = serializeReceipt(invoice);
+  const partes: string[] = [];
+
+  // ── Correo ──
+  let emailSent = false;
+  if (b.channels.includes('correo')) {
+    const to = (b.email ?? invoice.patient?.email ?? '').trim();
+    if (!to) {
+      partes.push('sin correo registrado');
+    } else {
+      const mail = await sendReceipt(to, r, invoice.branch.email ?? undefined);
+      emailSent = mail.sent;
+      partes.push(mail.sent ? `enviado a ${to}` : 'no se pudo enviar el correo');
+      // Guarda el correo si el paciente no lo tenía, para la próxima vez.
+      if (mail.sent && !invoice.patient?.email && invoice.patientId) {
+        await prisma.patient.update({ where: { id: invoice.patientId }, data: { email: to } }).catch(() => {});
+      }
+    }
+  }
+
+  // ── WhatsApp ──
+  let whatsappUrl: string | null = null;
+  if (b.channels.includes('whatsapp')) {
+    const phone = (b.phone ?? invoice.patient?.phone ?? '').trim();
+    if (!phone) {
+      partes.push('sin celular registrado');
+    } else {
+      const detalle = r.items.map((it) => `• ${it.name}${it.qty > 1 ? ` x${it.qty}` : ''}: RD$${it.total.toLocaleString('en-US')}`).join('\n');
+      const texto =
+        `Hola ${r.patient} 💜 Gracias por tu visita en ${r.branchName}.\n\n` +
+        `*Recibo ${r.id}*${r.ncf ? ` · NCF ${r.ncf}` : ''}\n${r.date}\n\n${detalle}\n\n` +
+        `*Total: RD$${r.total.toLocaleString('en-US')}* (ITBIS incluido)\nForma de pago: ${r.method}\n\n` +
+        `— Li Estetic Center`;
+      whatsappUrl = `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(texto)}`;
+      partes.push('WhatsApp listo para enviar');
+    }
+  }
+
+  res.json({ ok: true, emailSent, whatsappUrl, message: `Recibo ${r.id} · ${partes.join(' · ')}` });
 });
