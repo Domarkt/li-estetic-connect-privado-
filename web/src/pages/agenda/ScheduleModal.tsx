@@ -36,6 +36,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [errP, setErrP] = useState(false);
   const [pQuery, setPQuery] = useState('');
   const [treatmentId, setTreatmentId] = useState(''); // paquete cuya sesión consume la cita
+  const [durationMin, setDurationMin] = useState(60); // un proceso puede pasar de una hora
   // Tras agendar: pantalla de confirmación con el botón de WhatsApp precargado.
   const [done, setDone] = useState<{ whatsappUrl: string | null; patientName: string; emailSent: boolean } | null>(null);
 
@@ -68,6 +69,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
         serviceName: followUp ? 'Seguimiento de tratamiento' : (svc?.name ?? 'Valoración inicial'),
         catalogItemId: followUp ? null : (svc?.id ?? null),
         treatmentId: treatmentId || null,
+        durationMin,
       };
       if (isNew) {
         if (!newName.trim() || !newPhone.trim()) { toast('Nombre y celular del paciente nuevo requeridos'); setBusy(false); return; }
@@ -229,6 +231,15 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha</span><input type="date" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={date} onChange={(e) => setDate(e.target.value)} /></label>
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Hora</span><input type="time" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={time} onChange={(e) => setTime(e.target.value)} /></label>
           </div>
+          {/* Duración real del proceso: reserva a la esteticista todo ese tiempo. */}
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">¿Cuánto durará?</span>
+            <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={durationMin} onChange={(e) => setDurationMin(Number(e.target.value))}>
+              {[30, 45, 60, 90, 120, 150, 180, 240].map((m) => (
+                <option key={m} value={m}>{m < 60 ? `${m} minutos` : m % 60 === 0 ? `${m / 60} hora${m > 60 ? 's' : ''}` : `${Math.floor(m / 60)}h ${m % 60}min`}</option>
+              ))}
+            </select>
+            <span className="text-[11px] text-faint">La esteticista queda reservada todo ese tiempo. Entre pacientes se dejan 30 minutos.</span>
+          </label>
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Esteticista asignada</span>
             <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={therapistId} onChange={(e) => setTherapistId(e.target.value)}>
               <option value="">Sin asignar</option>

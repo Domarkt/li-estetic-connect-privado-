@@ -128,27 +128,40 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   const catalogItemId = b.isFollowUp ? null : (b.catalogItemId ?? null);
   const startsAt = new Date(`${b.date}T${b.time}:00`);
 
-  // Disponibilidad. La sucursal tiene VARIAS esteticistas: la capacidad del horario es
-  // el número de esteticistas activas, no una sola. Un CLIENTE NUEVO necesita además
-  // 40 min de separación (requiere ficha/valoración).
-  const windowMs = (patient.type === 'NUEVO' ? 40 : b.durationMin) * 60 * 1000;
-  const desde = new Date(startsAt.getTime() - windowMs);
-  const hasta = new Date(startsAt.getTime() + windowMs);
-  const solapadas = { startsAt: { gt: desde, lt: hasta }, status: { not: 'CANCELADA' as const } };
+  // Disponibilidad. Cada cita dura lo que recepción indique (un proceso puede pasar de
+  // una hora), así que el choque se calcula con la duración REAL de cada cita, no con
+  // una ventana fija. Entre pacientes se deja una separación mínima de 30 minutos.
+  const SEPARACION_MIN = 30;
+  const nuevoInicio = startsAt.getTime();
+  const nuevoFin = nuevoInicio + b.durationMin * 60_000;
+  const margenMs = SEPARACION_MIN * 60_000;
+
+  // Se traen las citas del día cercanas y el solape se evalúa una por una.
+  const cercanas = await prisma.appointment.findMany({
+    where: {
+      branchId: patient.branchId,
+      status: { not: 'CANCELADA' },
+      startsAt: { gt: new Date(nuevoInicio - 8 * 3_600_000), lt: new Date(nuevoFin + 8 * 3_600_000) },
+    },
+    include: { therapist: true },
+  });
+
+  /** ¿Choca con esta cita? Se respeta la separación mínima entre pacientes distintos. */
+  const choca = (a: (typeof cercanas)[number]) => {
+    const ini = a.startsAt.getTime();
+    const fin = ini + a.durationMin * 60_000;
+    const margen = a.patientId === patient.id ? 0 : margenMs; // el mismo paciente puede encadenar sesiones
+    return nuevoInicio < fin + margen && ini < nuevoFin + margen;
+  };
 
   if (b.therapistId) {
-    // Con esteticista asignada: esa persona no puede tener dos citas a la vez.
-    const conflict = await prisma.appointment.findFirst({
-      where: { ...solapadas, therapistId: b.therapistId },
-      include: { patient: true, therapist: true },
-    });
+    // Con esteticista asignada: esa persona no puede atender dos pacientes a la vez.
+    const conflict = cercanas.find((a) => a.therapistId === b.therapistId && choca(a));
     if (conflict) {
       const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
       const quien = conflict.therapist?.name ?? 'la esteticista';
       return res.status(409).json({
-        error: patient.type === 'NUEVO'
-          ? `Un cliente nuevo requiere 40 min libres. ${quien} tiene una cita a las ${h}. Elige otro horario u otra esteticista.`
-          : `${quien} ya tiene una cita a las ${h}. Elige otro horario u otra esteticista.`,
+        error: `${quien} tiene una cita a las ${h} (${conflict.durationMin} min). Deja al menos ${SEPARACION_MIN} min entre pacientes, o elige otra esteticista.`,
       });
     }
   } else {
@@ -156,7 +169,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     const capacidad = await prisma.user.count({
       where: { role: 'ESTETICISTA', active: true, branchId: patient.branchId },
     });
-    const ocupadas = await prisma.appointment.count({ where: { ...solapadas, branchId: patient.branchId } });
+    const ocupadas = cercanas.filter(choca).length;
     if (ocupadas >= Math.max(1, capacidad)) {
       return res.status(409).json({
         error: capacidad > 1

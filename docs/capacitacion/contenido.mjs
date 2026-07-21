@@ -59,11 +59,12 @@ export const modulos = [
       { t: 'Elige el tipo de clienta', d: 'Cliente nuevo (se crea la paciente ahí mismo) o Recurrente (la buscas por nombre o teléfono).' },
       { t: 'Selecciona el servicio', d: 'Sale del catálogo. Si el servicio no tiene precio fijo, se define al cobrar.' },
       { t: 'Indica el paquete, si aplica', d: 'Si la clienta tiene paquetes comprados, elige de cuál es esta sesión. Así se descuenta sola al cerrar el turno.' },
-      { t: 'Fecha, hora y esteticista', d: 'Asigna la esteticista. Si ya tiene cita a esa hora, el sistema te avisa y te deja elegir otra.' },
+      { t: 'Fecha, hora y duración', d: 'Indica cuánto durará el proceso (puede pasar de una hora). La esteticista queda reservada todo ese tiempo.' },
+      { t: 'Asigna la esteticista', d: 'Si ya tiene una cita que se solapa, el sistema te avisa y te deja elegir otra.' },
       { t: 'Confirma y envía el WhatsApp', d: 'Al guardar aparece el botón verde "Enviar confirmación por WhatsApp": se abre el chat con el mensaje ya escrito, solo tocas Enviar.' },
     ],
     ojo: [
-      'Una clienta NUEVA necesita 40 minutos libres porque hay que llenarle la ficha. El sistema lo exige.',
+      'Entre pacientes se dejan 30 minutos libres. El sistema lo exige y no deja agendar encima.',
       'El código de turno es único por cita y no se puede reutilizar: evita que otra persona use el cupo.',
       'Cancelar una cita exige escribir el motivo. La clienta recibe el aviso por correo y en su portal.',
     ],
@@ -90,7 +91,7 @@ export const modulos = [
     ],
     ojo: [
       'La cédula, la dirección y toda la información clínica se guardan cifradas. No las compartas por WhatsApp ni por correo.',
-      'Una clienta sigue marcada como "Nueva" hasta que su ficha esté completa. Por eso reserva 40 minutos.',
+      'Una clienta sigue marcada como "Nueva" hasta que su ficha esté completa: reserva tiempo extra para llenarla.',
       'El fototipo (Fitzpatrick I–VI) define la intensidad del tratamiento: si dudas, consúltalo antes de aplicar.',
     ],
     atajos: [
