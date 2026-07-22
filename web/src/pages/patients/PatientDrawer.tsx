@@ -303,25 +303,8 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   );
 }
 
-// Áreas agrupadas por familia. Corporal = combos reductores; Láser = depilación.
-const AREA_GRUPOS: { label: string; areas: { key: string; label: string }[] }[] = [
-  { label: 'Corporal', areas: [
-    { key: 'ABDOMEN', label: 'Abdomen' },
-    { key: 'ESPALDA', label: 'Espalda' },
-    { key: 'ABDOMEN_LATERAL', label: 'Abdomen lateral' },
-  ] },
-  { label: 'Láser', areas: [
-    { key: 'PIERNAS', label: 'Piernas' },
-    { key: 'AXILAS', label: 'Axilas' },
-    { key: 'BRAZOS', label: 'Brazos' },
-    { key: 'CUERPO_COMPLETO', label: 'Cuerpo completo' },
-    { key: 'BOZO', label: 'Bozo' },
-    { key: 'CARA', label: 'Cara' },
-    { key: 'ENTREPIERNAS', label: 'Entrepiernas' },
-    { key: 'INTIMOS', label: 'Íntimos' },
-  ] },
-];
 const PRECIO_AREA_EXTRA = 1500;
+type AreaOpt = { key: string; label: string; grupo: string };
 
 /**
  * Define las áreas incluidas del paquete/combo (sus sesiones se reparten entre ellas)
@@ -333,14 +316,21 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
   const extras = (pkg.areas ?? []).filter((a) => a.isExtra).map((a) => a.area);
   const [sel, setSel] = useState<string[]>(incluidas.length ? incluidas : []);
   const [busy, setBusy] = useState(false);
+  const [opciones, setOpciones] = useState<AreaOpt[]>([]);
   // Área adicional con precio editable (láser varía según la zona).
   const [extraFor, setExtraFor] = useState<string | null>(null);
   const [extraPrice, setExtraPrice] = useState(String(PRECIO_AREA_EXTRA));
 
+  // Áreas administrables (incluye las que la admin agregue). Se cargan del sistema.
+  useEffect(() => {
+    api.get<AreaOpt[]>('/catalog/body-areas').then(setOpciones).catch(() => setOpciones([]));
+  }, []);
+
   // Muestra solo el grupo del combo (Corporal/Láser); si no está definido, muestra todos.
-  const grupos = pkg.areaGroup
-    ? AREA_GRUPOS.filter((g) => g.label.toUpperCase() === (pkg.areaGroup === 'LASER' ? 'LÁSER' : 'CORPORAL'))
-    : AREA_GRUPOS;
+  const grupos = [
+    { label: 'Corporal', grupo: 'CORPORAL', areas: opciones.filter((o) => o.grupo === 'CORPORAL') },
+    { label: 'Láser', grupo: 'LASER', areas: opciones.filter((o) => o.grupo === 'LASER') },
+  ].filter((g) => (pkg.areaGroup ? g.grupo === pkg.areaGroup : true) && g.areas.length > 0);
 
   const toggle = (k: string) => {
     if (extras.includes(k)) return; // ya es adicional

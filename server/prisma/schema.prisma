@@ -364,6 +364,18 @@ model TreatmentTechnique {
   @@index([treatmentId])
 }
 
+// Catálogo de áreas del cuerpo (administrable): corporal (abdomen, espalda…) y láser
+// (piernas, axilas…). La administración puede agregar más desde Configuración.
+model BodyArea {
+  id        String  @id @default(cuid())
+  key       String  @unique // clave estable guardada en citas y tratamientos (ej. MUSLO)
+  label     String // nombre visible (ej. Muslo)
+  grupo     String // CORPORAL | LASER
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+}
+
 // Área del cuerpo dentro de un combo. Un combo cubre 2 áreas y sus sesiones se
 // reparten entre ellas (12 sesiones = 6 por área). Una 3ra área es adicional y
 // se cobra aparte (RD$1,500): entra marcada como isExtra.

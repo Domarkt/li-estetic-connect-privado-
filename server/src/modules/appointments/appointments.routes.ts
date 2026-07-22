@@ -10,7 +10,7 @@ import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/m
 import { notifyRole } from '../notifications/notifications.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL } from '../patients/areas.service.js';
+import { getAreaLabelMap } from '../patients/areas.service.js';
 
 export const appointmentsRouter = Router();
 
@@ -313,11 +313,12 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     // Se consume 1 sesión POR ÁREA trabajada (un combo de 12 con 2 áreas son 6 y 6).
     const consumidas = conAreas.length || 1;
     const detalle: string[] = [];
+    const areaLabels = await getAreaLabelMap();
 
     for (const a of conAreas) {
       const done = Math.min(a.totalSessions, a.doneSessions + 1);
       await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: done } });
-      detalle.push(`${AREA_LABEL[a.area] ?? a.area} ${done}/${a.totalSessions}`);
+      detalle.push(`${areaLabels[a.area] ?? a.area} ${done}/${a.totalSessions}`);
     }
 
     const done = Math.min(target.totalSessions, target.doneSessions + consumidas);

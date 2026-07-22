@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREAS, AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, seedTreatmentAreas, seedTreatmentTechniques, serializeTechniques } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, seedTreatmentAreas, seedTreatmentTechniques, serializeTechniques, getAreaLabelMap } from './areas.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
@@ -157,7 +157,7 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
 const areasRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'] as const;
 
 const definirAreasSchema = z.object({
-  areas: z.array(z.enum(AREAS)).min(1, 'Elige al menos un área').max(8),
+  areas: z.array(z.string().min(1)).min(1, 'Elige al menos un área').max(12),
 });
 
 /** Definir las áreas incluidas del combo y repartir sus sesiones (12 → 6 y 6). */
@@ -168,16 +168,17 @@ patientsRouter.patch('/treatments/:treatmentId/areas', requireStaff, requireRole
   if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
 
   const actualizado = await definirAreas(t.id, areas);
+  const labels = await getAreaLabelMap();
   res.json({
     ok: true,
-    areas: serializeAreas(actualizado?.areas ?? []),
-    message: `Áreas definidas · ${areas.map((a) => AREA_LABEL[a]).join(' y ')}`,
+    areas: serializeAreas(actualizado?.areas ?? [], labels),
+    message: `Áreas definidas · ${areas.map((a) => labels[a] ?? a).join(' y ')}`,
   });
 });
 
 // El precio de la área adicional es editable (láser varía: no cuesta igual "bozo" que "cuerpo completo").
 const extraSchema = z.object({
-  area: z.enum(AREAS),
+  area: z.string().min(1),
   price: z.number().int().nonnegative().optional(),
 });
 
@@ -195,6 +196,8 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
   const incluidas = t.areas.filter((a) => !a.isExtra);
   const sesiones = incluidas[0]?.totalSessions ?? Math.max(1, Math.round(t.totalSessions / 2));
   const monto = price ?? AREA_EXTRA_PRECIO;
+  const labels = await getAreaLabelMap();
+  const areaLabel = labels[area] ?? area;
 
   await prisma.treatmentArea.create({
     data: { treatmentId: t.id, area, totalSessions: sesiones, isExtra: true },
@@ -205,7 +208,7 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
     await prisma.chargeItem.create({
       data: {
         branchId: t.patient.branchId, patientId: t.patientId,
-        name: `Área adicional: ${AREA_LABEL[area]} (${t.name})`,
+        name: `Área adicional: ${areaLabel} (${t.name})`,
         price: monto, createdById: req.staff!.sub,
       },
     });
@@ -214,8 +217,8 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
   res.status(201).json({
     ok: true,
     message: monto > 0
-      ? `${AREA_LABEL[area]} agregada · RD$${monto.toLocaleString('en-US')} pendiente de cobrar en recepción`
-      : `${AREA_LABEL[area]} agregada (sin cargo)`,
+      ? `${areaLabel} agregada · RD$${monto.toLocaleString('en-US')} pendiente de cobrar en recepción`
+      : `${areaLabel} agregada (sin cargo)`,
   });
 });
 

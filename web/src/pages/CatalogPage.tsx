@@ -18,24 +18,6 @@ const TABS: { key: CatalogKind; label: string }[] = [
 const STOCKABLE = (k: CatalogKind) => k === 'PRODUCTO' || k === 'INSUMO';
 
 // Áreas por familia, para elegir las que trae el combo por defecto al crearlo.
-const AREAS_POR_GRUPO: Record<'CORPORAL' | 'LASER', { key: string; label: string }[]> = {
-  CORPORAL: [
-    { key: 'ABDOMEN', label: 'Abdomen' },
-    { key: 'ESPALDA', label: 'Espalda' },
-    { key: 'ABDOMEN_LATERAL', label: 'Abdomen lateral' },
-  ],
-  LASER: [
-    { key: 'PIERNAS', label: 'Piernas' },
-    { key: 'AXILAS', label: 'Axilas' },
-    { key: 'BRAZOS', label: 'Brazos' },
-    { key: 'CUERPO_COMPLETO', label: 'Cuerpo completo' },
-    { key: 'BOZO', label: 'Bozo' },
-    { key: 'CARA', label: 'Cara' },
-    { key: 'ENTREPIERNAS', label: 'Entrepiernas' },
-    { key: 'INTIMOS', label: 'Íntimos' },
-  ],
-};
-
 export default function CatalogPage() {
   const { staff } = useAuth();
   const isAdmin = puedeGestionarCatalogo(staff);
@@ -209,9 +191,12 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const [areas, setAreas] = useState<string[]>(item?.defaultAreas ?? []);
   const toggleArea = (k: string) => setAreas((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
 
+  // Áreas administrables (incluye las que la admin agregue en Configuración).
+  const [areaOpts, setAreaOpts] = useState<{ key: string; label: string; grupo: string }[]>([]);
   useEffect(() => {
     if (!componible) return;
     api.get<CatalogItem[]>('/catalog?kind=SERVICIO').then(setServicios).catch(() => setServicios([]));
+    api.get<{ key: string; label: string; grupo: string }[]>('/catalog/body-areas').then(setAreaOpts).catch(() => setAreaOpts([]));
   }, [componible]);
 
   const toggleServicio = (id: string) =>
@@ -283,7 +268,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-bold text-muted">Áreas del combo <span className="font-semibold text-faint">({areas.length} elegidas · {areas.length ? Math.floor((Number(sessions) || 1) / areas.length) : 0} sesiones c/u)</span></span>
               <div className="flex flex-wrap gap-1.5">
-                {AREAS_POR_GRUPO[areaGroup].map((a) => {
+                {areaOpts.filter((a) => a.grupo === areaGroup).map((a) => {
                   const on = areas.includes(a.key);
                   return (
                     <button key={a.key} type="button" onClick={() => toggleArea(a.key)}

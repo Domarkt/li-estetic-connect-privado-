@@ -97,6 +97,42 @@ catalogRouter.patch('/:id', requireStaff, requireCatalogManager, async (req, res
   res.json(serialize(item));
 });
 
+// ── Áreas del cuerpo (administrable): las usan los combos/paquetes al asignarlas ──
+/** Lista de áreas activas, agrupadas Corporal/Láser. */
+catalogRouter.get('/body-areas', requireStaff, async (_req, res) => {
+  const areas = await prisma.bodyArea.findMany({ where: { active: true }, orderBy: [{ grupo: 'asc' }, { sortOrder: 'asc' }, { label: 'asc' }] });
+  res.json(areas.map((a) => ({ key: a.key, label: a.label, grupo: a.grupo })));
+});
+
+const areaSchema = z.object({
+  label: z.string().trim().min(1),
+  grupo: z.enum(['CORPORAL', 'LASER']),
+});
+
+/** Agregar una área nueva (Admin o quien gestiona catálogo). La clave se deriva del nombre. */
+catalogRouter.post('/body-areas', requireStaff, requireCatalogManager, async (req, res) => {
+  const b = areaSchema.parse(req.body);
+  const key = b.label.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]+/g, '_').replace(/(^_|_$)/g, '');
+  if (!key) return res.status(400).json({ error: 'Nombre de área inválido' });
+  const exists = await prisma.bodyArea.findUnique({ where: { key } });
+  if (exists) {
+    if (!exists.active) await prisma.bodyArea.update({ where: { key }, data: { active: true, label: b.label, grupo: b.grupo } });
+    else return res.status(409).json({ error: 'Ya existe un área con ese nombre' });
+  } else {
+    const max = await prisma.bodyArea.aggregate({ _max: { sortOrder: true } });
+    await prisma.bodyArea.create({ data: { key, label: b.label, grupo: b.grupo, sortOrder: (max._max.sortOrder ?? 0) + 1 } });
+  }
+  res.status(201).json({ ok: true, message: `Área "${b.label}" agregada` });
+});
+
+/** Quitar una área (baja lógica; no borra el historial que ya la usa). */
+catalogRouter.delete('/body-areas/:key', requireStaff, requireCatalogManager, async (req, res) => {
+  const a = await prisma.bodyArea.findUnique({ where: { key: req.params.key } });
+  if (!a) return res.status(404).json({ error: 'Área no encontrada' });
+  await prisma.bodyArea.update({ where: { key: a.key }, data: { active: false } });
+  res.json({ ok: true, message: `Área "${a.label}" retirada` });
+});
+
 /** Eliminar un ítem del catálogo (baja lógica; Admin o quien tenga permiso de catálogo). */
 catalogRouter.delete('/:id', requireStaff, requireCatalogManager, async (req, res) => {
   const exists = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });

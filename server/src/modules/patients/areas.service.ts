@@ -12,25 +12,35 @@ export const AREAS = [
 ] as const;
 export type Area = (typeof AREAS)[number];
 
+// Etiquetas base de respaldo (por si la tabla BodyArea aún no está sembrada).
 export const AREA_LABEL: Record<string, string> = {
-  ABDOMEN: 'Abdomen',
-  ESPALDA: 'Espalda',
-  ABDOMEN_LATERAL: 'Abdomen lateral',
-  PIERNAS: 'Piernas',
-  AXILAS: 'Axilas',
-  BRAZOS: 'Brazos',
-  CUERPO_COMPLETO: 'Cuerpo completo',
-  BOZO: 'Bozo',
-  CARA: 'Cara',
-  ENTREPIERNAS: 'Entrepiernas',
-  INTIMOS: 'Íntimos',
+  ABDOMEN: 'Abdomen', ESPALDA: 'Espalda', ABDOMEN_LATERAL: 'Abdomen lateral',
+  MUSLO: 'Muslo', GLUTEOS: 'Glúteos',
+  PIERNAS: 'Piernas', AXILAS: 'Axilas', BRAZOS: 'Brazos', CUERPO_COMPLETO: 'Cuerpo completo',
+  BOZO: 'Bozo', CARA: 'Cara', ENTREPIERNAS: 'Entrepiernas', INTIMOS: 'Íntimos',
 };
 
-/** Familias de áreas para agrupar el selector. */
-export const AREA_GROUPS: { label: string; areas: Area[] }[] = [
-  { label: 'Corporal', areas: ['ABDOMEN', 'ESPALDA', 'ABDOMEN_LATERAL'] },
-  { label: 'Láser', areas: ['PIERNAS', 'AXILAS', 'BRAZOS', 'CUERPO_COMPLETO', 'BOZO', 'CARA', 'ENTREPIERNAS', 'INTIMOS'] },
-];
+/** Mapa clave→etiqueta desde la tabla administrable (con respaldo estático). */
+export async function getAreaLabelMap(): Promise<Record<string, string>> {
+  try {
+    const areas = await prisma.bodyArea.findMany({ select: { key: true, label: true } });
+    const map: Record<string, string> = { ...AREA_LABEL };
+    for (const a of areas) map[a.key] = a.label;
+    return map;
+  } catch {
+    return { ...AREA_LABEL };
+  }
+}
+
+/** Áreas administrables agrupadas (para los selectores del frontend). */
+export async function getBodyAreasGrouped() {
+  const areas = await prisma.bodyArea.findMany({ where: { active: true }, orderBy: [{ grupo: 'asc' }, { sortOrder: 'asc' }, { label: 'asc' }] });
+  const byGroup = (g: string) => areas.filter((a) => a.grupo === g).map((a) => ({ key: a.key, label: a.label }));
+  return [
+    { label: 'Corporal', areas: byGroup('CORPORAL') },
+    { label: 'Láser', areas: byGroup('LASER') },
+  ];
+}
 
 /** Precio de la 3ra área (se cobra en recepción como cargo pendiente). */
 export const AREA_EXTRA_PRECIO = 1500;
@@ -46,12 +56,15 @@ export function repartirSesiones(total: number, cantidadAreas: number): number[]
   return Array.from({ length: cantidadAreas }, (_, i) => base + (i < resto ? 1 : 0));
 }
 
-/** Serializa las áreas de un tratamiento para la interfaz. */
-export function serializeAreas(areas: { id: string; area: string; totalSessions: number; doneSessions: number; isExtra: boolean }[]) {
+/** Serializa las áreas de un tratamiento para la interfaz. `labels` viene de getAreaLabelMap(). */
+export function serializeAreas(
+  areas: { id: string; area: string; totalSessions: number; doneSessions: number; isExtra: boolean }[],
+  labels: Record<string, string> = AREA_LABEL,
+) {
   return areas.map((a) => ({
     id: a.id,
     area: a.area,
-    label: AREA_LABEL[a.area] ?? a.area,
+    label: labels[a.area] ?? a.area,
     total: a.totalSessions,
     done: a.doneSessions,
     remaining: Math.max(0, a.totalSessions - a.doneSessions),
@@ -65,7 +78,7 @@ export function serializeAreas(areas: { id: string; area: string; totalSessions:
  * el tratamiento ya tiene alguna.
  */
 export async function seedTreatmentAreas(treatmentId: string, areas: string[], totalSessions: number): Promise<void> {
-  const validas = areas.filter((a) => (AREAS as readonly string[]).includes(a));
+  const validas = areas.filter((a) => !!a && a.trim());
   if (!validas.length) return;
   const existentes = await prisma.treatmentArea.count({ where: { treatmentId } });
   if (existentes > 0) return;

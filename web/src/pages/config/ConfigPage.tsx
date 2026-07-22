@@ -5,12 +5,13 @@ import { Overlay, stop } from '../../components/Modal';
 import type { BranchGoal, IntegrationsView, PointsRule, RewardItem } from '../../lib/types';
 import ImportPatientsPanel from '../patients/ImportPatientsPanel';
 
-type Tab = 'negocio' | 'metas' | 'reglas' | 'premios' | 'integraciones' | 'importar' | 'mantenimiento';
+type Tab = 'negocio' | 'metas' | 'reglas' | 'premios' | 'areas' | 'integraciones' | 'importar' | 'mantenimiento';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'negocio', label: 'Negocio y sucursales' },
   { key: 'metas', label: 'Metas por sucursal' },
   { key: 'reglas', label: 'Reglas de puntos' },
   { key: 'premios', label: 'Premios' },
+  { key: 'areas', label: 'Áreas del cuerpo' },
   { key: 'integraciones', label: 'Integraciones' },
   { key: 'importar', label: 'Importar pacientes' },
   { key: 'mantenimiento', label: 'Mantenimiento de datos' },
@@ -33,9 +34,75 @@ export default function ConfigPage() {
       {tab === 'metas' && <GoalsTab />}
       {tab === 'reglas' && <RulesTab />}
       {tab === 'premios' && <RewardsTab />}
+      {tab === 'areas' && <AreasTab />}
       {tab === 'integraciones' && <IntegrationsTab />}
       {tab === 'importar' && <ImportPatientsPanel />}
       {tab === 'mantenimiento' && <MaintenanceTab />}
+    </div>
+  );
+}
+
+// ── Áreas del cuerpo: catálogo administrable para combos corporales y láser ──
+type BodyArea = { key: string; label: string; grupo: 'CORPORAL' | 'LASER' };
+function AreasTab() {
+  const toast = useToast();
+  const [areas, setAreas] = useState<BodyArea[]>([]);
+  const [label, setLabel] = useState('');
+  const [grupo, setGrupo] = useState<'CORPORAL' | 'LASER'>('CORPORAL');
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.get<BodyArea[]>('/catalog/body-areas').then(setAreas).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  async function agregar() {
+    if (!label.trim()) { toast('Escribe el nombre del área'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/catalog/body-areas', { label: label.trim(), grupo });
+      toast(r.message); setLabel(''); load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+  async function quitar(a: BodyArea) {
+    if (!window.confirm(`¿Quitar el área "${a.label}"? Dejará de aparecer al asignar combos (no afecta el historial).`)) return;
+    try { const r = await api.del<{ message: string }>(`/catalog/body-areas/${a.key}`); toast(r.message); load(); }
+    catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+  }
+
+  const grupoLista = (g: 'CORPORAL' | 'LASER') => areas.filter((a) => a.grupo === g);
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <div className="rounded-base border border-line bg-card p-4 text-[12.5px] text-muted shadow-card">
+        <b className="text-navy">Áreas del cuerpo</b> que se ofrecen al asignar un combo al paciente.
+        <b>Corporal</b> para combos reductores (abdomen, espalda…) y <b>Láser</b> para depilación (piernas, axilas…). Agrega las que necesites.
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2.5 rounded-base border border-line bg-card p-4 shadow-card">
+        <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nueva área</span>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && agregar()} placeholder="Ej. Muslo, Glúteos, Papada…" className="rounded-[9px] border border-line px-3.5 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
+        <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Grupo</span>
+          <select value={grupo} onChange={(e) => setGrupo(e.target.value as 'CORPORAL' | 'LASER')} className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[13px]">
+            <option value="CORPORAL">Corporal</option><option value="LASER">Láser</option>
+          </select></label>
+        <button onClick={agregar} disabled={busy} className="rounded-[10px] bg-magenta px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-60">+ Agregar</button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+        {(['CORPORAL', 'LASER'] as const).map((g) => (
+          <div key={g} className="rounded-base border border-line bg-card p-4 shadow-card">
+            <div className="mb-2 text-[13px] font-extrabold">{g === 'CORPORAL' ? 'Corporal' : 'Láser'}</div>
+            <div className="flex flex-col gap-1.5">
+              {grupoLista(g).map((a) => (
+                <div key={a.key} className="flex items-center gap-2 rounded-[9px] border border-line-2 px-3 py-2">
+                  <span className="flex-1 text-[13px] font-semibold">{a.label}</span>
+                  <button onClick={() => quitar(a)} className="rounded-md px-2 py-1 text-[12px] font-bold text-muted hover:text-danger">Quitar</button>
+                </div>
+              ))}
+              {grupoLista(g).length === 0 && <div className="py-3 text-center text-[12px] text-muted">Sin áreas.</div>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
