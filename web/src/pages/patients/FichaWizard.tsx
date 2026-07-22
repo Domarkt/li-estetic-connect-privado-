@@ -12,7 +12,7 @@ interface Props {
   onSaved: () => void;
 }
 
-interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
+interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; cedula?: string | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
 interface FichaData {
   consultDate?: string | null; motivos?: string[];
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
@@ -38,7 +38,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
   const [busy, setBusy] = useState(false);
 
   // Estado del formulario
-  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', occupation: '', address: '', consultDate: '' });
+  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', cedula: '', occupation: '', address: '', consultDate: '' });
   const [motivos, setMotivos] = useState<Set<string>>(new Set());
   const [antecedentes, setAntecedentes] = useState<Record<string, boolean>>({});
   const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', lactancia: false });
@@ -67,6 +67,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
           phone: patient.phone ?? d.phone,
           email: patient.email ?? d.email,
           age: patient.age != null ? String(patient.age) : d.age,
+          cedula: patient.cedula ?? d.cedula,
           occupation: patient.occupation ?? d.occupation,
           address: patient.address ?? d.address,
           birthDate: patient.birthDate ? String(patient.birthDate).slice(0, 10) : d.birthDate,
@@ -113,6 +114,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
       birthDate: datos.birthDate || undefined,
       phone: datos.phone || undefined,
       email: datos.email || undefined,
+      cedula: datos.cedula || undefined,
       occupation: datos.occupation || undefined,
       address: datos.address || undefined,
       motivos: [...motivos],
@@ -235,7 +237,7 @@ function ageFromISO(iso: string): string {
   return a >= 0 && a < 130 ? String(a) : '';
 }
 
-type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; consultDate: string };
+type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; cedula: string; occupation: string; address: string; consultDate: string };
 
 function Step1({ datos, setDatos, motivos, setMotivos }: {
   datos: Datos; setDatos: React.Dispatch<React.SetStateAction<Datos>>;
@@ -252,6 +254,7 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de nacimiento</span><input type="date" className={inputCls} value={datos.birthDate} onChange={(e) => setDatos({ ...datos, birthDate: e.target.value, age: ageFromISO(e.target.value) })} /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Celular</span><input className={inputCls} value={datos.phone} onChange={(e) => set('phone', e.target.value)} placeholder="809-000-0000" /></label>
         <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Correo electrónico</span><input type="email" className={inputCls} value={datos.email} onChange={(e) => set('email', e.target.value)} placeholder="paciente@correo.com" /></label>
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>Cédula / ID</span><input className={inputCls} value={datos.cedula} onChange={(e) => set('cedula', e.target.value)} placeholder="000-0000000-0" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Ocupación</span><input className={inputCls} value={datos.occupation} onChange={(e) => set('occupation', e.target.value)} /></label>
         <div className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Sexo</span>
           <div className="flex gap-2">

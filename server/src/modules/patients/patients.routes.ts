@@ -365,6 +365,7 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
       sex: patient.sex,
       birthDate: patient.birthDate, occupation: patient.occupation,
       address: patient.address != null ? decrypt(patient.address) : patient.address,
+      cedula: patient.cedula != null ? decrypt(patient.cedula) : patient.cedula,
     },
     ficha: decryptClinical(patient.clinicalRecord),
   });
@@ -378,6 +379,7 @@ const step1Schema = z.object({
   birthDate: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
+  cedula: z.string().optional(),
   occupation: z.string().optional(),
   address: z.string().optional(),
   motivos: z.array(z.string()).default([]),
@@ -406,7 +408,11 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
       email: body.email ? body.email : patient.email,
       birthDate: newBirth,
       occupation: body.occupation ?? patient.occupation,
-      ...(body.address !== undefined ? encryptPatientWrite({ address: body.address }) : {}),
+      // Cédula y dirección son PII: se guardan cifradas.
+      ...encryptPatientWrite({
+        ...(body.address !== undefined ? { address: body.address } : {}),
+        ...(body.cedula !== undefined ? { cedula: body.cedula } : {}),
+      }),
     },
   });
   await prisma.clinicalRecord.update({
