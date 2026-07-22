@@ -17,8 +17,8 @@ const KIND_LABEL: Record<PayKind, string> = { TOTAL: 'Pago total', ABONO: 'Abono
 
 const num = (v: string) => parseInt((v || '').replace(/[^0-9]/g, ''), 10) || 0;
 
-// Cada línea es independiente (se puede repetir el mismo servicio): tiene su cantidad y su "para".
-interface CartItem { lineId: string; catalogId: string; name: string; price: number; qty: number; para: string }
+// Cada línea es independiente (se puede repetir el mismo servicio): tiene su cantidad.
+interface CartItem { lineId: string; catalogId: string; name: string; price: number; qty: number }
 interface Props { preselectId?: string; onClose: () => void; onEmitted: (r: Receipt) => void }
 
 let lineSeq = 0;
@@ -69,7 +69,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   // Agregar un servicio al carrito. Se permite repetir (una para ella, otra para su pareja).
   function addToCart(item: CatalogItem) {
     setSQuery('');
-    setCart((c) => [...c, { lineId: `l${++lineSeq}`, catalogId: item.id, name: item.name, price: item.price || 0, qty: 1, para: '' }]);
+    setCart((c) => [...c, { lineId: `l${++lineSeq}`, catalogId: item.id, name: item.name, price: item.price || 0, qty: 1 }]);
   }
   const patchLine = (lineId: string, patch: Partial<CartItem>) => setCart((c) => c.map((x) => (x.lineId === lineId ? { ...x, ...patch } : x)));
   const removeItem = (lineId: string) => setCart((c) => c.filter((x) => x.lineId !== lineId));
@@ -113,8 +113,6 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   }
 
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  // Nombre de la línea para el recibo: incluye "para X" si se indicó el beneficiario.
-  const lineName = (i: CartItem) => (i.para.trim() ? `${i.name} · para ${i.para.trim()}` : i.name);
   // Monto a cobrar según el caso:
   const amt = usingCart
     ? (payKind === 'ABONO' ? num(amount) : cartTotal)
@@ -157,7 +155,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
         payments: paymentsList, treatmentId: treatmentId ?? undefined,
         paymentKind: (treatmentId || chargeIds.length || freeAbono) ? payKind : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
-        items: usingCart ? cart.map((c) => ({ name: lineName(c), price: c.price, qty: c.qty })) : undefined,
+        items: usingCart ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty })) : undefined,
         fullAmount: freeAbono ? cartTotal : undefined,
       });
       toast(r.message); onEmitted(r.receipt); onClose();
@@ -243,9 +241,6 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                             </div>
                             {it.qty > 1 && <span className="flex-none text-[12px] font-bold text-magenta">{fmtRD(it.price * it.qty)}</span>}
                           </div>
-                          {/* Para (opcional): a quién es este servicio, p. ej. su pareja */}
-                          <input value={it.para} onChange={(e) => patchLine(it.lineId, { para: e.target.value })} placeholder="Para (opcional): ej. su pareja Juan"
-                            className="rounded-[8px] border border-line bg-card px-2.5 py-1.5 text-[12px] outline-none focus:border-magenta" />
                         </div>
                       ))}
                       <div className="flex justify-between border-t border-line-2 pt-1.5 text-[13px]"><span className="font-bold text-muted">Total</span><span className="font-extrabold text-magenta">{fmtRD(cartTotal)}</span></div>
@@ -356,7 +351,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
             <div className="rounded-[11px] border border-line-2 p-3">
               <div className="mb-1.5 text-[11.5px] font-bold text-muted">Servicios</div>
               {usingCart
-                ? cart.map((c) => <div key={c.lineId} className="flex justify-between py-0.5 text-[13px]"><span>{c.qty > 1 ? `${c.qty}× ` : ''}{lineName(c)}</span><span className="font-bold">{fmtRD(c.price * c.qty)}</span></div>)
+                ? cart.map((c) => <div key={c.lineId} className="flex justify-between py-0.5 text-[13px]"><span>{c.qty > 1 ? `${c.qty}× ` : ''}{c.name}</span><span className="font-bold">{fmtRD(c.price * c.qty)}</span></div>)
                 : <div className="text-[13px] font-semibold">{finalConcept}</div>}
               {freeAbono && <div className="mt-1 flex justify-between border-t border-line-2 pt-1 text-[12px] text-muted"><span>Saldo pendiente</span><span className="font-bold text-danger">{fmtRD(freePending)}</span></div>}
             </div>
