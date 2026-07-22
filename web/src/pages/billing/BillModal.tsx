@@ -17,6 +17,7 @@ const KIND_LABEL: Record<PayKind, string> = { TOTAL: 'Pago total', ABONO: 'Abono
 
 const num = (v: string) => parseInt((v || '').replace(/[^0-9]/g, ''), 10) || 0;
 
+interface CartItem { id: string; name: string; price: number }
 interface Props { preselectId?: string; onClose: () => void; onEmitted: (r: Receipt) => void }
 
 export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
@@ -24,15 +25,13 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [patients, setPatients] = useState<BillPatient[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [selected, setSelected] = useState<string | null>(preselectId ?? null);
-  const [concept, setConcept] = useState('');
-  const [catalogId, setCatalogId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [concept, setConcept] = useState(''); // concepto derivado (tratamiento/cargos)
+  const [cart, setCart] = useState<CartItem[]>([]); // varios servicios en un recibo
+  const [amount, setAmount] = useState(''); // monto a abonar (solo en ABONO)
   const [chargeIds, setChargeIds] = useState<string[]>([]);
   const [treatmentId, setTreatmentId] = useState<string | null>(null);
   const [payKind, setPayKind] = useState<PayKind>('TOTAL');
-  const [fullAmount, setFullAmount] = useState(''); // precio total del combo (abono libre)
 
-  // Pago: un solo método por defecto; "dividir" abre las casillas por método.
   const [method, setMethod] = useState<Metodo>('EFECTIVO');
   const [splitOn, setSplitOn] = useState(false);
   const [split, setSplit] = useState<Record<Metodo, string>>({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
@@ -40,7 +39,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [step, setStep] = useState<'form' | 'review'>('form');
   const [busy, setBusy] = useState(false);
   const [pQuery, setPQuery] = useState('');
-  const [sQuery, setSQuery] = useState(''); // búsqueda de servicio
+  const [sQuery, setSQuery] = useState('');
   const [loadingP, setLoadingP] = useState(true);
   const [errP, setErrP] = useState(false);
 
@@ -49,7 +48,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const hasBalance = !!t && t.balance > 0;
   const hasCharges = chargeIds.length > 0;
   const derivado = !!(t || hasCharges); // concepto tomado de registros del paciente
-  const freeAbono = payKind === 'ABONO' && !t && !hasCharges;
+  const usingCart = !derivado && cart.length > 0;
 
   function loadPatients() {
     setLoadingP(true); setErrP(false);
@@ -64,12 +63,13 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function pickCatalog(item: CatalogItem) {
-    setCatalogId(item.id);
-    setConcept(item.name);
-    setAmount(item.price ? String(item.price) : ''); // sin precio → se escribe el monto
-    setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
+  // Agregar un servicio al carrito (evita duplicados; sin precio entra en 0 para escribirlo).
+  function addToCart(item: CatalogItem) {
+    setSQuery('');
+    setCart((c) => (c.some((x) => x.id === item.id) ? c : [...c, { id: item.id, name: item.name, price: item.price || 0 }]));
   }
+  const setItemPrice = (id: string, v: string) => setCart((c) => c.map((x) => (x.id === id ? { ...x, price: num(v) } : x)));
+  const removeItem = (id: string) => setCart((c) => c.filter((x) => x.id !== id));
 
   const filteredPatients = patients.filter((p) => {
     const q = pQuery.trim().toLowerCase();
@@ -82,18 +82,15 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   function applyPatient(p?: BillPatient) {
     if (!p) return;
-    setSelected(p.id); setCatalogId(''); setSQuery('');
+    setSelected(p.id); setCart([]); setSQuery('');
     if (p.pendingCharges.length) {
       setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
-      setAmount(String(p.pendingTotal)); setChargeIds(p.pendingCharges.map((c) => c.id));
-      setTreatmentId(null); setPayKind('TOTAL');
+      setChargeIds(p.pendingCharges.map((c) => c.id)); setTreatmentId(null); setPayKind('TOTAL'); setAmount('');
     } else if (p.treatment && p.treatment.balance > 0) {
       setConcept(`Saldo ${p.treatment.name}`); setTreatmentId(p.treatment.id);
-      setPayKind('SALDO'); setAmount(String(p.treatment.balance)); setChargeIds([]);
+      setPayKind('SALDO'); setChargeIds([]); setAmount(String(p.treatment.balance));
     } else {
-      setConcept(p.plan !== 'Sin paquete' ? `Paquete ${p.plan}` : '');
-      setAmount(p.treatment ? String(p.treatment.price) : ''); setTreatmentId(p.treatment?.id ?? null);
-      setPayKind('TOTAL'); setChargeIds([]);
+      setConcept(''); setTreatmentId(null); setPayKind('TOTAL'); setChargeIds([]); setAmount('');
     }
     setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
   }
@@ -107,12 +104,21 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     } else if (hasCharges) {
       if (k === 'TOTAL') setAmount(String(current?.pendingTotal ?? 0));
       else setAmount('');
+    } else {
+      setAmount(''); // carrito: en TOTAL el monto es el total del carrito
     }
   }
 
-  const amt = num(amount);
-  const fullAmt = num(fullAmount);
+  const cartTotal = cart.reduce((s, i) => s + i.price, 0);
+  // Monto a cobrar según el caso:
+  const amt = usingCart
+    ? (payKind === 'ABONO' ? num(amount) : cartTotal)
+    : num(amount);
+  const fullAmt = usingCart ? cartTotal : 0;
+  const freeAbono = payKind === 'ABONO' && usingCart;
   const freePending = Math.max(0, fullAmt - amt);
+  const finalConcept = derivado ? concept : cart.map((c) => c.name).join(' + ');
+
   const splitAssigned = METHODS.reduce((s, m) => s + num(split[m]), 0);
   const assigned = splitOn ? splitAssigned : amt;
   const remaining = amt - assigned;
@@ -122,9 +128,12 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const balanceAfter = t ? Math.max(0, t.balance - amt) : 0;
 
   function validate(): string | null {
-    if (!concept.trim()) return 'Elige un servicio o paquete';
+    if (!derivado && cart.length === 0) return 'Agrega al menos un servicio';
+    const sinPrecio = cart.find((c) => c.price <= 0);
+    if (sinPrecio) return `Escribe el precio de: ${sinPrecio.name}`;
+    if (!finalConcept.trim()) return 'Elige un servicio o paquete';
     if (!amt) return 'Escribe el monto a cobrar';
-    if (freeAbono && fullAmt <= amt) return 'El precio total del combo debe ser mayor que el abono';
+    if (freeAbono && amt >= cartTotal) return 'El abono debe ser menor que el total del carrito';
     if (splitOn && assigned !== amt) return `El pago dividido (${fmtRD(assigned)}) debe sumar el total (${fmtRD(amt)})`;
     return null;
   }
@@ -139,11 +148,12 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     setBusy(true);
     try {
       const r = await api.post<{ receipt: Receipt; message: string }>('/invoices', {
-        patientId: selected ?? undefined, concept: concept.trim(),
+        patientId: selected ?? undefined, concept: finalConcept.trim(),
         payments: paymentsList, treatmentId: treatmentId ?? undefined,
-        paymentKind: (treatmentId || chargeIds.length || (freeAbono && selected)) ? payKind : 'TOTAL',
+        paymentKind: (treatmentId || chargeIds.length || freeAbono) ? payKind : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
-        fullAmount: freeAbono && selected ? fullAmt : undefined,
+        items: usingCart ? cart.map((c) => ({ name: c.name, price: c.price })) : undefined,
+        fullAmount: freeAbono ? cartTotal : undefined,
       });
       toast(r.message); onEmitted(r.receipt); onClose();
     } catch (e) {
@@ -168,13 +178,13 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 <div className="flex items-center gap-2.5 rounded-[11px] border border-magenta bg-magenta-soft px-3 py-2.5">
                   <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11.5px] font-bold text-white" style={{ background: current.avatarColor }}>{current.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
                   <div className="min-w-0 flex-1"><div className="text-[13.5px] font-bold">{current.name}</div><div className="text-[11.5px] text-muted">{current.plan}{current.balance > 0 ? ` · saldo ${fmtRD(current.balance)}` : ''}</div></div>
-                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
                 </div>
               ) : (
                 <>
                   <input value={pQuery} onChange={(e) => setPQuery(e.target.value)} placeholder="🔍 Buscar por nombre o teléfono…"
                     className="mb-1.5 w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
-                  <div className="flex max-h-[150px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
+                  <div className="flex max-h-[130px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
                     {loadingP && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Cargando pacientes…</div>}
                     {errP && <button onClick={loadPatients} className="px-2.5 py-3 text-center text-[12.5px] font-bold text-magenta">No se pudieron cargar. Toca para reintentar.</button>}
                     {!loadingP && !errP && filteredPatients.length === 0 && (
@@ -194,40 +204,58 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               )}
             </div>
 
-            {/* 2 · Servicio o paquete */}
+            {/* 2 · Servicios */}
             <div>
-              <span className="mb-1.5 block text-xs font-bold text-muted">Servicio o paquete</span>
+              <span className="mb-1.5 block text-xs font-bold text-muted">Servicios a cobrar</span>
               {derivado ? (
                 <>
                   <div className="rounded-[11px] border border-line-2 bg-bg px-3.5 py-3 text-[13.5px] font-semibold">{concept || '—'}</div>
                   <span className="mt-1 block text-[11px] text-faint">Tomado de los servicios/tratamiento ya registrados del paciente.</span>
                 </>
-              ) : catalogId ? (
-                <div className="flex items-center gap-2.5 rounded-[11px] border border-magenta bg-magenta-soft px-3.5 py-3">
-                  <div className="min-w-0 flex-1 text-[13.5px] font-bold">{concept}</div>
-                  <button onClick={() => { setCatalogId(''); setConcept(''); setAmount(''); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
-                </div>
               ) : (
                 <>
-                  <input value={sQuery} onChange={(e) => setSQuery(e.target.value)} placeholder="🔍 Buscar servicio, paquete o combo…"
+                  {/* Carrito: uno o varios servicios en el mismo recibo */}
+                  {cart.length > 0 && (
+                    <div className="mb-2 flex flex-col gap-1.5 rounded-[11px] border border-line-2 p-2">
+                      {cart.map((it) => (
+                        <div key={it.id} className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{it.name}</span>
+                          <div className="flex items-center rounded-[8px] border border-line px-2">
+                            <span className="text-[11px] font-bold text-faint">RD$</span>
+                            <input value={it.price ? String(it.price) : ''} onChange={(e) => setItemPrice(it.id, e.target.value)} inputMode="numeric" placeholder="precio"
+                              className="w-[76px] bg-transparent px-1 py-1.5 text-right text-[13px] font-bold outline-none" />
+                          </div>
+                          <button onClick={() => removeItem(it.id)} className="flex-none rounded-md px-1.5 text-[15px] font-bold text-muted hover:text-danger">×</button>
+                        </div>
+                      ))}
+                      <div className="mt-0.5 flex justify-between border-t border-line-2 pt-1.5 text-[13px]"><span className="font-bold text-muted">Total</span><span className="font-extrabold text-magenta">{fmtRD(cartTotal)}</span></div>
+                    </div>
+                  )}
+                  <input value={sQuery} onChange={(e) => setSQuery(e.target.value)} placeholder="🔍 Buscar y agregar servicio…"
                     className="mb-1.5 w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
-                  <div className="flex max-h-[170px] flex-col gap-1 overflow-y-auto rounded-[11px] border border-line-2 p-2">
-                    {catalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay servicios en el catálogo. Créalos en Catálogo.</div>}
-                    {catalog.length > 0 && filteredCatalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Sin coincidencias.</div>}
-                    {filteredCatalog.map((c) => (
-                      <button key={c.id} onClick={() => pickCatalog(c)} className="flex items-center gap-2 rounded-[9px] px-2.5 py-2 text-left hover:bg-bg">
-                        <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10.5px] font-bold text-navy">{KIND_TAG[c.kind] ?? c.kind}</span>
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{c.name}</span>
-                        <span className="flex-none text-[12.5px] font-bold text-magenta">{c.price ? fmtRD(c.price) : 'sin precio'}</span>
-                      </button>
-                    ))}
-                  </div>
+                  {(sQuery || cart.length === 0) && (
+                    <div className="flex max-h-[150px] flex-col gap-1 overflow-y-auto rounded-[11px] border border-line-2 p-2">
+                      {catalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay servicios en el catálogo. Créalos en Catálogo.</div>}
+                      {catalog.length > 0 && filteredCatalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Sin coincidencias.</div>}
+                      {filteredCatalog.map((c) => {
+                        const added = cart.some((x) => x.id === c.id);
+                        return (
+                          <button key={c.id} onClick={() => addToCart(c)} disabled={added} className="flex items-center gap-2 rounded-[9px] px-2.5 py-2 text-left hover:bg-bg disabled:opacity-45">
+                            <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10.5px] font-bold text-navy">{KIND_TAG[c.kind] ?? c.kind}</span>
+                            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{c.name}</span>
+                            <span className="flex-none text-[12.5px] font-bold text-magenta">{c.price ? fmtRD(c.price) : 'sin precio'}</span>
+                            <span className="flex-none text-[15px] font-bold text-magenta">{added ? '✓' : '+'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </>
               )}
             </div>
 
-            {/* 3 · Tipo de pago (solo cuando hay algo que abonar/saldar) */}
-            {(selected || derivado) && (
+            {/* 3 · Tipo de pago */}
+            {(selected || derivado) && (usingCart || derivado) && (
               <div>
                 <span className="mb-1.5 block text-xs font-bold text-muted">Tipo de pago</span>
                 <div className="flex gap-2">
@@ -246,27 +274,30 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 {t && (payKind === 'ABONO' || payKind === 'SALDO') && (
                   <div className="mt-2 rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Saldo actual: <b style={{ color: 'var(--danger)' }}>{fmtRD(t.balance)}</b> de {fmtRD(t.price)}. Tras el pago quedaría <b>{fmtRD(balanceAfter)}</b>.</div>
                 )}
-                {freeAbono && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    <label className="flex flex-col gap-1"><span className="text-[11.5px] font-bold text-muted">Precio total del combo/compra (RD$)</span>
-                      <input value={fullAmount} onChange={(e) => setFullAmount(e.target.value)} placeholder="Ej. 18000" className="rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
-                    {fullAmt > 0 && <div className="rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Abono de <b>{fmtRD(amt)}</b> de <b>{fmtRD(fullAmt)}</b> · queda pendiente <b style={{ color: 'var(--danger)' }}>{fmtRD(freePending)}</b>.</div>}
-                  </div>
+                {freeAbono && amt > 0 && (
+                  <div className="mt-2 rounded-md bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">Abono de <b>{fmtRD(amt)}</b> de <b>{fmtRD(cartTotal)}</b> · queda pendiente <b style={{ color: 'var(--danger)' }}>{fmtRD(freePending)}</b>.</div>
                 )}
               </div>
             )}
 
-            {/* 4 · Monto */}
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-muted">{freeAbono ? 'Monto a abonar' : 'Monto a cobrar'} <span className="font-semibold text-faint">· ITBIS 18% incluido</span></span>
-              <div className="flex items-center rounded-[11px] border-2 border-line px-3.5 focus-within:border-magenta">
-                <span className="text-[15px] font-bold text-muted">RD$</span>
-                <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="0"
-                  className="w-full bg-transparent px-2 py-3 text-[20px] font-extrabold outline-none placeholder:text-faint" />
+            {/* 4 · Monto: total del carrito (TOTAL) o campo de abono/derivado */}
+            {usingCart && payKind === 'TOTAL' ? (
+              <div className="flex items-center justify-between rounded-[11px] border-2 border-magenta bg-magenta-soft px-4 py-3">
+                <span className="text-[13px] font-bold text-muted">Total a cobrar · ITBIS incl.</span>
+                <span className="text-[22px] font-extrabold text-magenta">{fmtRD(cartTotal)}</span>
               </div>
-            </label>
+            ) : (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-muted">{freeAbono ? 'Monto a abonar' : 'Monto a cobrar'} <span className="font-semibold text-faint">· ITBIS 18% incluido</span></span>
+                <div className="flex items-center rounded-[11px] border-2 border-line px-3.5 focus-within:border-magenta">
+                  <span className="text-[15px] font-bold text-muted">RD$</span>
+                  <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="0"
+                    className="w-full bg-transparent px-2 py-3 text-[20px] font-extrabold outline-none placeholder:text-faint" />
+                </div>
+              </label>
+            )}
 
-            {/* 5 · Forma de pago (un toque; dividir opcional) */}
+            {/* 5 · Forma de pago */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-xs font-bold text-muted">¿Cómo paga?</span>
@@ -304,8 +335,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
             <Row k="Tipo de pago" v={KIND_LABEL[(treatmentId || hasCharges || freeAbono) ? payKind : 'TOTAL']} />
-            <Row k="Concepto" v={concept} />
-            {freeAbono && fullAmt > 0 && <Row k="Saldo pendiente" v={fmtRD(freePending)} />}
+            {/* Detalle del recibo */}
+            <div className="rounded-[11px] border border-line-2 p-3">
+              <div className="mb-1.5 text-[11.5px] font-bold text-muted">Servicios</div>
+              {usingCart
+                ? cart.map((c) => <div key={c.id} className="flex justify-between py-0.5 text-[13px]"><span>{c.name}</span><span className="font-bold">{fmtRD(c.price)}</span></div>)
+                : <div className="text-[13px] font-semibold">{finalConcept}</div>}
+              {freeAbono && <div className="mt-1 flex justify-between border-t border-line-2 pt-1 text-[12px] text-muted"><span>Saldo pendiente</span><span className="font-bold text-danger">{fmtRD(freePending)}</span></div>}
+            </div>
             <div className="rounded-[11px] border border-line-2 p-3">
               <div className="mb-1.5 text-[11.5px] font-bold text-muted">Desglose de pago</div>
               {paymentsList.map((p) => <div key={p.method} className="flex justify-between py-0.5 text-[13px]"><span>{METHOD_LABEL[p.method]}</span><span className="font-bold">{fmtRD(p.amount)}</span></div>)}

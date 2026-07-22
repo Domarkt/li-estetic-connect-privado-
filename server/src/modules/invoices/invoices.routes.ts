@@ -86,6 +86,8 @@ const billSchema = z.object({
   // Pago dividido: una o varias líneas por método que suman el total.
   payments: z.array(z.object({ method: methodEnum, amount: z.number().int().positive() })).min(1),
   chargeItemIds: z.array(z.string()).optional(), // marca estos cargos como facturados
+  // Carrito: varios servicios/productos en un mismo recibo (cada uno detallado).
+  items: z.array(z.object({ name: z.string().min(1), price: z.number().int().nonnegative() })).optional(),
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
   paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
   fullAmount: z.number().int().positive().optional(), // precio total del combo/compra (para abono a concepto libre)
@@ -138,6 +140,14 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     if (b.paymentKind === 'ABONO' && amount < chargesTotal) {
       // Abono: se muestran los servicios y una línea de saldo pendiente para conciliar el total pagado.
       saldoServicios = chargesTotal - amount;
+      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
+    }
+  } else if (b.items?.length) {
+    // Carrito: cada servicio/producto detallado a su precio.
+    lineItems = b.items.map((it) => ({ name: it.name, qty: 1, unitPrice: it.price, total: it.price }));
+    // Abono al carrito: el resto (total del carrito − abonado) queda como saldo pendiente.
+    if (b.paymentKind === 'ABONO' && b.patientId && b.fullAmount && b.fullAmount > amount) {
+      saldoServicios = b.fullAmount - amount;
       lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
     }
   } else {
