@@ -23,6 +23,7 @@ export default function StaffLogin() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -128,10 +129,17 @@ export default function StaffLogin() {
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-bold text-muted">Contraseña</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && submit()}
-                className="rounded-[11px] border border-line px-3.5 py-3 text-sm outline-none focus:border-magenta"
-                placeholder="••••••••" />
+              <div className="flex items-center rounded-[11px] border border-line pr-2 focus-within:border-magenta">
+                <input type={showPass ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && submit()}
+                  className="w-full bg-transparent px-3.5 py-3 text-sm outline-none"
+                  placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPass((v) => !v)}
+                  aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  className="flex-none rounded-lg px-2 py-1 text-[12px] font-bold text-muted hover:text-magenta">
+                  {showPass ? '🙈 Ocultar' : '👁 Mostrar'}
+                </button>
+              </div>
             </label>
           </div>
 
