@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREAS, AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas } from './areas.service.js';
+import { AREAS, AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, seedTreatmentAreas } from './areas.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
@@ -521,12 +521,15 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
     const exists = await prisma.treatment.findFirst({ where: { patientId: patient.id, active: true } });
     if (!exists) {
       const item = await prisma.catalogItem.findFirst({ where: { name: { contains: fields.tratamiento.split(' —')[0] } } });
-      await prisma.treatment.create({
+      const total = item?.sessions ?? 10;
+      const treatment = await prisma.treatment.create({
         data: {
           patientId: patient.id, name: fields.tratamiento, catalogItemId: item?.id ?? null,
-          totalSessions: item?.sessions ?? 10, doneSessions: 0, balance: item?.price ?? 0,
+          totalSessions: total, doneSessions: 0, balance: item?.price ?? 0,
         },
       });
+      // Carga las áreas que trae el combo por defecto (elegidas al crearlo en el catálogo).
+      if (item?.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);
     }
   }
 

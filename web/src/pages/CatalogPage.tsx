@@ -17,6 +17,25 @@ const TABS: { key: CatalogKind; label: string }[] = [
 
 const STOCKABLE = (k: CatalogKind) => k === 'PRODUCTO' || k === 'INSUMO';
 
+// Áreas por familia, para elegir las que trae el combo por defecto al crearlo.
+const AREAS_POR_GRUPO: Record<'CORPORAL' | 'LASER', { key: string; label: string }[]> = {
+  CORPORAL: [
+    { key: 'ABDOMEN', label: 'Abdomen' },
+    { key: 'ESPALDA', label: 'Espalda' },
+    { key: 'ABDOMEN_LATERAL', label: 'Abdomen lateral' },
+  ],
+  LASER: [
+    { key: 'PIERNAS', label: 'Piernas' },
+    { key: 'AXILAS', label: 'Axilas' },
+    { key: 'BRAZOS', label: 'Brazos' },
+    { key: 'CUERPO_COMPLETO', label: 'Cuerpo completo' },
+    { key: 'BOZO', label: 'Bozo' },
+    { key: 'CARA', label: 'Cara' },
+    { key: 'ENTREPIERNAS', label: 'Entrepiernas' },
+    { key: 'INTIMOS', label: 'Íntimos' },
+  ],
+};
+
 export default function CatalogPage() {
   const { staff } = useAuth();
   const isAdmin = puedeGestionarCatalogo(staff);
@@ -183,6 +202,8 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const [serviceIds, setServiceIds] = useState<string[]>((item?.services ?? []).map((s) => s.id));
   // Familia de áreas: define qué grupo se muestra al asignar áreas al paciente.
   const [areaGroup, setAreaGroup] = useState<'' | 'CORPORAL' | 'LASER'>(item?.areaGroup ?? '');
+  const [areas, setAreas] = useState<string[]>(item?.defaultAreas ?? []);
+  const toggleArea = (k: string) => setAreas((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
 
   useEffect(() => {
     if (!componible) return;
@@ -202,7 +223,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
       sessions: Number(sessions) || 1,
       unit: stockable ? (unit.trim() || undefined) : undefined,
       // Solo se envían cuando aplica, para no borrar las técnicas de otros tipos.
-      ...(componible ? { serviceIds, areaGroup: areaGroup || null } : {}),
+      ...(componible ? { serviceIds, areaGroup: areaGroup || null, defaultAreas: areaGroup ? areas : [] } : {}),
     };
     try {
       if (mode === 'edit' && item) {
@@ -245,12 +266,32 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
           {/* Tipo de áreas del combo: define qué grupo se ofrece al asignar áreas al paciente. */}
           {componible && (
             <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Tipo de áreas</span>
-              <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={areaGroup} onChange={(e) => setAreaGroup(e.target.value as '' | 'CORPORAL' | 'LASER')}>
+              <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={areaGroup} onChange={(e) => { setAreaGroup(e.target.value as '' | 'CORPORAL' | 'LASER'); setAreas([]); }}>
                 <option value="">Sin áreas (no aplica)</option>
                 <option value="CORPORAL">Corporal (abdomen, espalda, lateral)</option>
                 <option value="LASER">Láser (piernas, axilas, cara…)</option>
               </select>
             </label>
+          )}
+
+          {/* Áreas que trae el combo por defecto: se cargan al venderlo al paciente. */}
+          {componible && areaGroup && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">Áreas del combo <span className="font-semibold text-faint">({areas.length} elegidas · {areas.length ? Math.floor((Number(sessions) || 1) / areas.length) : 0} sesiones c/u)</span></span>
+              <div className="flex flex-wrap gap-1.5">
+                {AREAS_POR_GRUPO[areaGroup].map((a) => {
+                  const on = areas.includes(a.key);
+                  return (
+                    <button key={a.key} type="button" onClick={() => toggleArea(a.key)}
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                      {on ? '✓ ' : ''}{a.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="text-[11px] text-faint">Vienen cargadas al vender el combo. En la ficha del paciente se pueden ajustar.</span>
+            </div>
           )}
 
           {/* Técnicas del combo/paquete: es el checklist que la esteticista marca por sesión. */}

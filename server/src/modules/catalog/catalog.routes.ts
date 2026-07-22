@@ -55,6 +55,8 @@ const catalogSchema = z.object({
   tag: z.string().optional(),
   // Combos/paquetes: familia de áreas para el selector (o null si no aplica).
   areaGroup: z.enum(['CORPORAL', 'LASER']).nullish(),
+  // Áreas que trae el combo por defecto (se cargan al venderlo al paciente).
+  defaultAreas: z.array(z.string()).optional(),
   // Técnicas que incluye un combo/paquete (ids de ítems SERVICIO del catálogo).
   serviceIds: z.array(z.string()).optional(),
 });

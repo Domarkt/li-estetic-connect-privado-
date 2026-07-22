@@ -60,6 +60,23 @@ export function serializeAreas(areas: { id: string; area: string; totalSessions:
 }
 
 /**
+ * Siembra las áreas incluidas de un tratamiento recién creado desde el combo/paquete
+ * (las que se eligieron al crearlo en el catálogo). No hace nada si no hay áreas o si
+ * el tratamiento ya tiene alguna.
+ */
+export async function seedTreatmentAreas(treatmentId: string, areas: string[], totalSessions: number): Promise<void> {
+  const validas = areas.filter((a) => (AREAS as readonly string[]).includes(a));
+  if (!validas.length) return;
+  const existentes = await prisma.treatmentArea.count({ where: { treatmentId } });
+  if (existentes > 0) return;
+  const reparto = repartirSesiones(totalSessions, validas.length);
+  await prisma.treatmentArea.createMany({
+    data: validas.map((area, i) => ({ treatmentId, area, totalSessions: reparto[i], isExtra: false })),
+    skipDuplicates: true,
+  });
+}
+
+/**
  * Define las 2 áreas incluidas de un combo y reparte sus sesiones.
  * Reemplaza las áreas incluidas anteriores; conserva las adicionales ya cobradas.
  */

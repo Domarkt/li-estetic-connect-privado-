@@ -113,6 +113,8 @@ export interface CatalogItem {
   services?: { id: string; name: string }[];
   /** Combo/paquete: familia de áreas (CORPORAL | LASER). */
   areaGroup?: 'CORPORAL' | 'LASER' | null;
+  /** Combo/paquete: áreas que trae por defecto (se cargan al venderlo). */
+  defaultAreas?: string[];
 }
 
 export const fmtRD = (n: number) => 'RD$' + Math.round(n).toLocaleString('en-US');
