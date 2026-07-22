@@ -200,6 +200,10 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const componible = kind === 'COMBO' || kind === 'PAQUETE';
   const [servicios, setServicios] = useState<CatalogItem[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>((item?.services ?? []).map((s) => s.id));
+  // Cantidad incluida de cada técnica (ej. 18 cavitaciones, 3 lipoláser).
+  const [serviceQty, setServiceQty] = useState<Record<string, number>>(
+    Object.fromEntries((item?.services ?? []).map((s) => [s.id, s.qty ?? 1])),
+  );
   // Familia de áreas: define qué grupo se muestra al asignar áreas al paciente.
   const [areaGroup, setAreaGroup] = useState<'' | 'CORPORAL' | 'LASER'>(item?.areaGroup ?? '');
   const [areas, setAreas] = useState<string[]>(item?.defaultAreas ?? []);
@@ -223,7 +227,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
       sessions: Number(sessions) || 1,
       unit: stockable ? (unit.trim() || undefined) : undefined,
       // Solo se envían cuando aplica, para no borrar las técnicas de otros tipos.
-      ...(componible ? { serviceIds, areaGroup: areaGroup || null, defaultAreas: areaGroup ? areas : [] } : {}),
+      ...(componible ? { services: serviceIds.map((id) => ({ id, qty: serviceQty[id] || 1 })), areaGroup: areaGroup || null, defaultAreas: areaGroup ? areas : [] } : {}),
     };
     try {
       if (mode === 'edit' && item) {
@@ -294,26 +298,34 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             </div>
           )}
 
-          {/* Técnicas del combo/paquete: es el checklist que la esteticista marca por sesión. */}
+          {/* Técnicas del combo/paquete: se marca cuáles incluye y CUÁNTAS de cada una (18 cavitaciones, 3 lipoláser). */}
           {componible && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-muted">¿Qué incluye? <span className="font-semibold text-faint">({serviceIds.length} seleccionadas)</span></span>
+              <span className="text-xs font-bold text-muted">¿Qué incluye y cuántas? <span className="font-semibold text-faint">({serviceIds.length} técnicas)</span></span>
               {servicios.length === 0 ? (
                 <div className="rounded-[9px] bg-bg px-3.5 py-3 text-[12px] text-muted">
                   Primero crea los servicios (vacumterapia, cavitación, radiofrecuencia…) en la pestaña <b>Servicios</b>.
                 </div>
               ) : (
-                <div className="flex max-h-[190px] flex-col gap-1 overflow-y-auto rounded-[9px] border border-line p-2">
+                <div className="flex max-h-[220px] flex-col gap-1 overflow-y-auto rounded-[9px] border border-line p-2">
                   {servicios.map((s) => {
                     const on = serviceIds.includes(s.id);
                     return (
-                      <button key={s.id} type="button" onClick={() => toggleServicio(s.id)}
-                        className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left"
-                        style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
-                        <span className="flex h-4.5 w-4.5 flex-none items-center justify-center rounded-[5px] text-[10px] font-extrabold text-white"
-                          style={{ background: on ? 'var(--magenta)' : 'var(--line)', height: 18, width: 18 }}>✓</span>
-                        <span className="flex-1 text-[13px] font-semibold">{s.name}</span>
-                      </button>
+                      <div key={s.id} className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-1.5" style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
+                        <button type="button" onClick={() => toggleServicio(s.id)} className="flex flex-1 items-center gap-2.5 text-left">
+                          <span className="flex flex-none items-center justify-center rounded-[5px] text-[10px] font-extrabold text-white"
+                            style={{ background: on ? 'var(--magenta)' : 'var(--line)', height: 18, width: 18 }}>✓</span>
+                          <span className="text-[13px] font-semibold">{s.name}</span>
+                        </button>
+                        {on && (
+                          <div className="flex flex-none items-center gap-1 rounded-[7px] border border-line bg-card">
+                            <button type="button" onClick={() => setServiceQty((q) => ({ ...q, [s.id]: Math.max(1, (q[s.id] || 1) - 1) }))} className="px-2 py-1 text-[14px] font-bold text-muted">−</button>
+                            <input value={String(serviceQty[s.id] || 1)} onChange={(e) => setServiceQty((q) => ({ ...q, [s.id]: Math.max(1, parseInt(e.target.value.replace(/\D/g, ''), 10) || 1) }))} inputMode="numeric"
+                              className="w-9 bg-transparent text-center text-[13px] font-bold outline-none" />
+                            <button type="button" onClick={() => setServiceQty((q) => ({ ...q, [s.id]: (q[s.id] || 1) + 1 }))} className="px-2 py-1 text-[14px] font-bold text-muted">+</button>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

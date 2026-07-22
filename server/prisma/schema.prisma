@@ -399,6 +399,7 @@ model ComboService {
   id        String @id @default(cuid())
   comboId   String
   serviceId String
+  qty       Int    @default(1) // cantidad incluida de esta técnica (ej. 18 cavitaciones, 3 lipoláser)
 
   combo   CatalogItem @relation("ComboIncluye", fields: [comboId], references: [id], onDelete: Cascade)
   service CatalogItem @relation("ServicioEnCombo", fields: [serviceId], references: [id], onDelete: Cascade)

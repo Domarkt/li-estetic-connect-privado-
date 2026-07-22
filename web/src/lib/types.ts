@@ -43,8 +43,8 @@ export interface PatientPackage {
   pct: number; price: number; balance: number;
   /** Áreas del cuerpo del combo (2 incluidas + posible 3ra adicional). */
   areas?: TreatmentArea[];
-  /** Técnicas que cubre el combo/paquete (cavitación, radiofrecuencia, lipoláser…). */
-  services?: { id: string; name: string }[];
+  /** Técnicas que cubre el combo/paquete, con su cantidad (18 cavitaciones, 3 lipoláser…). */
+  services?: { id: string; name: string; qty?: number }[];
   /** Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector. */
   areaGroup?: 'CORPORAL' | 'LASER' | null;
 }
@@ -109,8 +109,8 @@ export interface CatalogItem {
   stock: number | null;
   unit: string | null;
   tag: string | null;
-  /** Si es combo/paquete: técnicas que incluye. */
-  services?: { id: string; name: string }[];
+  /** Si es combo/paquete: técnicas que incluye, con su cantidad. */
+  services?: { id: string; name: string; qty?: number }[];
   /** Combo/paquete: familia de áreas (CORPORAL | LASER). */
   areaGroup?: 'CORPORAL' | 'LASER' | null;
   /** Combo/paquete: áreas que trae por defecto (se cargan al venderlo). */

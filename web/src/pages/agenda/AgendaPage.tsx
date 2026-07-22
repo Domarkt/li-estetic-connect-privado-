@@ -409,7 +409,7 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
                       <button key={t.id} onClick={() => toggleTec(t.name)}
                         className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
                         style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
-                        {on ? '✓ ' : ''}{t.name}
+                        {on ? '✓ ' : ''}{t.name}{t.qty ? ` (${t.qty})` : ''}
                       </button>
                     );
                   })}

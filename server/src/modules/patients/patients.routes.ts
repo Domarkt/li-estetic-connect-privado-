@@ -81,7 +81,7 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         balance: t.balance,
         areas: serializeAreas(t.areas ?? []),
         // Técnicas que cubre el combo/paquete: la esteticista marca cuáles aplicó.
-        services: (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name })),
+        services: (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name, qty: x.qty })),
         // Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector.
         areaGroup: t.catalogItem?.areaGroup ?? null,
       })),

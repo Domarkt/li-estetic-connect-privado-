@@ -24,13 +24,13 @@ async function requireCatalogManager(req: Request, res: Response, next: NextFunc
   return res.status(403).json({ error: 'No tienes permiso para gestionar el catálogo' });
 }
 
-/** Serializa un ítem incluyendo, si es combo/paquete, las técnicas que cubre. */
+/** Serializa un ítem incluyendo, si es combo/paquete, las técnicas que cubre (con su cantidad). */
 const conServicios = { incluye: { include: { service: true } } } as const;
-type ItemConServicios = { incluye?: { service: { id: string; name: string } }[] };
+type ItemConServicios = { incluye?: { qty: number; service: { id: string; name: string } }[] };
 const serialize = <T extends ItemConServicios>(i: T) => ({
   ...i,
   incluye: undefined,
-  services: (i.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name })),
+  services: (i.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name, qty: x.qty })),
 });
 
 /** Lista del catálogo, opcionalmente filtrada por tipo (?kind=SERVICIO...). */
@@ -57,17 +57,17 @@ const catalogSchema = z.object({
   areaGroup: z.enum(['CORPORAL', 'LASER']).nullish(),
   // Áreas que trae el combo por defecto (se cargan al venderlo al paciente).
   defaultAreas: z.array(z.string()).optional(),
-  // Técnicas que incluye un combo/paquete (ids de ítems SERVICIO del catálogo).
-  serviceIds: z.array(z.string()).optional(),
+  // Técnicas que incluye un combo/paquete, cada una con su cantidad (ej. 18 cavitaciones).
+  services: z.array(z.object({ id: z.string(), qty: z.number().int().positive().default(1) })).optional(),
 });
 
 /** Alta de ítem al catálogo (Admin o quien tenga permiso de catálogo). */
 catalogRouter.post('/', requireStaff, requireCatalogManager, async (req, res) => {
-  const { serviceIds, ...data } = catalogSchema.parse(req.body);
+  const { services, ...data } = catalogSchema.parse(req.body);
   const item = await prisma.catalogItem.create({
     data: {
       ...data,
-      ...(serviceIds?.length ? { incluye: { create: serviceIds.map((serviceId) => ({ serviceId })) } } : {}),
+      ...(services?.length ? { incluye: { create: services.map((s) => ({ serviceId: s.id, qty: s.qty })) } } : {}),
     },
     include: conServicios,
   });
@@ -78,16 +78,16 @@ const updateSchema = catalogSchema.partial();
 
 /** Editar un ítem del catálogo (Admin o quien tenga permiso de catálogo). */
 catalogRouter.patch('/:id', requireStaff, requireCatalogManager, async (req, res) => {
-  const { serviceIds, ...data } = updateSchema.parse(req.body);
+  const { services, ...data } = updateSchema.parse(req.body);
   const exists = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });
   if (!exists) return res.status(404).json({ error: 'Ítem no encontrado' });
 
-  // Las técnicas se reemplazan por completo cuando se envían.
-  if (serviceIds) {
+  // Las técnicas se reemplazan por completo cuando se envían (con su cantidad).
+  if (services) {
     await prisma.comboService.deleteMany({ where: { comboId: exists.id } });
-    if (serviceIds.length) {
+    if (services.length) {
       await prisma.comboService.createMany({
-        data: serviceIds.map((serviceId) => ({ comboId: exists.id, serviceId })),
+        data: services.map((s) => ({ comboId: exists.id, serviceId: s.id, qty: s.qty })),
         skipDuplicates: true,
       });
     }
