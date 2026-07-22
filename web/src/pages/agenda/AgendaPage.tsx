@@ -405,11 +405,13 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
                 <div className="flex flex-wrap gap-1.5">
                   {tecnicas.map((t) => {
                     const on = tec.has(t.name);
+                    const agotada = t.remaining != null && t.remaining <= 0;
+                    const progreso = t.total != null ? ` ${t.done ?? 0}/${t.total}` : (t.qty ? ` (${t.qty})` : '');
                     return (
-                      <button key={t.id} onClick={() => toggleTec(t.name)}
-                        className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                      <button key={t.id} onClick={() => !agotada && toggleTec(t.name)} disabled={agotada} title={agotada ? 'Sin sesiones disponibles de esta técnica' : ''}
+                        className="rounded-full border px-3 py-1.5 text-[12px] font-bold disabled:opacity-45"
                         style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
-                        {on ? '✓ ' : ''}{t.name}{t.qty ? ` (${t.qty})` : ''}
+                        {on ? '✓ ' : ''}{t.name}{progreso}
                       </button>
                     );
                   })}

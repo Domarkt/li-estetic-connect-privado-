@@ -344,8 +344,24 @@ model Treatment {
   catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
   invoices    Invoice[]
   areas       TreatmentArea[]
+  techniques  TreatmentTechnique[]
 
   @@index([patientId])
+}
+
+// Conteo por técnica dentro del combo del paciente (ej. 18 cavitaciones, 3 lipoláser).
+// Se siembra al vender el combo y baja cada vez que la esteticista la aplica en una sesión.
+model TreatmentTechnique {
+  id          String @id @default(cuid())
+  treatmentId String
+  name        String
+  total       Int
+  done        Int    @default(0)
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@unique([treatmentId, name])
+  @@index([treatmentId])
 }
 
 // Área del cuerpo dentro de un combo. Un combo cubre 2 áreas y sus sesiones se

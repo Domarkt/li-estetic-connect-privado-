@@ -348,6 +348,17 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     },
   });
 
+  // Descontar del conteo por técnica del combo cada técnica aplicada hoy.
+  if (target && b.techniques?.length) {
+    const techs = await prisma.treatmentTechnique.findMany({ where: { treatmentId: target.id } });
+    for (const nombre of b.techniques) {
+      const tech = techs.find((x) => x.name === nombre);
+      if (tech && tech.done < tech.total) {
+        await prisma.treatmentTechnique.update({ where: { id: tech.id }, data: { done: tech.done + 1 } });
+      }
+    }
+  }
+
   const tecnicasMsg = b.techniques?.length ? ` · Aplicado: ${b.techniques.join(', ')}` : '';
   res.json({ ok: true, message: `Proceso terminado.${sessionMsg}${tecnicasMsg}` });
 });

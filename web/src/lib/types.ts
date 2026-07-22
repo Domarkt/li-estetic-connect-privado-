@@ -43,8 +43,8 @@ export interface PatientPackage {
   pct: number; price: number; balance: number;
   /** Áreas del cuerpo del combo (2 incluidas + posible 3ra adicional). */
   areas?: TreatmentArea[];
-  /** Técnicas que cubre el combo/paquete, con su cantidad (18 cavitaciones, 3 lipoláser…). */
-  services?: { id: string; name: string; qty?: number }[];
+  /** Técnicas del combo con su progreso (18 cavitaciones → quedan N). */
+  services?: { id: string; name: string; qty?: number; total?: number; done?: number; remaining?: number }[];
   /** Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector. */
   areaGroup?: 'CORPORAL' | 'LASER' | null;
 }

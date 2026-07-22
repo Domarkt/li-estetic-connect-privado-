@@ -77,6 +77,28 @@ export async function seedTreatmentAreas(treatmentId: string, areas: string[], t
 }
 
 /**
+ * Siembra el conteo por técnica del combo (18 cavitaciones, 3 lipoláser…) al venderlo.
+ * No hace nada si ya hay técnicas sembradas.
+ */
+export async function seedTreatmentTechniques(treatmentId: string, items: { name: string; qty: number }[]): Promise<void> {
+  if (!items.length) return;
+  const existentes = await prisma.treatmentTechnique.count({ where: { treatmentId } });
+  if (existentes > 0) return;
+  await prisma.treatmentTechnique.createMany({
+    data: items.map((i) => ({ treatmentId, name: i.name, total: i.qty })),
+    skipDuplicates: true,
+  });
+}
+
+/** Serializa las técnicas de un tratamiento para la interfaz. */
+export function serializeTechniques(techs: { id: string; name: string; total: number; done: number }[]) {
+  return techs.map((t) => ({
+    id: t.id, name: t.name, qty: t.total,
+    total: t.total, done: t.done, remaining: Math.max(0, t.total - t.done),
+  }));
+}
+
+/**
  * Define las 2 áreas incluidas de un combo y reparte sus sesiones.
  * Reemplaza las áreas incluidas anteriores; conserva las adicionales ya cobradas.
  */

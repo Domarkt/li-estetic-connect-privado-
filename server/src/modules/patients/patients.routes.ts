@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREAS, AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, seedTreatmentAreas } from './areas.service.js';
+import { AREAS, AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, seedTreatmentAreas, seedTreatmentTechniques, serializeTechniques } from './areas.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
@@ -80,8 +80,11 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         price: t.price,
         balance: t.balance,
         areas: serializeAreas(t.areas ?? []),
-        // Técnicas que cubre el combo/paquete: la esteticista marca cuáles aplicó.
-        services: (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name, qty: x.qty })),
+        // Técnicas del combo con su progreso real (18 cavitaciones → quedan N).
+        // Usa el conteo del paciente si está sembrado; si no, la definición del combo.
+        services: (t.techniques ?? []).length
+          ? serializeTechniques(t.techniques)
+          : (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name, qty: x.qty, total: x.qty, done: 0, remaining: x.qty })),
         // Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector.
         areaGroup: t.catalogItem?.areaGroup ?? null,
       })),
@@ -526,7 +529,10 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
   if (complete && fields.tratamiento) {
     const exists = await prisma.treatment.findFirst({ where: { patientId: patient.id, active: true } });
     if (!exists) {
-      const item = await prisma.catalogItem.findFirst({ where: { name: { contains: fields.tratamiento.split(' —')[0] } } });
+      const item = await prisma.catalogItem.findFirst({
+        where: { name: { contains: fields.tratamiento.split(' —')[0] } },
+        include: { incluye: { include: { service: true } } },
+      });
       const total = item?.sessions ?? 10;
       const treatment = await prisma.treatment.create({
         data: {
@@ -534,8 +540,9 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
           totalSessions: total, doneSessions: 0, balance: item?.price ?? 0,
         },
       });
-      // Carga las áreas que trae el combo por defecto (elegidas al crearlo en el catálogo).
+      // Carga las áreas por defecto y el conteo por técnica que trae el combo.
       if (item?.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);
+      if (item?.incluye?.length) await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty })));
     }
   }
 

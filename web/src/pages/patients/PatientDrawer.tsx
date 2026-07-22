@@ -228,6 +228,23 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                           </>
                         )}
                       </div>
+
+                      {/* Conteo por técnica del combo (18 cavitaciones → quedan N). */}
+                      {(pk.services ?? []).length > 0 && (
+                        <div className="mt-2.5 border-t border-line-2 pt-2.5">
+                          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-faint">Técnicas incluidas</div>
+                          <div className="flex flex-col gap-1">
+                            {pk.services!.map((sv) => (
+                              <div key={sv.id} className="flex items-center gap-2 text-[12px]">
+                                <span className="flex-1 truncate">{sv.name}</span>
+                                <span className="font-bold" style={{ color: (sv.remaining ?? 1) === 0 ? 'var(--faint)' : 'var(--navy)' }}>
+                                  {sv.total != null ? `${sv.done ?? 0}/${sv.total}` : (sv.qty ?? '')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
