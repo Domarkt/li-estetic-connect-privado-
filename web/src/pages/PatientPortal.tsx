@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Icon } from '../components/icons';
-import { fmtRD, type PortalAppointment, type PortalBranch, type PortalHistoryItem, type PortalPackages, type PortalProceso, type PortalProfile } from '../lib/types';
+import { fmtRD, type PortalAppointment, type PortalBranch, type PortalHistoryItem, type PortalPackages, type PortalPaquete, type PortalProceso, type PortalProfile } from '../lib/types';
 import { ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './patients/fichaConstants';
 
 interface PortalFichaState {
@@ -593,6 +593,88 @@ function PortalCancelModal({ appointmentId, onClose, onDone }: { appointmentId: 
   );
 }
 
+/**
+ * Un paquete comprado, como lo ve la paciente: cuánto lleva, sobre qué áreas se
+ * le trabaja y qué técnicas le quedan. Antes solo veía el nombre y las sesiones.
+ */
+function TarjetaPaquete({ t }: { t: PortalPaquete }) {
+  const [abierto, setAbierto] = useState(false);
+  const hayDetalle = t.areas.length > 0 || t.techniques.length > 0;
+
+  return (
+    <div className="overflow-hidden rounded-[18px] text-white" style={{ background: 'linear-gradient(135deg,#1C2540,#3a2440)' }}>
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold opacity-85">Paquete activo</div>
+            <div className="my-0.5 mb-3 text-[17px] font-extrabold leading-tight">{t.name}</div>
+          </div>
+          <div className="flex-none text-right">
+            <div className="text-[22px] font-extrabold leading-none">{t.done}/{t.total}</div>
+            <div className="text-[10.5px] opacity-75">sesiones</div>
+          </div>
+        </div>
+
+        <div className="mb-2 h-2 overflow-hidden rounded-md" style={{ background: 'rgba(255,255,255,.18)' }}>
+          <div className="h-full rounded-md transition-all" style={{ width: `${t.pct}%`, background: '#E85CB6' }} />
+        </div>
+        <div className="text-[12.5px] opacity-90">
+          {t.remaining} sesiones restantes{t.expiresAt ? ` · vence ${t.expiresAt}` : ''}
+        </div>
+
+        {/* Si compró con abono, debe ver claramente lo que falta por pagar. */}
+        {t.balance > 0 && (
+          <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-bold"
+            style={{ background: 'rgba(255,255,255,.16)' }}>
+            💳 Saldo pendiente: {fmtRD(t.balance)}
+          </div>
+        )}
+
+        {hayDetalle && (
+          <button onClick={() => setAbierto((v) => !v)}
+            className="mt-3 text-[11.5px] font-bold" style={{ color: '#E85CB6' }}>
+            {abierto ? 'Ocultar detalle' : 'Ver qué incluye →'}
+          </button>
+        )}
+      </div>
+
+      {abierto && hayDetalle && (
+        <div className="px-5 pb-5" style={{ background: 'rgba(0,0,0,.18)' }}>
+          {t.areas.length > 0 && (
+            <div className="pt-4">
+              <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide opacity-70">Áreas que trabajamos</div>
+              <div className="flex flex-col gap-1.5">
+                {t.areas.map((a) => (
+                  <div key={a.label} className="flex items-center gap-2 text-[12.5px]">
+                    <span className="flex-1">{a.label}{a.isExtra ? ' (adicional)' : ''}</span>
+                    <span className="flex-none font-bold" style={{ opacity: a.remaining === 0 ? 0.55 : 1 }}>
+                      {a.remaining === 0 ? '✓ completa' : `${a.done}/${a.total}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {t.techniques.length > 0 && (
+            <div className="pt-4">
+              <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide opacity-70">Técnicas incluidas</div>
+              <div className="flex flex-wrap gap-1.5">
+                {t.techniques.map((x) => (
+                  <span key={x.name} className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+                    style={{ background: 'rgba(255,255,255,.14)', opacity: x.remaining === 0 ? 0.55 : 1 }}>
+                    {x.name} · {x.done}/{x.total}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="pt-3 text-[10.5px] opacity-60">Comprado el {t.comprado}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Paquetes() {
   const toast = useToast();
   const [d, setD] = useState<PortalPackages | null>(null);
@@ -613,16 +695,43 @@ function Paquetes() {
   }
   if (!d) return <div className="text-center text-sm text-muted">Cargando…</div>;
 
+  // Compatibilidad: si el servidor aún no envía la lista, se usa el activo suelto.
+  const misPaquetes = d.misPaquetes ?? (d.active ? [d.active] : []);
+  const historial = d.historial ?? [];
+
   return (
     <div className="flex animate-fade flex-col gap-4">
-      {d.active && (
-        <div className="rounded-[18px] p-5 text-white" style={{ background: 'linear-gradient(135deg,#1C2540,#3a2440)' }}>
-          <div className="text-xs font-semibold opacity-85">Paquete activo</div>
-          <div className="my-0.5 mb-3 text-[17px] font-extrabold">{d.active.name}</div>
-          <div className="mb-2 h-2 overflow-hidden rounded-md" style={{ background: 'rgba(255,255,255,.18)' }}><div className="h-full rounded-md" style={{ width: `${d.active.pct}%`, background: '#E85CB6' }} /></div>
-          <div className="text-[12.5px] opacity-90">{d.active.remaining} sesiones restantes{d.active.expiresAt ? ` · vence ${d.active.expiresAt}` : ''}</div>
+      {/* TODO lo que la paciente compró: si adquirió varios combos, los ve todos
+          con su avance real, no solo el último. */}
+      {misPaquetes.length > 0 && (
+        <div>
+          <div className="mx-0.5 mb-2.5 text-sm font-extrabold">
+            {misPaquetes.length > 1 ? `Mis paquetes (${misPaquetes.length})` : 'Mi paquete'}
+          </div>
+          <div className="flex flex-col gap-3">
+            {misPaquetes.map((t) => <TarjetaPaquete key={t.id} t={t} />)}
+          </div>
         </div>
       )}
+
+      {/* Los ya terminados quedan como constancia de lo que se hizo. */}
+      {historial.length > 0 && (
+        <div>
+          <div className="mx-0.5 mb-2.5 text-sm font-extrabold">Ya completados</div>
+          <div className="flex flex-col gap-2">
+            {historial.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 rounded-[14px] bg-card p-3.5 shadow-card">
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] text-[15px]" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>✓</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-bold">{t.name}</div>
+                  <div className="text-[11.5px] text-muted">{t.total} sesiones completadas · comprado {t.comprado}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <div className="mx-0.5 mb-2.5 text-sm font-extrabold">Explora nuevos paquetes</div>
         <div className="flex flex-col gap-2.5">

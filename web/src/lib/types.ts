@@ -266,8 +266,24 @@ export interface PortalProfile {
   treatment: { name: string; total: number; done: number; pct: number } | null;
 }
 export interface PortalHistoryItem { id: string; date: string; service: string; therapist: string; rating: number | null; ratingComment: string | null; durationMin: number | null }
+/** Un tratamiento comprado por el paciente, tal como lo ve en su portal. */
+export interface PortalPaquete {
+  id: string; name: string;
+  total: number; done: number; remaining: number; pct: number;
+  completado: boolean;
+  /** Lo que falta por pagar de este plan (si lo compró con abono). */
+  balance: number;
+  areas: { label: string; total: number; done: number; remaining: number; isExtra: boolean }[];
+  techniques: { name: string; total: number; done: number; remaining: number }[];
+  expiresAt: string | null;
+  comprado: string;
+}
 export interface PortalPackages {
-  active: { name: string; total: number; done: number; remaining: number; pct: number; expiresAt: string | null } | null;
+  active: PortalPaquete | null;
+  /** Todos los que compró y aún tiene sesiones disponibles. */
+  misPaquetes?: PortalPaquete[];
+  /** Los que ya terminó (quedan en su historial). */
+  historial?: PortalPaquete[];
   shop: { id: string; name: string; sessions: number; price: number }[];
 }
 

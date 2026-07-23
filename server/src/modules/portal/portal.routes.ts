@@ -10,6 +10,7 @@ import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '
 import { decryptJson, encryptJson } from '../../utils/crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { hashPassword, verifyPassword } from '../../utils/password.js';
+import { getAreaLabelMap } from '../patients/areas.service.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -436,22 +437,63 @@ portalRouter.post('/appointments/:id/cancel', async (req, res) => {
 
 /** Paquetes: activo + tienda de nuevos paquetes. */
 portalRouter.get('/packages', async (req, res) => {
-  const [treatment, shop] = await Promise.all([
-    prisma.treatment.findFirst({ where: { patientId: req.patient!.patientId, active: true }, orderBy: { createdAt: 'desc' } }),
+  const patientId = req.patient!.patientId;
+  const [tratamientos, shop, labels] = await Promise.all([
+    // TODOS los que compró, no solo el último: puede tener varios adquiridos y
+    // sin consumir, y desde el portal debe verlos todos con su avance real.
+    prisma.treatment.findMany({
+      where: { patientId },
+      include: { areas: true, techniques: true },
+      orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
+    }),
     // Solo con precio: al paciente no se le puede ofrecer "RD$0". Los combos que la
     // directora arma al momento (sin precio fijo) se venden en recepción, no aquí.
     prisma.catalogItem.findMany({
       where: { active: true, showInPortal: true, price: { gt: 0 }, kind: { in: ['PAQUETE', 'COMBO'] } },
       orderBy: { price: 'asc' },
     }),
+    getAreaLabelMap(),
   ]);
+
+  const serializar = (t: (typeof tratamientos)[number]) => {
+    const remaining = Math.max(0, t.totalSessions - t.doneSessions);
+    return {
+      id: t.id,
+      name: t.name,
+      total: t.totalSessions,
+      done: t.doneSessions,
+      remaining,
+      pct: t.totalSessions ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0,
+      // Terminado = sin sesiones disponibles (queda en su historial).
+      completado: remaining === 0,
+      // Lo que falta por pagar de ESTE plan (si compró con abono).
+      balance: t.balance,
+      // Áreas que se le trabajan y cuánto lleva en cada una.
+      areas: (t.areas ?? []).map((a) => ({
+        label: labels[a.area] ?? a.area,
+        total: a.totalSessions,
+        done: a.doneSessions,
+        remaining: Math.max(0, a.totalSessions - a.doneSessions),
+        isExtra: a.isExtra,
+      })),
+      // Técnicas incluidas y cuántas le quedan (18 cavitaciones → quedan N).
+      techniques: (t.techniques ?? []).map((x) => ({
+        name: x.name, total: x.total, done: x.done,
+        remaining: Math.max(0, x.total - x.done),
+      })),
+      expiresAt: t.expiresAt ? t.expiresAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }) : null,
+      comprado: t.createdAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+    };
+  };
+
+  const activos = tratamientos.filter((t) => t.active && t.doneSessions < t.totalSessions);
+  const terminados = tratamientos.filter((t) => !t.active || t.doneSessions >= t.totalSessions);
+
   res.json({
-    active: treatment ? {
-      name: treatment.name, total: treatment.totalSessions, done: treatment.doneSessions,
-      remaining: treatment.totalSessions - treatment.doneSessions,
-      pct: treatment.totalSessions ? Math.round((treatment.doneSessions / treatment.totalSessions) * 100) : 0,
-      expiresAt: treatment.expiresAt ? treatment.expiresAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }) : null,
-    } : null,
+    // Se mantiene "active" (el primero) por compatibilidad con la vista anterior.
+    active: activos[0] ? serializar(activos[0]) : null,
+    misPaquetes: activos.map(serializar),
+    historial: terminados.map(serializar),
     shop: shop.map((p) => ({ id: p.id, name: p.name, sessions: p.sessions, price: p.price })),
   });
 });
