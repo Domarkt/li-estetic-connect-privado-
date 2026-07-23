@@ -412,9 +412,11 @@ const patchSchema = z.object({
   status: z.enum(['SIN_CONFIRMAR', 'CONFIRMADA', 'COMPLETADA', 'CANCELADA', 'REAGENDADA']).optional(),
   date: z.string().optional(),
   time: z.string().optional(),
+  // Asignar/cambiar/quitar esteticista tras agendar. '' o null => sin asignar.
+  therapistId: z.string().nullish(),
 });
 
-/** Confirmar / cancelar / reagendar. */
+/** Confirmar / cancelar / reagendar / (re)asignar esteticista. */
 appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => {
   const body = patchSchema.parse(req.body);
   const appt = await prisma.appointment.findUnique({ where: { id: req.params.id } });
@@ -422,11 +424,59 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
 
   const startsAt = body.date && body.time ? new Date(`${body.date}T${body.time}:00`) : undefined;
+
+  // (Re)asignación de esteticista: solo recepción y admin, con validación de conflicto.
+  const cambiaTerapeuta = body.therapistId !== undefined;
+  const nuevoTherapistId = body.therapistId === '' ? null : body.therapistId ?? null;
+  if (cambiaTerapeuta) {
+    if (!['ADMIN', 'RECEPCIONISTA'].includes(req.staff!.role)) {
+      return res.status(403).json({ error: 'Solo recepción o administración puede asignar la esteticista' });
+    }
+    if (nuevoTherapistId) {
+      // Debe ser una esteticista activa de la misma sucursal.
+      const t = await prisma.user.findFirst({ where: { id: nuevoTherapistId, role: 'ESTETICISTA', active: true, branchId: appt.branchId } });
+      if (!t) return res.status(400).json({ error: 'Esa esteticista no está disponible en esta sucursal' });
+      // No puede tener otra cita que solape (respetando la separación mínima).
+      const ini = (startsAt ?? appt.startsAt).getTime();
+      const fin = ini + appt.durationMin * 60_000;
+      const margen = 30 * 60_000; // separación mínima entre pacientes distintos
+      const otras = await prisma.appointment.findMany({
+        where: { id: { not: appt.id }, therapistId: nuevoTherapistId, status: { not: 'CANCELADA' },
+          startsAt: { gt: new Date(ini - 8 * 3_600_000), lt: new Date(fin + 8 * 3_600_000) } },
+      });
+      const conflict = otras.find((a) => {
+        const aIni = a.startsAt.getTime(); const aFin = aIni + a.durationMin * 60_000;
+        const m = a.patientId === appt.patientId ? 0 : margen;
+        return ini < aFin + m && aIni < fin + m;
+      });
+      if (conflict) {
+        const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+        return res.status(409).json({ error: `${t.name} ya tiene una cita a las ${h}. Elige otra esteticista u otro horario.` });
+      }
+    }
+  }
+
   const updated = await prisma.appointment.update({
     where: { id: appt.id },
-    data: { status: body.status, ...(startsAt ? { startsAt } : {}) },
+    data: {
+      status: body.status, ...(startsAt ? { startsAt } : {}),
+      ...(cambiaTerapeuta ? { therapistId: nuevoTherapistId } : {}),
+    },
     include: apptInclude,
   });
+
+  // Avisa a la esteticista recién asignada (si cambió y hay alguien).
+  if (cambiaTerapeuta && nuevoTherapistId && nuevoTherapistId !== appt.therapistId) {
+    const hora = updated.startsAt.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    await notify({
+      userId: nuevoTherapistId,
+      type: 'NEW_APPOINTMENT',
+      title: 'Cita asignada',
+      body: `${updated.patient.name} · ${updated.serviceName} · ${hora}`,
+      link: '/app/agenda',
+    }).catch(() => {});
+  }
+
   res.json(serializeAppt(updated));
 });
 

@@ -50,6 +50,7 @@ export function serializeAppt(
     patientType: liveType,
     service: a.serviceName,
     therapist: a.therapist?.name ?? 'Sin asignar',
+    therapistId: a.therapistId ?? null,
     branchId: a.branchId,
     branchName: a.branch.name,
     status: a.status,

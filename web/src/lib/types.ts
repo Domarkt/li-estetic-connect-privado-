@@ -132,6 +132,7 @@ export interface Appointment {
   patientType: PatientType;
   service: string;
   therapist: string;
+  therapistId?: string | null;
   branchId: string;
   branchName: string;
   status: AppointmentStatus;

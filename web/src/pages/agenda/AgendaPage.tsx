@@ -26,6 +26,7 @@ export default function AgendaPage() {
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [checkinFor, setCheckinFor] = useState<Appointment | null>(null);
   const [cancelFor, setCancelFor] = useState<Appointment | null>(null);
+  const [assignFor, setAssignFor] = useState<Appointment | null>(null);
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
@@ -36,6 +37,8 @@ export default function AgendaPage() {
   // Abrir/cerrar turno: esteticista, admin y también recepción (respaldo en cabina).
   const canOpenTurno = isMasa || isAdmin || staff?.role === 'RECEPCIONISTA';
   const canCancel = staff?.role === 'RECEPCIONISTA' || isAdmin;
+  // Asignar/cambiar la esteticista de una cita ya agendada: recepción y admin.
+  const canAssign = staff?.role === 'RECEPCIONISTA' || isAdmin;
   const isToday = date === todayISO();
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long' });
 
@@ -166,7 +169,14 @@ export default function AgendaPage() {
                 {a.inService && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>🔓 Turno abierto</span>}
                 {a.finished && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>✓ Atendido</span>}
               </div>
-              <div className="mt-0.5 text-[12.5px] text-muted">{a.service} · {a.therapist} · {a.branchName}</div>
+              <div className="mt-0.5 text-[12.5px] text-muted">
+                {a.service} · <span style={!a.therapistId ? { color: 'var(--warn)', fontWeight: 700 } : undefined}>{a.therapist}</span> · {a.branchName}
+                {canAssign && a.status !== 'CANCELADA' && !a.finished && (
+                  <button onClick={() => setAssignFor(a)} className="ml-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] font-bold text-magenta hover:bg-magenta-soft">
+                    {a.therapistId ? 'cambiar' : '+ asignar'}
+                  </button>
+                )}
+              </div>
               {a.status === 'CANCELADA' && a.cancelReason && (
                 <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
                   ✕ Cancelada {a.cancelledBy === 'PATIENT' ? 'por el paciente' : 'por recepción'} · {a.cancelReason}
@@ -228,7 +238,72 @@ export default function AgendaPage() {
       {finishFor && <FinishModal appt={finishFor} onClose={() => setFinishFor(null)} onDone={load} />}
       {(checkinOpen || checkinFor) && <CheckinModal appt={checkinFor} onClose={() => { setCheckinOpen(false); setCheckinFor(null); }} onDone={load} />}
       {cancelFor && <CancelModal appt={cancelFor} onClose={() => setCancelFor(null)} onDone={load} />}
+      {assignFor && <AssignTherapistModal appt={assignFor} onClose={() => setAssignFor(null)} onDone={load} />}
     </div>
+  );
+}
+
+/**
+ * Asignar o cambiar la esteticista de una cita ya agendada (recepción/admin).
+ * Resuelve el caso de pacientes que quedaron sin esteticista: hay forma de vincularlos
+ * después. También permite "Sin asignar" para liberar la cita.
+ */
+function AssignTherapistModal({ appt, onClose, onDone }: {
+  appt: Appointment; onClose: () => void; onDone: () => void;
+}) {
+  const toast = useToast();
+  const [therapists, setTherapists] = useState<{ id: string; name: string }[]>([]);
+  const [sel, setSel] = useState<string>(appt.therapistId ?? '');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Las esteticistas de la MISMA sucursal de la cita.
+    const q = `branch=${appt.branchId}`;
+    api.get<{ id: string; name: string }[]>(`/users/therapists?${q}`).then(setTherapists).catch(() => setTherapists([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appt.id]);
+
+  async function guardar() {
+    setBusy(true);
+    try {
+      await api.patch(`/appointments/${appt.id}`, { therapistId: sel });
+      toast(sel ? 'Esteticista asignada' : 'Cita sin asignar');
+      onDone(); onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo asignar'); } finally { setBusy(false); }
+  }
+
+  return (
+    <Portal>
+      <div onClick={onClose} className="fixed inset-0 z-[130] flex items-center justify-center p-4" style={{ background: 'rgba(28,37,64,.5)' }}>
+        <div onClick={(e) => e.stopPropagation()} className="w-[400px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+          <div className="flex items-center border-b border-line px-6 py-4">
+            <div className="flex-1"><div className="text-base font-extrabold">Asignar esteticista</div><div className="text-[12.5px] text-muted">{appt.patient} · {appt.time} · {appt.service}</div></div>
+            <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+          </div>
+          <div className="flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto px-4 py-4">
+            <button onClick={() => setSel('')} className="flex items-center gap-2.5 rounded-[10px] border px-3.5 py-3 text-left text-[13.5px] font-bold"
+              style={{ borderColor: sel === '' ? 'var(--magenta)' : 'var(--line)', background: sel === '' ? 'var(--magenta-soft)' : 'var(--card)', color: sel === '' ? 'var(--magenta)' : 'var(--muted)' }}>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-bg text-[13px]">∅</span> Sin asignar
+            </button>
+            {therapists.map((t) => {
+              const on = sel === t.id;
+              return (
+                <button key={t.id} onClick={() => setSel(t.id)} className="flex items-center gap-2.5 rounded-[10px] border px-3.5 py-3 text-left text-[13.5px] font-bold"
+                  style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--text)' }}>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-magenta text-[12px] font-bold text-white">{t.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>
+                  {t.name}{on ? ' ✓' : ''}
+                </button>
+              );
+            })}
+            {therapists.length === 0 && <div className="px-2 py-4 text-center text-[12.5px] text-muted">No hay esteticistas activas en esta sucursal.</div>}
+          </div>
+          <div className="flex gap-2.5 border-t border-line px-6 py-4">
+            <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+            <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Guardando…' : 'Guardar'}</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   );
 }
 
