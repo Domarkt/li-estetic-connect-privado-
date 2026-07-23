@@ -124,8 +124,10 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
   }
 
-  // Seguimiento de tratamiento: sin catálogo/servicio cargado.
-  const serviceName = b.isFollowUp ? 'Seguimiento de tratamiento' : b.serviceName;
+  // Seguimiento de tratamiento: sin servicio del catálogo, así que NO se cobra.
+  // Si la cita consume un plan ya pagado, se conserva el nombre enviado (el del
+  // combo) para que la agenda muestre a qué viene la paciente, no un genérico.
+  const serviceName = b.isFollowUp && !b.treatmentId ? 'Seguimiento de tratamiento' : b.serviceName;
   const catalogItemId = b.isFollowUp ? null : (b.catalogItemId ?? null);
   const startsAt = new Date(`${b.date}T${b.time}:00`);
 

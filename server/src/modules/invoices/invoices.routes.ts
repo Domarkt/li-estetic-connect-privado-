@@ -63,8 +63,11 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
       chargeItems: { where: { status: 'PENDIENTE_FACTURAR' } },
       // Última cita agendada con servicio: recepción no debería tener que recordar
       // (ni ir a buscar) qué fue lo que el paciente agendó para poder cobrarle.
+      //
+      // treatmentId: null es CLAVE — si la cita consume un plan ya pagado, no se
+      // precarga nada: volver a cobrarlo sería cobrar dos veces lo mismo.
       appointments: {
-        where: { status: { not: 'CANCELADA' }, catalogItemId: { not: null } },
+        where: { status: { not: 'CANCELADA' }, catalogItemId: { not: null }, treatmentId: null },
         orderBy: { startsAt: 'desc' },
         take: 1,
       },
@@ -83,6 +86,11 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
     patients.map((p) => {
       const cita = p.appointments[0];
       const itemCita = cita?.catalogItemId ? porId.get(cita.catalogItemId) : undefined;
+      // Segundo cerrojo contra el cobro duplicado: si ya tiene un plan ACTIVO de
+      // ese mismo ítem, es que ya lo pagó y solo viene a consumir su sesión.
+      const yaPagado = !!itemCita && p.treatments.some(
+        (t) => t.active && t.catalogItemId === itemCita.id && t.doneSessions < t.totalSessions,
+      );
       const t = p.treatments.find((x) => x.active) ?? p.treatments[0] ?? null;
       const pendingTotal = p.chargeItems.reduce((s, c) => s + c.price, 0);
       const remaining = t ? Math.max(0, t.totalSessions - t.doneSessions) : 0;
@@ -97,7 +105,8 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
         pendingCharges: p.chargeItems.map((c) => ({ id: c.id, name: c.name, price: c.price })),
         pendingTotal,
         // Lo que el paciente agendó: el cobro lo precarga para no tener que buscarlo.
-        scheduled: itemCita && cita ? {
+        // Solo si NO está ya pagado (ver los dos cerrojos de arriba).
+        scheduled: itemCita && cita && !yaPagado ? {
           catalogItemId: itemCita.id,
           name: itemCita.name,
           price: itemCita.price,

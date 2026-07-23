@@ -61,6 +61,20 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   }, [branchQuery]);
 
   const isNew = type === 'NUEVO';
+
+  // Paquetes/combos que el paciente YA PAGÓ y aún tiene sesiones por consumir.
+  // Son la primera opción al agendar: buscar el mismo servicio en el catálogo
+  // terminaría cobrándoselo dos veces.
+  const planesPagados = (patients.find((p) => p.id === patientId)?.packages ?? [])
+    .filter((t) => t.remaining > 0);
+
+  /** Agenda una sesión del plan pagado: sin servicio del catálogo y sin cargo. */
+  const elegirPlan = (id: string) => {
+    setTreatmentId(id);
+    setServiceId('');
+    setSvcQuery('');
+  };
+
   const svcElegido = services.find((s) => s.id === serviceId) ?? null;
   const serviciosFiltrados = services.filter((s) => {
     const q = svcQuery.trim().toLowerCase();
@@ -68,16 +82,28 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   });
 
   async function save() {
+    // Paciente conocido: hay que decir a qué viene (su plan pagado, un servicio
+    // nuevo o un seguimiento). Sin esto la cita quedaba como "Valoración inicial".
+    if (!isNew && !treatmentId && !serviceId) {
+      toast('Elige su paquete ya pagado o un servicio nuevo');
+      return;
+    }
     setBusy(true);
     try {
-      const followUp = !isNew && serviceId === FOLLOWUP;
+      // Sesión de un plan YA PAGADO: se agenda contra el tratamiento, sin ítem del
+      // catálogo. Mandar catalogItemId aquí haría que el cobro lo precargara
+      // después y se le cobrara dos veces lo mismo al paciente.
+      const plan = treatmentId ? planesPagados.find((t) => t.id === treatmentId) : null;
+      const followUp = !isNew && (!!plan || serviceId === FOLLOWUP);
       const svc = services.find((s) => s.id === serviceId);
       const payload: Record<string, unknown> = {
         patientType: type, date, time,
         therapistId: therapistId || undefined,
         isFollowUp: followUp,
-        serviceName: followUp ? 'Seguimiento de tratamiento' : (svc?.name ?? 'Valoración inicial'),
-        catalogItemId: followUp ? null : (svc?.id ?? null),
+        serviceName: plan
+          ? plan.name // en la agenda se lee el combo real, no "Seguimiento"
+          : followUp ? 'Seguimiento de tratamiento' : (svc?.name ?? 'Valoración inicial'),
+        catalogItemId: plan || followUp ? null : (svc?.id ?? null),
         treatmentId: treatmentId || null,
         durationMin,
       };
@@ -198,7 +224,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
                 {patients.filter((p) => { const q = pQuery.trim().toLowerCase(); return !q || p.name.toLowerCase().includes(q) || (p.phone ?? '').includes(q); }).map((p) => {
                   const on = patientId === p.id;
                   return (
-                    <div key={p.id} onClick={() => setPatientId(p.id)} className="flex cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-2 text-[13px]" style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
+                    <div key={p.id} onClick={() => { setPatientId(p.id); setTreatmentId(''); setServiceId(''); }} className="flex cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-2 text-[13px]" style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
                       <span className="flex-1 font-semibold">{p.name}</span>
                       <span className="text-[11.5px] text-muted">{p.phone}</span>
                       {on && <span className="font-extrabold text-magenta">✓</span>}
@@ -209,10 +235,43 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
             </div>
           )}
 
-          {/* Selector de servicio con buscador, igual que en el cobro: con el catálogo
-              lleno, un <select> largo obliga a desplazarse a ciegas. */}
+          {/* PLANES YA PAGADOS — van primero y a la vista.
+              Si el paciente compró un combo, agendar su próxima sesión NO debe pasar
+              por el catálogo: buscar ahí el mismo servicio termina cobrándolo otra vez. */}
+          {!isNew && planesPagados.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">Ya pagado · agenda su próxima sesión</span>
+              <div className="flex flex-col gap-1.5">
+                {planesPagados.map((t) => {
+                  const on = treatmentId === t.id;
+                  return (
+                    <button key={t.id} type="button" onClick={() => elegirPlan(t.id)}
+                      className="flex items-center gap-2.5 rounded-[10px] border px-3 py-2.5 text-left"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-[13px]"
+                        style={{ background: on ? 'var(--magenta)' : 'var(--magenta-soft)', color: on ? '#fff' : 'var(--magenta)' }}>✦</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold">{t.name}</span>
+                        <span className="block text-[11.5px] text-muted">Quedan {t.remaining} de {t.total} sesiones · sin cargo</span>
+                      </span>
+                      {on && <span className="flex-none text-[12px] font-bold text-magenta">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="text-[11px] text-faint">
+                Esta cita consume una sesión del paquete. No se cobra de nuevo.
+              </span>
+            </div>
+          )}
+
+          {/* Servicio del catálogo: solo para lo que hay que COBRAR.
+              Se oculta si ya se eligió un plan pagado, para no mezclar. */}
+          {!treatmentId && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-bold text-muted">Servicio / paquete</span>
+            <span className="text-xs font-bold text-muted">
+              {!isNew && planesPagados.length > 0 ? 'O agenda un servicio nuevo (se cobrará)' : 'Servicio / paquete'}
+            </span>
             {svcElegido ? (
               <div className="flex items-center gap-2.5 rounded-[10px] border border-magenta bg-magenta-soft px-3 py-2.5">
                 <span className="rounded-full bg-card px-2 py-0.5 text-[10.5px] font-bold text-navy">{KIND_TAG[svcElegido.kind] ?? svcElegido.kind}</span>
@@ -255,23 +314,23 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
               </>
             )}
           </div>
-          {/* Si el paciente tiene paquetes comprados, se elige cuál consume esta sesión.
-              Así el sistema descuenta la sesión al cerrar el turno (antes se llevaba en papel). */}
-          {(() => {
-            const pk = patients.find((p) => p.id === patientId)?.packages ?? [];
-            if (isNew || pk.length === 0) return null;
+          )}
+
+          {/* Plan elegido: se confirma qué se agendó y cómo deshacerlo. */}
+          {treatmentId && (() => {
+            const t = planesPagados.find((x) => x.id === treatmentId);
+            if (!t) return null;
             return (
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold text-muted">¿De cuál paquete es esta sesión?</span>
-                <select value={treatmentId} onChange={(e) => setTreatmentId(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]">
-                  <option value="">— Ninguno (servicio suelto) —</option>
-                  {pk.map((t) => <option key={t.id} value={t.id}>{t.name} · quedan {t.remaining} de {t.total}</option>)}
-                </select>
-                <span className="text-[11px] text-faint">Al cerrar el turno se descuenta 1 sesión del paquete elegido.</span>
-              </label>
+              <div className="flex items-center gap-2 rounded-[10px] border px-3.5 py-2.5 text-xs font-semibold"
+                style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0', color: '#1E5A82' }}>
+                <span className="flex-1">✓ Sesión de <b>{t.name}</b> · ya pagada, no se cobra de nuevo.</span>
+                <button type="button" onClick={() => { setTreatmentId(''); setServiceId(''); }}
+                  className="flex-none rounded-lg px-2 py-1 text-[11.5px] font-bold text-magenta">Cambiar</button>
+              </div>
             );
           })()}
-          {!isNew && serviceId === FOLLOWUP && (
+
+          {!isNew && !treatmentId && serviceId === FOLLOWUP && (
             <div className="rounded-[10px] border px-3.5 py-2.5 text-xs font-semibold" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0', color: '#1E5A82' }}>
               ↻ Solo se agenda la próxima sesión del tratamiento actual. No se carga ningún servicio nuevo.
             </div>
