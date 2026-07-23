@@ -235,7 +235,10 @@ export default function AgendaPage() {
       {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} startStep={ficha.step} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
-      {finishFor && <FinishModal appt={finishFor} onClose={() => setFinishFor(null)} onDone={load} />}
+      {finishFor && (
+        <FinishModal appt={finishFor} onClose={() => setFinishFor(null)} onDone={load}
+          onRegistrar={(pa) => { setFinishFor(null); setFicha({ id: pa.id, name: pa.name, step: 4 }); }} />
+      )}
       {(checkinOpen || checkinFor) && (
         <CheckinModal appt={checkinFor}
           onClose={() => { setCheckinOpen(false); setCheckinFor(null); }}
@@ -423,13 +426,27 @@ function CheckinModal({ appt, onClose, onDone, onAbierto }: {
  * áreas trabajó. NO descuenta sesiones: eso ocurre al registrar el procedimiento
  * aplicado en la ficha, donde el paciente lo valida con su firma.
  */
-function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: () => void }) {
+function FinishModal({ appt, onClose, onDone, onRegistrar }: {
+  appt: Appointment; onClose: () => void; onDone: () => void;
+  onRegistrar: (p: { id: string; name: string }) => void;
+}) {
   const toast = useToast();
   const [pkg, setPkg] = useState<PatientPackage | null>(null);
   const [cargando, setCargando] = useState(true);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [tec, setTec] = useState<Set<string>>(new Set()); // técnicas aplicadas hoy
   const [busy, setBusy] = useState(false);
+  // ¿Ya se registró (y firmó) la sesión de hoy? Si no, la sesión NO se descuenta
+  // y el paquete se queda igual aunque el paciente haya venido.
+  const [registradaHoy, setRegistradaHoy] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!appt.treatmentId) { setRegistradaHoy(null); return; }
+    const hoy = new Date().toISOString().slice(0, 10);
+    api.get<{ sesiones: { at: string }[] }>(`/patients/treatments/${appt.treatmentId}/sessions`)
+      .then((r) => setRegistradaHoy(r.sesiones.some((s) => s.at.slice(0, 10) === hoy)))
+      .catch(() => setRegistradaHoy(false));
+  }, [appt.treatmentId]);
 
   useEffect(() => {
     api.get<{ packages?: PatientPackage[] }>(`/patients/${appt.patientId}`)
@@ -472,10 +489,29 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
           </div>
 
           <div className="flex flex-col gap-3 px-6 py-5">
-            {/* El descuento de sesiones vive en un solo sitio: la ficha, con la firma. */}
-            <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>
-              ℹ️ Cerrar turno no descuenta sesiones. El descuento se hace en la <b>ficha</b>, al registrar el procedimiento aplicado con la <b>firma del paciente</b>.
-            </div>
+            {/* El descuento vive en un solo sitio: la ficha, con la firma. Si aún no
+                se registró, se avisa aquí: cerrar sin registrar deja el paquete igual
+                aunque la paciente haya venido. */}
+            {registradaHoy === false ? (
+              <div className="rounded-[10px] px-3.5 py-3" style={{ background: 'var(--warn-soft)', border: '1px solid #F0D9A8' }}>
+                <div className="mb-1 text-[12.5px] font-extrabold" style={{ color: 'var(--warn)' }}>⚠ Falta registrar lo aplicado hoy</div>
+                <div className="mb-2.5 text-[11.5px]" style={{ color: '#7A5A12' }}>
+                  Si cierras sin registrar, <b>no se descuenta la sesión</b> y el paquete queda igual.
+                </div>
+                <button onClick={() => onRegistrar({ id: appt.patientId, name: appt.patient })}
+                  className="w-full rounded-[9px] py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--magenta)' }}>
+                  Registrar lo aplicado y firmar →
+                </button>
+              </div>
+            ) : registradaHoy === true ? (
+              <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
+                ✓ La sesión de hoy ya está registrada y firmada. Puedes cerrar el turno.
+              </div>
+            ) : (
+              <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>
+                ℹ️ Cerrar turno no descuenta sesiones. El descuento se hace en la <b>ficha</b>, al registrar el procedimiento aplicado con la <b>firma del paciente</b>.
+              </div>
+            )}
             {cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
             {!cargando && areas.length === 0 && (
               <div className="rounded-[10px] bg-bg px-3.5 py-3 text-[12.5px] text-muted">
@@ -502,7 +538,7 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
                   );
                 })}
                 <div className="rounded-[10px] bg-bg px-3 py-2 text-[11.5px] text-muted">
-                  Se descontarán <b>{sel.size || 1}</b> sesión{(sel.size || 1) === 1 ? '' : 'es'} de <b>{pkg?.name}</b>.
+                  Queda como referencia de la visita de <b>{pkg?.name}</b>. El descuento va con la firma.
                 </div>
               </>
             )}

@@ -120,8 +120,15 @@ export async function createTreatmentFromCatalog(
     where: { id: catalogItemId },
     include: { incluye: { include: { service: true } } },
   });
-  // Solo los combos/paquetes generan un plan de sesiones; los servicios sueltos no.
-  if (!item || (item.kind !== 'COMBO' && item.kind !== 'PAQUETE')) return null;
+  if (!item) return null;
+
+  // Genera plan TODO lo que se consume en varias visitas:
+  //  · combos y paquetes (aunque sean de 1 sesión: llevan áreas y técnicas), y
+  //  · servicios de varias sesiones (ej. "Reducción de medidas · 10 sesiones").
+  // Antes solo COMBO/PAQUETE: un servicio de 10 sesiones se cobraba y el paciente
+  // quedaba sin plan, sin forma de agendar ni descontar lo que ya había pagado.
+  const esPlan = item.kind === 'COMBO' || item.kind === 'PAQUETE' || (item.sessions ?? 1) > 1;
+  if (!esPlan) return null;
 
   // Idempotencia: no duplicar el plan si ya tiene uno activo de este mismo ítem.
   const yaTiene = await prisma.treatment.findFirst({ where: { patientId, catalogItemId: item.id, active: true } });
