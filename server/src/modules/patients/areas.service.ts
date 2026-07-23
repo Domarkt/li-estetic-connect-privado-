@@ -146,6 +146,75 @@ export async function createTreatmentFromCatalog(
   return treatment.id;
 }
 
+/**
+ * Registra lo que se le APLICÓ al paciente en una visita y descuenta lo consumido.
+ *
+ * Es el punto donde queda constancia de cuál de las técnicas del combo se usó ese
+ * día (antes solo se veía el contador, sin forma de decir cuál se aplicó) y de que
+ * el paciente lo validó con su firma.
+ *
+ * Consume, sin pasarse de lo comprado:
+ *  · 1 uso de cada técnica marcada,
+ *  · 1 sesión de cada área trabajada,
+ *  · 1 sesión del plan.
+ */
+export async function registrarSesionAplicada(
+  treatmentId: string,
+  datos: { techniques: string[]; areas: string[]; therapistId?: string | null; signature?: string | null; notes?: string | null },
+) {
+  const t = await prisma.treatment.findUnique({
+    where: { id: treatmentId },
+    include: { areas: true, techniques: true },
+  });
+  if (!t) return null;
+
+  // Solo lo que realmente queda disponible (no se descuenta de más).
+  const tecnicas = t.techniques.filter((x) => datos.techniques.includes(x.name) && x.done < x.total);
+  const areas = t.areas.filter((a) => datos.areas.includes(a.area) && a.doneSessions < a.totalSessions);
+
+  for (const tec of tecnicas) {
+    await prisma.treatmentTechnique.update({ where: { id: tec.id }, data: { done: { increment: 1 } } });
+  }
+  for (const a of areas) {
+    await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: { increment: 1 } } });
+  }
+
+  const done = Math.min(t.totalSessions, t.doneSessions + 1);
+  const restantes = Math.max(0, t.totalSessions - done);
+  await prisma.treatment.update({
+    where: { id: t.id },
+    data: { doneSessions: done, ...(restantes === 0 ? { active: false } : {}) },
+  });
+
+  const sesion = await prisma.treatmentSession.create({
+    data: {
+      treatmentId: t.id, patientId: t.patientId, therapistId: datos.therapistId ?? null,
+      techniques: tecnicas.map((x) => x.name),
+      areas: areas.map((a) => a.area),
+      signature: datos.signature ?? null,
+      notes: datos.notes ?? null,
+    },
+  });
+
+  return { sesion, done, restantes, total: t.totalSessions };
+}
+
+/** Sesiones ya registradas de un plan (historial de lo aplicado). */
+export async function listarSesiones(treatmentId: string, labels: Record<string, string> = AREA_LABEL) {
+  const rows = await prisma.treatmentSession.findMany({
+    where: { treatmentId }, orderBy: { at: 'desc' }, take: 50,
+  });
+  return rows.map((s) => ({
+    id: s.id,
+    at: s.at.toISOString(),
+    fecha: s.at.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+    techniques: s.techniques,
+    areas: s.areas.map((a) => labels[a] ?? a),
+    firmada: !!s.signature,
+    notes: s.notes,
+  }));
+}
+
 /** Serializa las técnicas de un tratamiento para la interfaz. */
 export function serializeTechniques(techs: { id: string; name: string; total: number; done: number }[]) {
   return techs.map((t) => ({

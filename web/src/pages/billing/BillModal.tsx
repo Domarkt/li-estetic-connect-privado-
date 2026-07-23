@@ -39,6 +39,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [splitOn, setSplitOn] = useState(false);
   const [split, setSplit] = useState<Record<Metodo, string>>({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
 
+  // Fecha de la cita de la que se precargó el servicio (para avisarlo en pantalla).
+  const [desdeAgenda, setDesdeAgenda] = useState<string | null>(null);
   const [step, setStep] = useState<'form' | 'review'>('form');
   const [busy, setBusy] = useState(false);
   const [pQuery, setPQuery] = useState('');
@@ -94,6 +96,17 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
       setPayKind('SALDO'); setChargeIds([]); setAmount(String(p.treatment.balance));
     } else {
       setConcept(''); setTreatmentId(null); setPayKind('TOTAL'); setChargeIds([]); setAmount('');
+      // Precarga lo que el paciente AGENDÓ: si pasaron días o hay mucho movimiento,
+      // recepción no tiene por qué acordarse ni ir a buscarlo en la agenda.
+      if (p.scheduled) {
+        setCart([{
+          lineId: `l${++lineSeq}`, catalogId: p.scheduled.catalogItemId,
+          name: p.scheduled.name, price: p.scheduled.price || 0, qty: 1,
+        }]);
+        setDesdeAgenda(p.scheduled.fecha);
+      } else {
+        setDesdeAgenda(null);
+      }
     }
     setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
   }
@@ -181,7 +194,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 <div className="flex items-center gap-2.5 rounded-[11px] border border-magenta bg-magenta-soft px-3 py-2.5">
                   <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11.5px] font-bold text-white" style={{ background: current.avatarColor }}>{current.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
                   <div className="min-w-0 flex-1"><div className="text-[13.5px] font-bold">{current.name}</div><div className="text-[11.5px] text-muted">{current.plan}{current.balance > 0 ? ` · saldo ${fmtRD(current.balance)}` : ''}</div></div>
-                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
                 </div>
               ) : (
                 <>
@@ -218,6 +231,16 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 </>
               ) : (
                 <>
+                  {/* Se avisa que el servicio vino de la cita, para que recepción sepa
+                      de dónde salió y pueda cambiarlo si el paciente decidió otra cosa. */}
+                  {desdeAgenda && cart.length > 0 && (
+                    <div className="mb-2 flex items-center gap-2 rounded-[9px] px-3 py-2 text-[11.5px] font-semibold"
+                      style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>
+                      <span>📅</span>
+                      <span className="flex-1">Cargado de su cita del <b>{desdeAgenda}</b>. Puedes cambiarlo o agregar más.</span>
+                    </div>
+                  )}
+
                   {/* Carrito: uno o varios servicios en el mismo recibo */}
                   {cart.length > 0 && (
                     <div className="mb-2 flex flex-col gap-2 rounded-[11px] border border-line-2 p-2">

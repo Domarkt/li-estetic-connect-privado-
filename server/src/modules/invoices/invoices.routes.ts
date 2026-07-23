@@ -58,11 +58,31 @@ invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, asyn
 invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
   const patients = await prisma.patient.findMany({
     where: req.scopeBranchId ? { branchId: req.scopeBranchId } : {},
-    include: { treatments: true, chargeItems: { where: { status: 'PENDIENTE_FACTURAR' } } },
+    include: {
+      treatments: true,
+      chargeItems: { where: { status: 'PENDIENTE_FACTURAR' } },
+      // Última cita agendada con servicio: recepción no debería tener que recordar
+      // (ni ir a buscar) qué fue lo que el paciente agendó para poder cobrarle.
+      appointments: {
+        where: { status: { not: 'CANCELADA' }, catalogItemId: { not: null } },
+        orderBy: { startsAt: 'desc' },
+        take: 1,
+      },
+    },
     orderBy: { name: 'asc' },
   });
+
+  // Precio y tipo del servicio agendado (Appointment solo guarda el id del ítem).
+  const idsAgendados = [...new Set(patients.flatMap((p) => p.appointments.map((a) => a.catalogItemId)).filter((x): x is string => !!x))];
+  const itemsAgendados = idsAgendados.length
+    ? await prisma.catalogItem.findMany({ where: { id: { in: idsAgendados } }, select: { id: true, name: true, price: true, kind: true } })
+    : [];
+  const porId = new Map(itemsAgendados.map((i) => [i.id, i]));
+
   res.json(
     patients.map((p) => {
+      const cita = p.appointments[0];
+      const itemCita = cita?.catalogItemId ? porId.get(cita.catalogItemId) : undefined;
       const t = p.treatments.find((x) => x.active) ?? p.treatments[0] ?? null;
       const pendingTotal = p.chargeItems.reduce((s, c) => s + c.price, 0);
       const remaining = t ? Math.max(0, t.totalSessions - t.doneSessions) : 0;
@@ -76,6 +96,14 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
         } : null,
         pendingCharges: p.chargeItems.map((c) => ({ id: c.id, name: c.name, price: c.price })),
         pendingTotal,
+        // Lo que el paciente agendó: el cobro lo precarga para no tener que buscarlo.
+        scheduled: itemCita && cita ? {
+          catalogItemId: itemCita.id,
+          name: itemCita.name,
+          price: itemCita.price,
+          kind: itemCita.kind,
+          fecha: cita.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short' }),
+        } : null,
       };
     }),
   );

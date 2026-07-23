@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, listarSesiones } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
@@ -180,6 +180,57 @@ patientsRouter.patch('/treatments/:treatmentId/areas', requireStaff, requireRole
     areas: serializeAreas(actualizado?.areas ?? [], labels),
     message: `Áreas definidas · ${areas.map((a) => labels[a] ?? a).join(' y ')}`,
   });
+});
+
+const sesionSchema = z.object({
+  techniques: z.array(z.string()).default([]),
+  areas: z.array(z.string()).default([]),
+  notes: z.string().max(500).optional(),
+  // Firma del paciente (PNG en base64). Se limita el tamaño para no inflar la base.
+  signature: z.string().max(400_000).optional(),
+});
+
+/**
+ * Registrar el procedimiento APLICADO hoy (esteticista) + la firma con la que el
+ * paciente lo valida. Descuenta las técnicas, las áreas y la sesión del plan.
+ */
+patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRole(...areasRoles), async (req, res) => {
+  const b = sesionSchema.parse(req.body);
+  if (!b.techniques.length && !b.areas.length) {
+    return res.status(400).json({ error: 'Marca al menos una técnica o un área aplicada' });
+  }
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (!b.signature) return res.status(400).json({ error: 'Falta la firma del paciente para validar el procedimiento' });
+
+  const r = await registrarSesionAplicada(t.id, {
+    techniques: b.techniques, areas: b.areas, notes: b.notes,
+    signature: b.signature,
+    therapistId: req.staff!.role === 'ESTETICISTA' ? req.staff!.sub : null,
+  });
+  if (!r) return res.status(404).json({ error: 'Plan no encontrado' });
+
+  const labels = await getAreaLabelMap();
+  await audit(req, {
+    action: 'TREATMENT_SESSION', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
+    summary: `Sesión ${r.done}/${r.total} de ${t.name} (${t.patient.name}): ${r.sesion.techniques.join(', ') || 'sin técnicas'} · firmada`,
+  });
+
+  res.status(201).json({
+    ok: true,
+    done: r.done, restantes: r.restantes, total: r.total,
+    sesiones: await listarSesiones(t.id, labels),
+    message: `Sesión ${r.done} de ${r.total} registrada y firmada`,
+  });
+});
+
+/** Historial de lo aplicado en un plan. */
+patientsRouter.get('/treatments/:treatmentId/sessions', requireStaff, async (req, res) => {
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  res.json({ sesiones: await listarSesiones(t.id, await getAreaLabelMap()) });
 });
 
 // El precio de la área adicional es editable (láser varía: no cuesta igual "bozo" que "cuerpo completo").

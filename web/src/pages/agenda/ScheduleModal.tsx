@@ -10,6 +10,8 @@ interface Props { branchQuery: string; onClose: () => void; onSaved: () => void 
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const FOLLOWUP = '__followup__';
+// Mismas etiquetas que en el cobro, para que el equipo vea siempre el mismo formato.
+const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
 
 export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) {
   const { staff } = useAuth();
@@ -27,6 +29,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [branchId, setBranchId] = useState(staff?.role === 'ADMIN' ? (branches[0]?.id ?? '') : (staff?.branchId ?? ''));
   const [services, setServices] = useState<CatalogItem[]>([]);
   const [serviceId, setServiceId] = useState('');
+  const [svcQuery, setSvcQuery] = useState(''); // buscador de servicios (formato del cobro)
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [therapistId, setTherapistId] = useState('');
   const [date, setDate] = useState(todayStr());
@@ -49,13 +52,20 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
 
   useEffect(() => {
     loadPatients();
-    api.get<CatalogItem[]>('/catalog').then((c) => { const s = c.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO'); setServices(s); if (s[0]) setServiceId(s[0].id); });
+    // No se preselecciona ninguno: con el buscador, elegir es explícito (antes quedaba
+    // agendado el primer servicio de la lista sin que nadie lo mirara).
+    api.get<CatalogItem[]>('/catalog').then((c) => setServices(c.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO')));
     api.get<Therapist[]>(`/users/therapists${branchQuery ? '?' + branchQuery.slice(1) : ''}`).then((t) => { setTherapists(t); if (t[0] && staff?.role !== 'ESTETICISTA') setTherapistId(t[0].id); });
     if (staff?.role === 'ESTETICISTA') setTherapistId(staff.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchQuery]);
 
   const isNew = type === 'NUEVO';
+  const svcElegido = services.find((s) => s.id === serviceId) ?? null;
+  const serviciosFiltrados = services.filter((s) => {
+    const q = svcQuery.trim().toLowerCase();
+    return !q || s.name.toLowerCase().includes(q) || (s.code ?? '').toLowerCase().includes(q);
+  });
 
   async function save() {
     setBusy(true);
@@ -199,12 +209,52 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
             </div>
           )}
 
-          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Servicio / paquete</span>
-            <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
-              {!isNew && <option value={FOLLOWUP}>— Seguimiento de tratamiento (continuación, sin cargo) —</option>}
-              {services.map((s) => <option key={s.id} value={s.id}>{s.name} — {s.price ? fmtRD(s.price) : "sin precio"}</option>)}
-            </select>
-          </label>
+          {/* Selector de servicio con buscador, igual que en el cobro: con el catálogo
+              lleno, un <select> largo obliga a desplazarse a ciegas. */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-bold text-muted">Servicio / paquete</span>
+            {svcElegido ? (
+              <div className="flex items-center gap-2.5 rounded-[10px] border border-magenta bg-magenta-soft px-3 py-2.5">
+                <span className="rounded-full bg-card px-2 py-0.5 text-[10.5px] font-bold text-navy">{KIND_TAG[svcElegido.kind] ?? svcElegido.kind}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13.5px] font-bold">{svcElegido.name}</div>
+                  <div className="text-[11.5px] text-muted">{svcElegido.price ? fmtRD(svcElegido.price) : 'sin precio'}{svcElegido.sessions > 1 ? ` · ${svcElegido.sessions} sesiones` : ''}</div>
+                </div>
+                <button type="button" onClick={() => { setServiceId(''); setSvcQuery(''); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+              </div>
+            ) : serviceId === FOLLOWUP ? (
+              <div className="flex items-center gap-2.5 rounded-[10px] border border-magenta bg-magenta-soft px-3 py-2.5">
+                <div className="flex-1 text-[13px] font-bold">↻ Seguimiento de tratamiento <span className="font-semibold text-muted">(sin cargo)</span></div>
+                <button type="button" onClick={() => setServiceId('')} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+              </div>
+            ) : (
+              <>
+                <input value={svcQuery} onChange={(e) => setSvcQuery(e.target.value)} placeholder="🔍 Buscar servicio, combo o paquete…"
+                  className="rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
+                <div className="flex max-h-[190px] flex-col gap-1 overflow-y-auto rounded-[10px] border border-line-2 p-2">
+                  {!isNew && (
+                    <button type="button" onClick={() => setServiceId(FOLLOWUP)}
+                      className="rounded-[9px] px-2.5 py-2 text-left text-[12.5px] font-bold text-navy hover:bg-bg">
+                      ↻ Seguimiento de tratamiento <span className="font-semibold text-muted">(continuación, sin cargo)</span>
+                    </button>
+                  )}
+                  {serviciosFiltrados.map((s) => (
+                    <button key={s.id} type="button" onClick={() => { setServiceId(s.id); setSvcQuery(''); }}
+                      className="flex items-center gap-2 rounded-[9px] px-2.5 py-2 text-left hover:bg-bg">
+                      <span className="flex-none rounded-full bg-navy-soft px-2 py-0.5 text-[10.5px] font-bold text-navy">{KIND_TAG[s.kind] ?? s.kind}</span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{s.name}</span>
+                      <span className="flex-none text-[12.5px] font-bold text-magenta">{s.price ? fmtRD(s.price) : 'sin precio'}</span>
+                    </button>
+                  ))}
+                  {serviciosFiltrados.length === 0 && (
+                    <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">
+                      {services.length === 0 ? 'No hay servicios en el catálogo.' : 'Sin coincidencias.'}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           {/* Si el paciente tiene paquetes comprados, se elige cuál consume esta sesión.
               Así el sistema descuenta la sesión al cerrar el turno (antes se llevaba en papel). */}
           {(() => {

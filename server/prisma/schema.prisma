@@ -345,6 +345,7 @@ model Treatment {
   invoices    Invoice[]
   areas       TreatmentArea[]
   techniques  TreatmentTechnique[]
+  sessions    TreatmentSession[]
 
   @@index([patientId])
 }
@@ -860,4 +861,25 @@ model AuditLog {
   @@index([action])
   @@index([entity, entityId])
   @@index([userId])
+}
+
+// Registro de lo que se le APLICO al paciente en una visita: que tecnicas del
+// combo se usaron, sobre que areas, y la firma con la que el paciente lo valida.
+// Es el respaldo clinico y comercial de cada sesion consumida.
+model TreatmentSession {
+  id          String   @id @default(cuid())
+  treatmentId String
+  patientId   String
+  therapistId String?
+  at          DateTime @default(now())
+  techniques  String[] // nombres de las tecnicas aplicadas ese dia
+  areas       String[] // claves de las areas trabajadas ese dia
+  notes       String?
+  signature   String? // firma del paciente (imagen PNG en base64)
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@index([treatmentId])
+  @@index([patientId])
+  @@index([at])
 }

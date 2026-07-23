@@ -182,6 +182,8 @@ export interface BillPatient {
   treatment: BillTreatment | null;
   pendingCharges: { id: string; name: string; price: number }[];
   pendingTotal: number;
+  /** Servicio por el que el paciente agendó: el cobro lo precarga. */
+  scheduled?: { catalogItemId: string; name: string; price: number; kind: string; fecha: string } | null;
 }
 export interface Receipt {
   id: string; invoiceId?: string; ncf: string | null;

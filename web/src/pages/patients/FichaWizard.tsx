@@ -5,6 +5,13 @@ import { useToast } from '../../components/Toast';
 import { Portal } from '../../components/Modal';
 import { MOTIVOS, ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './fichaConstants';
 import type { PatientPackage } from '../../lib/types';
+import FirmaDigital from '../../components/FirmaDigital';
+
+/** Una visita registrada: qué se aplicó, sobre qué áreas y si el paciente firmó. */
+interface SesionAplicada {
+  id: string; at: string; fecha: string;
+  techniques: string[]; areas: string[]; firmada: boolean; notes: string | null;
+}
 
 interface Props {
   patientId: string;
@@ -397,6 +404,9 @@ function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { na
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Cambia al registrar una sesión, para releer los contadores ya descontados.
+  const [recarga, setRecarga] = useState(0);
+  const recargar = () => setRecarga((r) => r + 1);
 
   useEffect(() => {
     let vivo = true;
@@ -415,7 +425,7 @@ function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { na
     }).catch(() => { if (vivo) { setLoading(false); } });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId]);
+  }, [patientId, recarga]);
 
   if (loading) return <div className="mb-4 rounded-[11px] border border-line bg-bg px-4 py-3 text-[12.5px] text-muted">Cargando servicio pagado…</div>;
   if (!pkg) return (
@@ -481,6 +491,131 @@ function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { na
         className="mt-1 w-full rounded-[9px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
         {busy ? 'Guardando…' : 'Guardar áreas del plan'}
       </button>
+
+      <AplicadoHoy pkg={pkg} onRegistrada={recargar} />
+    </div>
+  );
+}
+
+/**
+ * Registro de lo que se le APLICÓ al paciente hoy: cuál de las técnicas del combo
+ * se usó, sobre qué áreas, y la firma con la que el paciente lo valida.
+ *
+ * Antes el combo solo mostraba el contador (0/5) y no había forma de decir cuál de
+ * los procedimientos se aplicó ese día.
+ */
+function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada: () => void }) {
+  const toast = useToast();
+  const [abierto, setAbierto] = useState(false);
+  const [tecnicas, setTecnicas] = useState<string[]>([]);
+  const [areasHoy, setAreasHoy] = useState<string[]>([]);
+  const [firma, setFirma] = useState<string | null>(null);
+  const [notas, setNotas] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sesiones, setSesiones] = useState<SesionAplicada[]>([]);
+
+  useEffect(() => {
+    api.get<{ sesiones: SesionAplicada[] }>(`/patients/treatments/${pkg.id}/sessions`)
+      .then((r) => setSesiones(r.sesiones)).catch(() => setSesiones([]));
+  }, [pkg.id]);
+
+  const disponibles = (pkg.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
+  const areasPlan = (pkg.areas ?? []).filter((a) => a.remaining > 0);
+  const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
+    set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+
+  async function registrar() {
+    if (!tecnicas.length && !areasHoy.length) { toast('Marca qué procedimiento se aplicó'); return; }
+    if (!firma) { toast('Falta la firma del paciente para validar'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string; sesiones: SesionAplicada[] }>(
+        `/patients/treatments/${pkg.id}/session`,
+        { techniques: tecnicas, areas: areasHoy, signature: firma, notes: notas || undefined },
+      );
+      toast(r.message);
+      setSesiones(r.sesiones);
+      setTecnicas([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false);
+      onRegistrada();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mt-3 border-t border-magenta/25 pt-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[12px] font-extrabold text-navy">Procedimiento aplicado hoy</span>
+        <button type="button" onClick={() => setAbierto((v) => !v)} className="text-[11.5px] font-bold text-magenta">
+          {abierto ? 'Cerrar' : '+ Registrar'}
+        </button>
+      </div>
+
+      {/* Historial: qué se le ha venido aplicando. */}
+      {sesiones.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {sesiones.slice(0, 4).map((s) => (
+            <div key={s.id} className="flex items-start gap-2 rounded-[8px] bg-card px-2.5 py-1.5 text-[11.5px]">
+              <span className="flex-none font-bold text-muted">{s.fecha}</span>
+              <span className="min-w-0 flex-1 text-muted">
+                {s.techniques.join(', ') || '—'}{s.areas.length ? ` · ${s.areas.join(', ')}` : ''}
+              </span>
+              {s.firmada && <span className="flex-none font-bold text-ok" title="Validado por el paciente">✓ firmada</span>}
+            </div>
+          ))}
+          {sesiones.length > 4 && <div className="text-[11px] text-faint">y {sesiones.length - 4} sesión(es) más…</div>}
+        </div>
+      )}
+
+      {abierto && (
+        <div className="flex flex-col gap-2.5 rounded-[10px] bg-card p-3">
+          <div>
+            <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Qué se le aplicó? <span className="font-semibold text-faint">(marca una o varias)</span></div>
+            {disponibles.length === 0 ? (
+              <div className="rounded-[8px] bg-bg px-2.5 py-2 text-[11.5px] text-muted">Ya se consumieron todas las técnicas de este combo.</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {disponibles.map((s) => {
+                  const on = tecnicas.includes(s.name);
+                  return (
+                    <button key={s.id} type="button" onClick={() => toggle(tecnicas, setTecnicas, s.name)}
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                      {on ? '✓ ' : ''}{s.name} <span className="font-semibold text-faint">{s.done ?? 0}/{s.total ?? s.qty}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {areasPlan.length > 0 && (
+            <div>
+              <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Sobre qué áreas? <span className="font-semibold text-faint">(descuenta 1 sesión por área)</span></div>
+              <div className="flex flex-wrap gap-1.5">
+                {areasPlan.map((a) => {
+                  const on = areasHoy.includes(a.area);
+                  return (
+                    <button key={a.id} type="button" onClick={() => toggle(areasHoy, setAreasHoy, a.area)}
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                      {on ? '✓ ' : ''}{a.label} <span className="font-semibold text-faint">{a.done}/{a.total}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Observaciones de la sesión (opcional)"
+            className="rounded-[9px] border border-line px-3 py-2.5 text-[12.5px] outline-none focus:border-magenta" />
+
+          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el procedimiento aplicado" />
+
+          <button type="button" onClick={registrar} disabled={busy || !firma}
+            className="rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+            {busy ? 'Registrando…' : firma ? 'Registrar sesión firmada' : 'Falta la firma del paciente'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
