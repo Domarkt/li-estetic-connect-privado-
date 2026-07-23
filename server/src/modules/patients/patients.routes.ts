@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, listarSesiones } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, listarSesiones, bitacoraPaciente } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
@@ -223,6 +223,17 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
     sesiones: await listarSesiones(t.id, labels),
     message: `Sesión ${r.done} de ${r.total} registrada y firmada`,
   });
+});
+
+/**
+ * Bitácora digital del paciente: todas sus visitas, de todos sus planes.
+ * Reemplaza al "control de citas" que la esteticista llenaba a mano.
+ */
+patientsRouter.get('/:id/bitacora', requireStaff, branchScope, async (req, res) => {
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true, branchId: true } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  res.json({ bitacora: await bitacoraPaciente(patient.id, await getAreaLabelMap()) });
 });
 
 /** Historial de lo aplicado en un plan. */

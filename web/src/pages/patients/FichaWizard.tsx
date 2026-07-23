@@ -16,6 +16,8 @@ interface SesionAplicada {
 interface Props {
   patientId: string;
   patientName: string;
+  /** Paso inicial (1..4). Al abrir turno se entra directo en Tratamiento. */
+  startStep?: number;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -38,11 +40,16 @@ function sequenceFor(role: string): number[] {
 
 const STEP_LABELS = ['Datos & motivo', 'Antecedentes', 'Medicamentos & piel', 'Tratamiento'];
 
-export default function FichaWizard({ patientId, patientName, onClose, onSaved }: Props) {
+export default function FichaWizard({ patientId, patientName, startStep, onClose, onSaved }: Props) {
   const { staff } = useAuth();
   const toast = useToast();
   const seq = sequenceFor(staff!.role);
-  const [idx, setIdx] = useState(0);
+  // Si se pidió empezar en un paso concreto (p. ej. Tratamiento tras abrir el
+  // turno), se arranca ahí siempre que ese paso exista para el rol.
+  const [idx, setIdx] = useState(() => {
+    const i = startStep ? seq.indexOf(startStep) : -1;
+    return i >= 0 ? i : 0;
+  });
   const [busy, setBusy] = useState(false);
 
   // Estado del formulario
@@ -397,9 +404,12 @@ type AreaOptFicha = { key: string; label: string; grupo: string };
  * que el paciente compró (con sus sesiones reales) y le deja elegir las ÁREAS a trabajar.
  * Las sesiones se reparten entre las áreas elegidas. Reutiliza el mismo endpoint del drawer.
  */
-function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { name: string; sessions: number } | null) => void }) {
+function PlanPagado({ patientId, onPlan, onSesion }: { patientId: string; onPlan: (p: { name: string; sessions: number } | null) => void; onSesion: () => void }) {
   const toast = useToast();
-  const [pkg, setPkg] = useState<PatientPackage | null>(null);
+  // TODOS los combos comprados, no solo uno: el paciente puede tener varios y la
+  // esteticista debe poder elegir cuál está trabajando hoy.
+  const [paquetes, setPaquetes] = useState<PatientPackage[]>([]);
+  const [pkgId, setPkgId] = useState<string>('');
   const [opciones, setOpciones] = useState<AreaOptFicha[]>([]);
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -416,16 +426,22 @@ function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { na
       api.get<AreaOptFicha[]>('/catalog/body-areas').catch(() => []),
     ]).then(([detail, opts]) => {
       if (!vivo) return;
-      const activo = (detail.packages ?? []).find((p) => p.remaining > 0) ?? (detail.packages ?? [])[0] ?? null;
-      setPkg(activo);
+      const todos = detail.packages ?? [];
+      setPaquetes(todos);
       setOpciones(opts);
-      setSel((activo?.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
-      onPlan(activo ? { name: activo.name, sessions: activo.total } : null);
+      // Se mantiene el que ya estaba elegido; si no, el primero con sesiones.
+      const elegido = todos.find((p) => p.id === pkgId)
+        ?? todos.find((p) => p.remaining > 0) ?? todos[0] ?? null;
+      setPkgId(elegido?.id ?? '');
+      setSel((elegido?.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
+      onPlan(elegido ? { name: elegido.name, sessions: elegido.total } : null);
       setLoading(false);
     }).catch(() => { if (vivo) { setLoading(false); } });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId, recarga]);
+
+  const pkg = paquetes.find((p) => p.id === pkgId) ?? null;
 
   if (loading) return <div className="mb-4 rounded-[11px] border border-line bg-bg px-4 py-3 text-[12.5px] text-muted">Cargando servicio pagado…</div>;
   if (!pkg) return (
@@ -451,8 +467,45 @@ function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { na
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
 
+  /** Cambia el combo que se está trabajando hoy. */
+  const cambiarPlan = (id: string) => {
+    const p = paquetes.find((x) => x.id === id);
+    if (!p) return;
+    setPkgId(id);
+    setSel((p.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
+    onPlan({ name: p.name, sessions: p.total });
+  };
+
   return (
     <div className="mb-4 rounded-[11px] border border-magenta/40 bg-magenta-soft p-4">
+      {/* Con varios combos comprados hay que decir cuál se trabaja hoy. */}
+      {paquetes.length > 1 && (
+        <div className="mb-3">
+          <div className="mb-1.5 text-[11.5px] font-bold text-muted">
+            Tiene {paquetes.length} servicios comprados · ¿cuál trabajas hoy?
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {paquetes.map((p) => {
+              const on = p.id === pkgId;
+              const agotado = p.remaining === 0;
+              return (
+                <button key={p.id} type="button" onClick={() => cambiarPlan(p.id)}
+                  className="flex items-center gap-2 rounded-[9px] border px-3 py-2 text-left"
+                  style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--card)' : 'transparent', opacity: agotado ? 0.6 : 1 }}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] font-bold" style={{ color: on ? 'var(--magenta)' : 'var(--text)' }}>{p.name}</span>
+                    <span className="block text-[11px] text-muted">
+                      {agotado ? 'Sin sesiones disponibles' : `${p.done}/${p.total} · quedan ${p.remaining}`}
+                    </span>
+                  </span>
+                  {on && <span className="flex-none text-[12px] font-bold text-magenta">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="mb-2 flex items-center gap-2">
         <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-magenta text-[13px] text-white">✦</span>
         <div className="flex-1">
@@ -492,7 +545,7 @@ function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { na
         {busy ? 'Guardando…' : 'Guardar áreas del plan'}
       </button>
 
-      <AplicadoHoy pkg={pkg} onRegistrada={recargar} />
+      <AplicadoHoy pkg={pkg} onRegistrada={() => { recargar(); onSesion(); }} />
     </div>
   );
 }
@@ -620,12 +673,95 @@ function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada:
   );
 }
 
+/** Una visita en la bitácora del paciente. */
+interface VisitaBitacora {
+  id: string; numero: number; fecha: string; hora: string;
+  tratamiento: string; techniques: string[]; areas: string[];
+  esteticista: string | null; observaciones: string | null; firmada: boolean;
+}
+
+/**
+ * Bitácora digital del paciente: se genera sola con cada sesión registrada.
+ *
+ * Sustituye al "control de citas" que se llenaba a mano. Deja constancia de qué
+ * se aplicó, sobre qué áreas y QUIÉN lo hizo: a una misma paciente la pueden
+ * atender varias esteticistas según el combo y la técnica de ese día.
+ */
+function Bitacora({ patientId, recarga = 0 }: { patientId: string; recarga?: number }) {
+  const [rows, setRows] = useState<VisitaBitacora[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    api.get<{ bitacora: VisitaBitacora[] }>(`/patients/${patientId}/bitacora`)
+      .then((r) => { setRows(r.bitacora); setCargando(false); })
+      .catch(() => setCargando(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, recarga]);
+
+  return (
+    <div className="mb-4">
+      <div className="mb-2.5 flex items-center gap-2">
+        <span className="text-[12.5px] font-extrabold uppercase text-navy">Bitácora de citas</span>
+        <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10.5px] font-bold text-muted">automática</span>
+      </div>
+
+      {cargando ? (
+        <div className="rounded-[11px] border border-line px-3.5 py-3 text-[12.5px] text-muted">Cargando bitácora…</div>
+      ) : rows.length === 0 ? (
+        <div className="rounded-[11px] border border-dashed border-line px-3.5 py-4 text-[12.5px] text-muted">
+          Todavía no hay visitas registradas. Cada vez que registres el procedimiento aplicado
+          (arriba, con la firma del paciente), se agrega sola una línea aquí.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-[11px] border border-line">
+          <div className="min-w-[620px]">
+            <div className="grid grid-cols-[46px_86px_1.5fr_1.2fr_1.1fr] gap-2 px-3.5 py-2.5 text-[11px] font-bold uppercase text-navy" style={{ background: 'var(--navy-soft)' }}>
+              <div>Cita</div><div>Fecha</div><div>Tratamiento aplicado</div><div>Áreas</div><div>Esteticista</div>
+            </div>
+            {rows.map((v) => (
+              <div key={v.id} className="border-t border-line-2 px-3.5 py-2">
+                <div className="grid grid-cols-[46px_86px_1.5fr_1.2fr_1.1fr] items-start gap-2">
+                  <div className="text-[13px] font-bold text-muted">{v.numero}</div>
+                  <div className="text-[12px]">
+                    <div className="font-semibold">{v.fecha}</div>
+                    <div className="text-[10.5px] text-faint">{v.hora}</div>
+                  </div>
+                  <div className="text-[12px]">
+                    <div className="font-semibold">{v.tratamiento}</div>
+                    {v.techniques.length > 0 && <div className="text-[11px] text-muted">{v.techniques.join(', ')}</div>}
+                  </div>
+                  <div className="text-[11.5px] text-muted">{v.areas.length ? v.areas.join(', ') : '—'}</div>
+                  <div className="flex items-start gap-1 text-[11.5px]">
+                    <span className="min-w-0 flex-1 truncate font-semibold">{v.esteticista ?? '—'}</span>
+                    {v.firmada && <span className="flex-none text-ok" title="Validado por el paciente">✓</span>}
+                  </div>
+                </div>
+                {v.observaciones && (
+                  <div className="mt-1 rounded-[7px] bg-bg px-2.5 py-1.5 text-[11.5px] text-muted">
+                    <b className="text-navy">Obs.</b> {v.observaciones}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="mt-1.5 text-[11px] text-faint">
+        Se genera con cada sesión firmada. Las observaciones se escriben al registrar el procedimiento.
+      </div>
+    </div>
+  );
+}
+
 function Step4({ patientId, tratamiento, setTratamiento, rows, setRows, policyAck, setPolicyAck }: {
   patientId: string;
   tratamiento: string; setTratamiento: (v: string) => void;
   rows: { fecha: string; obs: string }[]; setRows: (v: { fecha: string; obs: string }[]) => void;
   policyAck: boolean; setPolicyAck: (v: boolean) => void;
 }) {
+  // Al registrar una sesión, la bitácora se vuelve a leer para incluirla.
+  const [recargaBitacora, setRecargaBitacora] = useState(0);
+
   const setRow = (i: number, k: 'fecha' | 'obs', v: string) => {
     const next = rows.map((r, j) => (j === i ? { ...r, [k]: v } : r));
     setRows(next);
@@ -641,22 +777,26 @@ function Step4({ patientId, tratamiento, setTratamiento, rows, setRows, policyAc
   };
   return (
     <div className="animate-fade">
-      <PlanPagado patientId={patientId} onPlan={onPlan} />
+      <PlanPagado patientId={patientId} onPlan={onPlan} onSesion={() => setRecargaBitacora((r) => r + 1)} />
       <label className="mb-4 flex flex-col gap-1.5"><span className={lblCls}>Tratamiento a realizar</span>
         <input className={inputCls} value={tratamiento} onChange={(e) => setTratamiento(e.target.value)} placeholder="Ej. Reducción de medidas — 10 sesiones" /></label>
-      <div className="mb-2.5 text-[12.5px] font-extrabold uppercase text-navy">Control de citas (1 – {rows.length})</div>
-      <div className="mb-4 overflow-hidden rounded-[11px] border border-line">
-        <div className="grid grid-cols-[60px_1fr_1.6fr] px-3.5 py-2.5 text-[11.5px] font-bold uppercase text-navy" style={{ background: 'var(--navy-soft)' }}>
-          <div>Cita</div><div>Fecha</div><div>Observaciones</div>
-        </div>
-        {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-[60px_1fr_1.6fr] items-center border-t border-line-2 px-3.5 py-1">
-            <div className="text-[13px] font-bold text-muted">{i + 1}</div>
-            <input type="date" value={r.fecha} onChange={(e) => setRow(i, 'fecha', e.target.value)} className="bg-transparent px-1 py-2 text-[12.5px] outline-none" />
-            <input value={r.obs} onChange={(e) => setRow(i, 'obs', e.target.value)} className="border-l border-line-2 bg-transparent px-2 py-2 text-[12.5px] outline-none" />
+      <Bitacora patientId={patientId} recarga={recargaBitacora} />
+      {/* Filas antiguas escritas a mano: se conservan visibles para no perder lo
+          que ya se había anotado antes de la bitácora automática. */}
+      {rows.some((r) => r.fecha || r.obs) && (
+        <div className="mb-4">
+          <div className="mb-1.5 text-[11.5px] font-bold text-faint">Anotaciones anteriores (escritas a mano)</div>
+          <div className="overflow-hidden rounded-[11px] border border-line">
+            {rows.map((r, i) => (r.fecha || r.obs) ? (
+              <div key={i} className="grid grid-cols-[50px_1fr_1.6fr] items-center border-b border-line-2 px-3.5 py-1.5 last:border-0">
+                <div className="text-[12px] font-bold text-muted">{i + 1}</div>
+                <input type="date" value={r.fecha} onChange={(e) => setRow(i, 'fecha', e.target.value)} className="bg-transparent px-1 py-1.5 text-[12px] outline-none" />
+                <input value={r.obs} onChange={(e) => setRow(i, 'obs', e.target.value)} className="border-l border-line-2 bg-transparent px-2 py-1.5 text-[12px] outline-none" />
+              </div>
+            ) : null)}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
       <div className="grid grid-cols-[1.4fr_1fr] gap-[18px]">
         <div className="rounded-[11px] border p-4" style={{ background: 'var(--warn-soft)', borderColor: '#F0D9A8' }}>
           <div className="mb-1.5 text-xs font-extrabold" style={{ color: 'var(--warn)' }}>⚠ Política de cancelación</div>

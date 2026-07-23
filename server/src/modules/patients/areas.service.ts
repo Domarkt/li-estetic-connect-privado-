@@ -199,19 +199,59 @@ export async function registrarSesionAplicada(
   return { sesion, done, restantes, total: t.totalSessions };
 }
 
+/** Resuelve nombres de esteticistas en una sola consulta. */
+async function nombresTerapeutas(ids: (string | null)[]): Promise<Map<string, string>> {
+  const unicos = [...new Set(ids.filter((x): x is string => !!x))];
+  if (!unicos.length) return new Map();
+  const users = await prisma.user.findMany({ where: { id: { in: unicos } }, select: { id: true, name: true } });
+  return new Map(users.map((u) => [u.id, u.name]));
+}
+
 /** Sesiones ya registradas de un plan (historial de lo aplicado). */
 export async function listarSesiones(treatmentId: string, labels: Record<string, string> = AREA_LABEL) {
   const rows = await prisma.treatmentSession.findMany({
     where: { treatmentId }, orderBy: { at: 'desc' }, take: 50,
   });
+  const terapeutas = await nombresTerapeutas(rows.map((s) => s.therapistId));
   return rows.map((s) => ({
     id: s.id,
     at: s.at.toISOString(),
     fecha: s.at.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
     techniques: s.techniques,
     areas: s.areas.map((a) => labels[a] ?? a),
+    esteticista: s.therapistId ? terapeutas.get(s.therapistId) ?? null : null,
     firmada: !!s.signature,
     notes: s.notes,
+  }));
+}
+
+/**
+ * Bitácora digital del paciente: TODAS sus sesiones, de todos sus planes, en
+ * orden cronológico. Sustituye al "control de citas" que se llenaba a mano.
+ *
+ * Incluye la esteticista de cada visita a propósito: un mismo paciente puede ser
+ * atendido por varias según el combo y la técnica que toque ese día.
+ */
+export async function bitacoraPaciente(patientId: string, labels: Record<string, string> = AREA_LABEL) {
+  const rows = await prisma.treatmentSession.findMany({
+    where: { patientId },
+    include: { treatment: { select: { name: true } } },
+    orderBy: { at: 'asc' }, // la cita 1 es la primera: se lee como un historial
+    take: 200,
+  });
+  const terapeutas = await nombresTerapeutas(rows.map((s) => s.therapistId));
+  return rows.map((s, i) => ({
+    id: s.id,
+    numero: i + 1,
+    at: s.at.toISOString(),
+    fecha: s.at.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    hora: s.at.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
+    tratamiento: s.treatment?.name ?? '—',
+    techniques: s.techniques,
+    areas: s.areas.map((a) => labels[a] ?? a),
+    esteticista: s.therapistId ? terapeutas.get(s.therapistId) ?? null : null,
+    observaciones: s.notes,
+    firmada: !!s.signature,
   }));
 }
 

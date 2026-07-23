@@ -18,7 +18,7 @@ export default function AgendaPage() {
   const [data, setData] = useState<AgendaResponse>({ appointments: [], counters: { total: 0, confirmed: 0, pending: 0 } });
   const [cal, setCal] = useState<CalendarStatus>({ connected: false, mode: null, googleConfigured: false });
   const [schedOpen, setSchedOpen] = useState(false);
-  const [ficha, setFicha] = useState<{ id: string; name: string } | null>(null);
+  const [ficha, setFicha] = useState<{ id: string; name: string; step?: number } | null>(null);
   const [view, setView] = useState<'dia' | 'mes'>('dia');
   const [date, setDate] = useState(todayISO());
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
@@ -233,10 +233,19 @@ export default function AgendaPage() {
       )}
 
       {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
-      {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={load} />}
+      {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} startStep={ficha.step} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
       {finishFor && <FinishModal appt={finishFor} onClose={() => setFinishFor(null)} onDone={load} />}
-      {(checkinOpen || checkinFor) && <CheckinModal appt={checkinFor} onClose={() => { setCheckinOpen(false); setCheckinFor(null); }} onDone={load} />}
+      {(checkinOpen || checkinFor) && (
+        <CheckinModal appt={checkinFor}
+          onClose={() => { setCheckinOpen(false); setCheckinFor(null); }}
+          onDone={load}
+          onAbierto={(p) => {
+            // Turno abierto -> se abre su ficha directamente en Tratamiento.
+            setCheckinOpen(false); setCheckinFor(null);
+            setFicha({ id: p.id, name: p.name, step: 4 });
+          }} />
+      )}
       {cancelFor && <CancelModal appt={cancelFor} onClose={() => setCancelFor(null)} onDone={load} />}
       {assignFor && <AssignTherapistModal appt={assignFor} onClose={() => setAssignFor(null)} onDone={load} />}
     </div>
@@ -346,20 +355,31 @@ function CancelModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
   );
 }
 
-function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; onClose: () => void; onDone: () => void }) {
+function CheckinModal({ appt, onClose, onDone, onAbierto }: {
+  appt?: Appointment | null; onClose: () => void; onDone: () => void;
+  onAbierto: (p: { id: string; name: string }) => void;
+}) {
   const toast = useToast();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // Tras validar, el turno ya está abierto: el botón no debe seguir disponible.
+  // Antes quedaba activo y al tocarlo otra vez respondía "el código ya está en uso".
+  const [abierto, setAbierto] = useState(false);
 
   async function validate() {
+    if (abierto) return;
     if (code.trim().length < 4) { toast('Ingresa el código del turno'); return; }
     setBusy(true); setResult(null);
     try {
-      const r = await api.post<{ message: string }>('/appointments/checkin', { code: code.trim() });
+      const r = await api.post<{ message: string; appointment: Appointment }>('/appointments/checkin', { code: code.trim() });
       setResult({ ok: true, text: r.message });
+      setAbierto(true);
       toast(r.message);
       onDone();
+      // Se pasa directo a la ficha, en Tratamiento: es lo que toca hacer ahora.
+      const a = r.appointment;
+      setTimeout(() => onAbierto({ id: a.patientId, name: a.patient }), 700);
     } catch (e) {
       setResult({ ok: false, text: e instanceof Error ? e.message : 'Error' });
     } finally { setBusy(false); }
@@ -378,11 +398,19 @@ function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; on
               {result.ok ? '✓ ' : '⚠ '}{result.text}
             </div>
           )}
-          <div className="text-[11.5px] text-faint">El código es único por cita y no se puede reutilizar. Así se evita que otra persona use el turno.</div>
+          {abierto
+            ? <div className="text-[11.5px] font-semibold" style={{ color: 'var(--ok)' }}>Abriendo su ficha para que indiques el tratamiento de hoy…</div>
+            : <div className="text-[11.5px] text-faint">El código es único por cita y no se puede reutilizar. Así se evita que otra persona use el turno.</div>}
         </div>
         <div className="flex gap-2.5 border-t border-line px-6 py-4">
-          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
-          <button onClick={validate} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Validando…' : 'Validar y abrir'}</button>
+          {abierto ? (
+            <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
+          ) : (
+            <>
+              <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
+              <button onClick={validate} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Validando…' : 'Validar y abrir'}</button>
+            </>
+          )}
         </div>
       </div>
     </div>
