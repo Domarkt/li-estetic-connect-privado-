@@ -186,7 +186,11 @@ export async function registrarSesionAplicada(
     await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: { increment: 1 } } });
   }
 
-  const done = Math.min(t.totalSessions, t.doneSessions + 1);
+  // El plan consume TANTAS sesiones como áreas se trabajaron: sus sesiones se
+  // repartieron entre las áreas (18 en 2 áreas = 9 y 9), así que trabajar las dos
+  // en una visita gasta 2. Si no se marcó ninguna área, se cuenta como 1.
+  const consumidas = areas.length || 1;
+  const done = Math.min(t.totalSessions, t.doneSessions + consumidas);
   const restantes = Math.max(0, t.totalSessions - done);
   await prisma.treatment.update({
     where: { id: t.id },

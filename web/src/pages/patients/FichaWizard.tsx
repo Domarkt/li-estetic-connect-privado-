@@ -561,7 +561,11 @@ function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada:
   const toast = useToast();
   const [abierto, setAbierto] = useState(false);
   const [tecnicas, setTecnicas] = useState<string[]>([]);
-  const [areasHoy, setAreasHoy] = useState<string[]>([]);
+  // Vienen marcadas las áreas disponibles del plan: es lo normal (se trabajan
+  // las áreas del combo). Antes quedaban sin marcar y sus contadores no avanzaban.
+  const [areasHoy, setAreasHoy] = useState<string[]>(
+    () => (pkg.areas ?? []).filter((a) => a.remaining > 0 && !a.isExtra).map((a) => a.area),
+  );
   const [firma, setFirma] = useState<string | null>(null);
   const [notas, setNotas] = useState('');
   const [busy, setBusy] = useState(false);
@@ -570,6 +574,8 @@ function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada:
   useEffect(() => {
     api.get<{ sesiones: SesionAplicada[] }>(`/patients/treatments/${pkg.id}/sessions`)
       .then((r) => setSesiones(r.sesiones)).catch(() => setSesiones([]));
+    setAreasHoy((pkg.areas ?? []).filter((a) => a.remaining > 0 && !a.isExtra).map((a) => a.area));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg.id]);
 
   const disponibles = (pkg.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
@@ -642,7 +648,14 @@ function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada:
 
           {areasPlan.length > 0 && (
             <div>
-              <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Sobre qué áreas? <span className="font-semibold text-faint">(descuenta 1 sesión por área)</span></div>
+              <div className="mb-1.5 text-[11.5px] font-bold text-muted">
+                ¿Sobre qué áreas?{' '}
+                <span className="font-semibold text-faint">
+                  {areasHoy.length > 0
+                    ? `descuenta ${areasHoy.length} sesión${areasHoy.length === 1 ? '' : 'es'} del plan`
+                    : 'sin áreas se descuenta 1 sesión'}
+                </span>
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {areasPlan.map((a) => {
                   const on = areasHoy.includes(a.area);

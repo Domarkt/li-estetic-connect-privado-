@@ -56,9 +56,15 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [loadingP, setLoadingP] = useState(true);
   const [errP, setErrP] = useState(false);
 
+  /** Planes con saldo del paciente (compatibilidad si el servidor aún no los envía). */
+  const saldosDe = (p: BillPatient | null) =>
+    p?.treatmentsConSaldo ?? (p?.treatment && p.treatment.balance > 0 ? [p.treatment] : []);
+
   const current = patients.find((p) => p.id === selected) ?? null;
-  const t = current?.treatment ?? null;
-  const hasBalance = !!t && t.balance > 0;
+  const saldos = saldosDe(current);
+  // El plan cuyo saldo se está cobrando (el elegido, o el primero con saldo).
+  const t = saldos.find((x) => x.id === treatmentId) ?? saldos[0] ?? current?.treatment ?? null;
+  const hasBalance = saldos.length > 0;
   const hasCharges = chargeIds.length > 0;
   const derivado = !!(t || hasCharges); // concepto tomado de registros del paciente
   const usingCart = !derivado && cart.length > 0;
@@ -99,9 +105,11 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     if (p.pendingCharges.length) {
       setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
       setChargeIds(p.pendingCharges.map((c) => c.id)); setTreatmentId(null); setPayKind('TOTAL'); setAmount('');
-    } else if (p.treatment && p.treatment.balance > 0) {
-      setConcept(`Saldo ${p.treatment.name}`); setTreatmentId(p.treatment.id);
-      setPayKind('SALDO'); setChargeIds([]); setAmount(String(p.treatment.balance));
+    } else if (saldosDe(p).length) {
+      // Se toma el primer plan con saldo; si tiene varios, se puede cambiar abajo.
+      const t = saldosDe(p)[0];
+      setConcept(`Saldo ${t.name}`); setTreatmentId(t.id);
+      setPayKind('SALDO'); setChargeIds([]); setAmount(String(t.balance));
     } else {
       setConcept(''); setTreatmentId(null); setPayKind('TOTAL'); setChargeIds([]); setAmount('');
       // Precarga lo que el paciente AGENDÓ: si pasaron días o hay mucho movimiento,
@@ -244,8 +252,35 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               <span className="mb-1.5 block text-xs font-bold text-muted">Servicios a cobrar</span>
               {derivado ? (
                 <>
-                  <div className="rounded-[11px] border border-line-2 bg-bg px-3.5 py-3 text-[13.5px] font-semibold">{concept || '—'}</div>
-                  <span className="mt-1 block text-[11px] text-faint">Tomado de los servicios/tratamiento ya registrados del paciente.</span>
+                  {/* Con varios planes con saldo hay que decir cuál se está cobrando:
+                      antes solo se veía el primero y el resto quedaba sin cobrar. */}
+                  {saldos.length > 1 && !hasCharges ? (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11.5px] font-bold text-muted">¿Cuál saldo cobras?</span>
+                      {saldos.map((s) => {
+                        const on = treatmentId === s.id;
+                        return (
+                          <button key={s.id} onClick={() => {
+                            setTreatmentId(s.id); setConcept(`Saldo ${s.name}`);
+                            setPayKind('SALDO'); setAmount(String(s.balance));
+                          }}
+                            className="flex items-center gap-2 rounded-[10px] border px-3 py-2.5 text-left"
+                            style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px] font-bold">{s.name}</span>
+                              <span className="block text-[11.5px] text-muted">{s.done}/{s.total} sesiones</span>
+                            </span>
+                            <span className="flex-none text-[13px] font-extrabold text-danger">{fmtRD(s.balance)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="rounded-[11px] border border-line-2 bg-bg px-3.5 py-3 text-[13.5px] font-semibold">{concept || '—'}</div>
+                      <span className="mt-1 block text-[11px] text-faint">Tomado de los servicios/tratamiento ya registrados del paciente.</span>
+                    </>
+                  )}
                 </>
               ) : (
                 <>

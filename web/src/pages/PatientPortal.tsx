@@ -16,7 +16,7 @@ interface PortalFichaState {
   } | null;
 }
 
-type Tab = 'proceso' | 'citas' | 'paquetes' | 'perfil';
+type Tab = 'proceso' | 'citas' | 'perfil';
 
 export default function PatientPortal() {
   const { patient, logout } = useAuth();
@@ -44,7 +44,6 @@ export default function PatientPortal() {
         <div className="flex-1 overflow-y-auto p-[18px]">
           {tab === 'proceso' && <Proceso />}
           {tab === 'citas' && <Citas />}
-          {tab === 'paquetes' && <Paquetes />}
           {tab === 'perfil' && <Perfil />}
         </div>
 
@@ -52,8 +51,7 @@ export default function PatientPortal() {
           {([
             { key: 'perfil', label: 'Mi Ficha', icon: 'users' },
             { key: 'citas', label: 'Citas', icon: 'cal' },
-            { key: 'proceso', label: 'Proceso', icon: 'star' },
-            { key: 'paquetes', label: 'Paquetes', icon: 'box' },
+            { key: 'proceso', label: 'Mi Proceso', icon: 'box' },
           ] as const).map((t) => {
             const on = tab === t.key;
             return (
@@ -83,22 +81,6 @@ function Proceso() {
           </div>
         </div>
       ))}
-      {d.treatment ? (
-        <div className="rounded-[18px] bg-card p-5 shadow-card">
-          <div className="mb-3.5 flex items-center justify-between">
-            <div><div className="text-xs font-semibold text-muted">Mi tratamiento</div><div className="text-base font-extrabold">{d.treatment.name}</div></div>
-            <div className="text-right"><div className="text-[26px] font-extrabold leading-none text-magenta">{d.treatment.done}/{d.treatment.total}</div><div className="text-[11px] text-faint">sesiones</div></div>
-          </div>
-          <div className="mb-4 h-[9px] overflow-hidden rounded-md" style={{ background: 'var(--navy-soft)' }}><div className="h-full rounded-md" style={{ width: `${d.treatment.pct}%`, background: 'linear-gradient(90deg,#B31C86,#D4419E)' }} /></div>
-          <div className="flex flex-wrap justify-center gap-2.5">
-            {Array.from({ length: d.treatment.total }, (_, i) => i + 1).map((n) => {
-              const done = n <= d.treatment!.done;
-              return <div key={n} className="flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-bold" style={{ background: done ? 'var(--magenta)' : 'var(--navy-soft)', color: done ? '#fff' : 'var(--faint)' }}>{n}</div>;
-            })}
-          </div>
-        </div>
-      ) : <div className="rounded-[18px] bg-card p-5 text-center text-sm text-muted shadow-card">Aún no tienes un tratamiento activo.</div>}
-
       {d.nextAppointment && (
         <div className="rounded-[18px] bg-card p-[18px] shadow-card">
           <div className="mb-2.5 text-xs font-bold uppercase tracking-wide text-magenta">Tu próxima cita</div>
@@ -137,6 +119,10 @@ function Proceso() {
           )}
         </div>
       ))}
+
+      {/* Todos sus paquetes con su avance y desglose, más la tienda.
+          Antes esto vivía en una pestaña aparte y "Proceso" solo mostraba uno. */}
+      <Paquetes />
 
       {/* Consejo del día: rota, para que no sea siempre el mismo mensaje. */}
       <div className="rounded-[16px] border p-4" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
@@ -711,6 +697,12 @@ function Paquetes() {
           <div className="flex flex-col gap-3">
             {misPaquetes.map((t) => <TarjetaPaquete key={t.id} t={t} />)}
           </div>
+        </div>
+      )}
+
+      {misPaquetes.length === 0 && historial.length === 0 && (
+        <div className="rounded-[18px] bg-card p-5 text-center text-sm text-muted shadow-card">
+          Aún no tienes un tratamiento activo.
         </div>
       )}
 

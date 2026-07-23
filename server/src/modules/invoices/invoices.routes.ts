@@ -102,6 +102,15 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
           total: t.totalSessions, done: t.doneSessions, remaining,
           perSession: remaining > 0 ? Math.round(t.balance / remaining) : t.balance,
         } : null,
+        // TODOS los planes con saldo, no solo el primero: con varios paquetes
+        // comprados, el saldo del segundo quedaba sin forma de cobrarse.
+        treatmentsConSaldo: p.treatments
+          .filter((x) => x.active && x.balance > 0)
+          .map((x) => ({
+            id: x.id, name: x.name, price: x.price, balance: x.balance,
+            total: x.totalSessions, done: x.doneSessions,
+            remaining: Math.max(0, x.totalSessions - x.doneSessions),
+          })),
         pendingCharges: p.chargeItems.map((c) => ({ id: c.id, name: c.name, price: c.price })),
         pendingTotal,
         // Lo que el paciente agendó: el cobro lo precarga para no tener que buscarlo.

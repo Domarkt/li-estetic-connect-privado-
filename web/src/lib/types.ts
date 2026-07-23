@@ -180,6 +180,8 @@ export interface BillPatient {
   id: string; name: string; phone: string; avatarColor: string;
   plan: string; balance: number;
   treatment: BillTreatment | null;
+  /** Todos los planes con saldo (no solo el primero). */
+  treatmentsConSaldo?: BillTreatment[];
   pendingCharges: { id: string; name: string; price: number }[];
   pendingTotal: number;
   /** Servicio por el que el paciente agendó: el cobro lo precarga. */
