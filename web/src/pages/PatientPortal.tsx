@@ -35,7 +35,7 @@ export default function PatientPortal() {
           <div className="flex items-center justify-between">
             <div><div className="text-[13px] opacity-85">Hola,</div><div className="text-[21px] font-extrabold">{firstName} 👋</div></div>
             <div className="flex items-center gap-2">
-              <div className="flex rounded-[9px] bg-white px-2 py-[5px]"><img src="/li-logo.png" className="h-5" /></div>
+              <div className="flex rounded-[9px] bg-white px-2 py-[5px]"><img src="/li-logo.png" alt="Li Estetic Center" className="h-5" /></div>
               <button onClick={doLogout} title="Salir" className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] text-white" style={{ background: 'rgba(255,255,255,.18)' }}><Icon name="logout" size={17} /></button>
             </div>
           </div>

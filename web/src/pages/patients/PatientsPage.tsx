@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { Icon } from '../../components/icons';
@@ -28,6 +29,8 @@ export default function PatientsPage() {
   const [billId, setBillId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Abrir directamente la ficha de un paciente al llegar con ?open=<id> (p. ej. desde el chat).
@@ -43,7 +46,10 @@ export default function PatientsPage() {
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
 
   const load = useCallback(() => {
-    api.get<PatientRow[]>(`/patients?q=${encodeURIComponent(q)}${branchQuery}`).then(setRows).catch(() => setRows([]));
+    setCargando(true); setErrorCarga(null);
+    api.get<PatientRow[]>(`/patients?q=${encodeURIComponent(q)}${branchQuery}`)
+      .then((r) => { setRows(r); setCargando(false); })
+      .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   }, [q, branchQuery]);
 
   useEffect(() => { load(); }, [load, reloadKey]);
@@ -71,17 +77,19 @@ export default function PatientsPage() {
         )}
       </div>
 
+      {cargando ? <Cargando texto="Cargando pacientes…" /> : errorCarga ? <ErrorCarga mensaje={errorCarga} onRetry={load} /> : (
       <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
         <div className="min-w-[760px]">
         <div className="grid grid-cols-[2.2fr_1.4fr_1.6fr_1fr_1.1fr_1fr] gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted">
           <div>Paciente</div><div>Ficha clínica</div><div>Tratamiento</div><div>Progreso</div><div>Saldo</div><div>Próxima cita</div>
         </div>
-        {rows.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">Sin pacientes.</div>}
+        {rows.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">{q.trim() ? 'Sin coincidencias para tu búsqueda.' : 'Todavía no hay pacientes registrados.'}</div>}
         {rows.map((p) => {
           const initials = p.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
           return (
-            <div key={p.id} onClick={() => setDetailId(p.id)}
-              className="grid cursor-pointer grid-cols-[2.2fr_1.4fr_1.6fr_1fr_1.1fr_1fr] items-center gap-3 border-b border-line-2 px-5 py-3.5 transition hover:bg-bg">
+            <button key={p.id} type="button" onClick={() => setDetailId(p.id)}
+              aria-label={`Abrir expediente de ${p.name}`}
+              className="grid w-full cursor-pointer grid-cols-[2.2fr_1.4fr_1.6fr_1fr_1.1fr_1fr] items-center gap-3 border-b border-line-2 px-5 py-3.5 text-left transition hover:bg-bg focus:outline-none focus-visible:bg-bg focus-visible:ring-2 focus-visible:ring-inset" style={{ ['--tw-ring-color' as string]: 'var(--magenta)' }}>
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[13px] font-bold text-white" style={{ background: p.avatarColor }}>{initials}</div>
                 <div>
@@ -100,11 +108,12 @@ export default function PatientsPage() {
               </div>
               <div className="text-[13px] font-bold" style={{ color: p.balance > 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtRD(p.balance)}</div>
               <div className="text-[12.5px] font-semibold text-muted">{p.next}</div>
-            </div>
+            </button>
           );
         })}
         </div>
       </div>
+      )}
 
       {detailId && (
         <PatientDrawer patientId={detailId} reloadKey={reloadKey} onClose={() => setDetailId(null)}

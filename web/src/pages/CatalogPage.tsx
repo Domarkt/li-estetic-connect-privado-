@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import ViewToggle, { useViewMode } from '../components/ViewToggle';
 import { puedeGestionarCatalogo } from '../lib/permisos';
 import { api } from '../lib/api';
+import { Cargando, ErrorCarga } from '../components/EstadoCarga';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Overlay, stop } from '../components/Modal';
@@ -28,9 +29,17 @@ export default function CatalogPage() {
   const [q, setQ] = useState('');
   const [view, setView] = useViewMode('catalogo');
 
-  useEffect(() => {
-    api.get<CatalogItem[]>('/catalog').then(setItems).catch(() => setItems([]));
-  }, [reload]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+
+  const cargar = () => {
+    setCargando(true); setErrorCarga(null);
+    api.get<CatalogItem[]>('/catalog')
+      .then((r) => { setItems(r); setCargando(false); })
+      .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(cargar, [reload]);
 
   const texto = q.trim().toLowerCase();
   const shown = items.filter((i) => i.kind === tab && (!texto || i.name.toLowerCase().includes(texto) || (i.code ?? '').toLowerCase().includes(texto)));
@@ -67,7 +76,7 @@ export default function CatalogPage() {
         <span className="flex-none text-[12px] font-bold text-muted">{shown.length}</span>
       </div>
 
-      {view === 'lista' ? (
+      {cargando ? <Cargando texto="Cargando catálogo…" /> : errorCarga ? <ErrorCarga mensaje={errorCarga} onRetry={cargar} /> : view === 'lista' ? (
         <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
           <div className="min-w-[620px]">
             <div className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] gap-3 border-b border-line px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-muted">

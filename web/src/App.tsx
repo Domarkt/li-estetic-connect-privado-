@@ -1,28 +1,46 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './components/Toast';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { RequireStaff, RequirePatient } from './auth/ProtectedRoute';
 import { BranchProvider } from './layout/BranchContext';
 import AppShell from './layout/AppShell';
+
+// El login entra en el paquete inicial: es lo primero que se ve.
 import StaffLogin from './pages/StaffLogin';
 import PatientLogin from './pages/PatientLogin';
-import PatientPortal from './pages/PatientPortal';
-import Dashboard from './pages/Dashboard';
-import PatientsPage from './pages/patients/PatientsPage';
-import CatalogPage from './pages/CatalogPage';
-import AgendaPage from './pages/agenda/AgendaPage';
-import BillingPage from './pages/billing/BillingPage';
-import MessagesPage from './pages/messaging/MessagesPage';
-import PipelinePage from './pages/messaging/PipelinePage';
-import PointsPage from './pages/points/PointsPage';
-import ConfigPage from './pages/config/ConfigPage';
-import EquipoPage from './pages/team/EquipoPage';
-import CashClosePage from './pages/cashclose/CashClosePage';
-import ReportsPage from './pages/reports/ReportsPage';
-import SucursalesPage from './pages/SucursalesPage';
-import InventarioPage from './pages/inventory/InventarioPage';
-import EquiposPage from './pages/inventory/EquiposPage';
-import ChatPage from './pages/team/ChatPage';
+
+// El resto se carga por ruta. Así recepción no descarga reportes, puntos ni
+// inventario solo para abrir la agenda: el arranque es mucho más liviano.
+const PatientPortal = lazy(() => import('./pages/PatientPortal'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const PatientsPage = lazy(() => import('./pages/patients/PatientsPage'));
+const CatalogPage = lazy(() => import('./pages/CatalogPage'));
+const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'));
+const BillingPage = lazy(() => import('./pages/billing/BillingPage'));
+const MessagesPage = lazy(() => import('./pages/messaging/MessagesPage'));
+const PipelinePage = lazy(() => import('./pages/messaging/PipelinePage'));
+const PointsPage = lazy(() => import('./pages/points/PointsPage'));
+const ConfigPage = lazy(() => import('./pages/config/ConfigPage'));
+const EquipoPage = lazy(() => import('./pages/team/EquipoPage'));
+const CashClosePage = lazy(() => import('./pages/cashclose/CashClosePage'));
+const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'));
+const SucursalesPage = lazy(() => import('./pages/SucursalesPage'));
+const InventarioPage = lazy(() => import('./pages/inventory/InventarioPage'));
+const EquiposPage = lazy(() => import('./pages/inventory/EquiposPage'));
+const ChatPage = lazy(() => import('./pages/team/ChatPage'));
+
+/** Se muestra el instante que tarda en llegar el trozo de código de la pantalla. */
+function CargandoPantalla() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-line" style={{ borderTopColor: 'var(--magenta)' }} />
+        <span className="text-[12.5px] font-semibold text-muted">Cargando…</span>
+      </div>
+    </div>
+  );
+}
 
 function StaffArea() {
   return (
@@ -46,6 +64,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
+        <Suspense fallback={<CargandoPantalla />}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<StaffLogin />} />
@@ -77,6 +96,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

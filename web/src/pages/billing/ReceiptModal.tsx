@@ -109,7 +109,7 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
         <div className="flex justify-center p-6">
           <div id="li-receipt" style={{ width, background: '#fff', border: '1px solid var(--line)', borderRadius: 8, padding: 26, fontSize: 13, color: '#1C2540' }}>
             <div style={{ textAlign: 'center', borderBottom: '2px solid #1C2540', paddingBottom: 14, marginBottom: 14 }}>
-              <img src="/li-logo.png" style={{ height: 34, marginBottom: 8 }} />
+              <img src="/li-logo.png" alt="Li Estetic Center" style={{ height: 34, marginBottom: 8 }} />
               <div style={{ fontWeight: 800, fontSize: 15 }}>LI ESTETIC CENTER</div>
               <div style={{ fontSize: 11, color: '#6A7089' }}>{receipt.branchName} · {receipt.branchAddress}</div>
               <div style={{ fontSize: 11, color: '#6A7089' }}>RNC {receipt.rnc} · Tel. {receipt.branchPhone}</div>

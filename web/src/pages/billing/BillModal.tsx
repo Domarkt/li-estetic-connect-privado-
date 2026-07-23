@@ -167,13 +167,13 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   return (
     <Overlay onClose={onClose} z={110}>
       <div onClick={stop} className="flex max-h-[92vh] w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
-        <div className="flex flex-none items-center border-b border-line px-6 py-4">
+        <div className="flex flex-none items-center border-b border-line px-4 sm:px-6 py-4">
           <div className="flex-1 text-base font-extrabold">{step === 'form' ? 'Registrar cobro' : 'Confirmar cobro'}</div>
           <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
         </div>
 
         {step === 'form' ? (
-          <div className="flex flex-col gap-4 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-5">
             {/* 1 · Paciente */}
             <div>
               <span className="mb-1.5 block text-xs font-bold text-muted">Paciente</span>
@@ -196,10 +196,11 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                     {filteredPatients.map((p) => {
                       const initials = p.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
                       return (
-                        <div key={p.id} onClick={() => applyPatient(p)} className="flex cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 hover:bg-bg">
+                        <button key={p.id} type="button" onClick={() => applyPatient(p)}
+                          className="flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left hover:bg-bg focus-visible:bg-bg">
                           <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11.5px] font-bold text-white" style={{ background: p.avatarColor }}>{initials}</div>
                           <div className="min-w-0 flex-1"><div className="text-[13px] font-bold">{p.name}</div><div className="text-[11.5px] text-muted">{p.plan}{p.balance > 0 ? ` · saldo ${fmtRD(p.balance)}` : ''}</div></div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -334,7 +335,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                   <div className="flex flex-col gap-2">
                     {METHODS.map((m) => (
                       <div key={m} className="flex items-center gap-2">
-                        <button onClick={() => setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', [m]: String(amt) })} title="Poner todo aquí" className="w-[130px] rounded-[9px] border border-line bg-bg px-2 py-2 text-left text-[12px] font-bold text-navy hover:border-magenta">{METHOD_ICON[m]} {METHOD_LABEL[m]}</button>
+                        <button onClick={() => setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '', [m]: String(amt) })}
+                          title="Poner todo aquí" aria-label={`Asignar todo el monto a ${METHOD_LABEL[m]}`}
+                          className="w-[96px] flex-none truncate rounded-[9px] border border-line bg-bg px-2 py-2 text-left text-[12px] font-bold text-navy hover:border-magenta sm:w-[130px]">{METHOD_ICON[m]} {METHOD_LABEL[m]}</button>
                         <input value={split[m]} onChange={(e) => setSplit({ ...split, [m]: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="0" className="flex-1 rounded-[9px] border border-line px-3 py-2 text-[13px] outline-none focus:border-magenta" />
                       </div>
                     ))}
@@ -344,7 +347,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
+          <div className="flex flex-col gap-3 overflow-y-auto px-4 sm:px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
             <Row k="Tipo de pago" v={KIND_LABEL[(treatmentId || hasCharges || freeAbono) ? payKind : 'TOTAL']} />
             {/* Detalle del recibo */}
@@ -367,7 +370,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           </div>
         )}
 
-        <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">
+        <div className="flex flex-none gap-2.5 border-t border-line px-4 sm:px-6 py-4">
           {step === 'form' ? (
             <>
               <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>

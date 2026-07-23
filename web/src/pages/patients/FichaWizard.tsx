@@ -172,7 +172,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
         style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         {/* Header */}
         <div className="flex items-center gap-3.5 border-b border-line px-[26px] py-5">
-          <img src="/li-logo.png" className="h-[30px]" />
+          <img src="/li-logo.png" alt="Li Estetic Center" className="h-[30px]" />
           <div className="flex-1">
             <div className="text-base font-extrabold">Ficha Clínica Médica y Estética</div>
             <div className="text-[12.5px] text-muted">{patientName} · {phaseLabel}</div>

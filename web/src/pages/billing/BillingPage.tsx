@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { fmtRD, type BillingResponse, type Receipt } from '../../lib/types';
@@ -22,6 +23,8 @@ export default function BillingPage() {
   const [date, setDate] = useState(todayISO());
   const [billOpen, setBillOpen] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   const isToday = date === todayISO();
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -31,7 +34,10 @@ export default function BillingPage() {
   const gridCols = showMoney ? 'grid-cols-[.9fr_1.6fr_2fr_1fr_1.1fr_.9fr]' : 'grid-cols-[.9fr_1.6fr_2fr_1fr_.9fr]';
 
   const load = useCallback(() => {
-    api.get<BillingResponse>(`/invoices?date=${date}${branchQ}`).then(setData).catch(() => {});
+    setCargando(true); setErrorCarga(null);
+    api.get<BillingResponse>(`/invoices?date=${date}${branchQ}`)
+      .then((r) => { setData(r); setCargando(false); })
+      .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   }, [date, branchQ]);
   useEffect(() => { load(); }, [load]);
 
@@ -78,24 +84,29 @@ export default function BillingPage() {
         </div>
       )}
 
-      {showMoney && (
+      {showMoney && cargando && <Cargando texto="Cargando recibos del día…" />}
+      {showMoney && !cargando && errorCarga && <ErrorCarga mensaje={errorCarga} onRetry={load} />}
+
+      {showMoney && !cargando && !errorCarga && (
       <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
         <div className="min-w-[640px]">
         <div className={`grid ${gridCols} gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted`}>
           <div>Recibo</div><div>Paciente</div><div>Concepto</div><div>Método</div>{showMoney && <div>Monto</div>}<div>Estado</div>
         </div>
-        {data.invoices.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">Sin recibos.</div>}
+        {data.invoices.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">No se emitieron recibos en esta fecha.</div>}
         {data.invoices.map((i) => {
           const chip = METHOD_CHIP[i.method] ?? METHOD_CHIP.Azul;
           return (
-            <div key={i.id} onClick={() => reprint(i.id)} className={`grid cursor-pointer ${gridCols} items-center gap-3 border-b border-line-2 px-5 py-3.5 hover:bg-bg`}>
+            <button key={i.id} type="button" onClick={() => reprint(i.id)}
+              aria-label={`Ver recibo ${i.number} de ${i.patient}`}
+              className={`grid w-full cursor-pointer ${gridCols} items-center gap-3 border-b border-line-2 px-5 py-3.5 text-left hover:bg-bg focus-visible:bg-bg`}>
               <div className="text-[13px] font-bold text-magenta">{i.number}</div>
               <div><div className="text-[13px] font-semibold">{i.patient}</div><div className="text-[11.5px] text-faint">{i.date} · {i.branchName}</div></div>
               <div className="text-[13px]">{i.concept}</div>
               <div><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: chip.bg, color: chip.fg }}>{i.method}</span></div>
               {showMoney && <div className="text-[13.5px] font-extrabold">{fmtRD(i.total)}</div>}
               <div><span className="rounded-full bg-ok-soft px-2.5 py-1 text-[11px] font-bold text-ok">{i.status}</span></div>
-            </div>
+            </button>
           );
         })}
         </div>

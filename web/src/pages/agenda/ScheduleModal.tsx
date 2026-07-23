@@ -102,12 +102,12 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
     return (
       <Overlay onClose={onClose} z={110}>
         <div onClick={stop} className="w-[420px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
-          <div className="flex flex-col items-center gap-2 px-6 pt-7 text-center">
+          <div className="flex flex-col items-center gap-2 px-4 sm:px-6 pt-7 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full text-[26px]" style={{ background: 'var(--ok-soft)' }}>✓</div>
             <div className="text-base font-extrabold">Cita agendada</div>
             <div className="text-[13px] text-muted">{done.patientName}{done.emailSent ? ' · confirmación enviada por correo' : ''}</div>
           </div>
-          <div className="flex flex-col gap-2.5 px-6 py-6">
+          <div className="flex flex-col gap-2.5 px-4 sm:px-6 py-6">
             {done.whatsappUrl ? (
               <>
                 <a href={done.whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => { onClose(); }}
@@ -129,8 +129,8 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   return (
     <Overlay onClose={onClose} z={110}>
       <div onClick={stop} className="w-[460px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
-        <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1 text-base font-extrabold">Agendar cita</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
-        <div className="flex flex-col gap-3.5 px-6 py-5">
+        <div className="flex items-center border-b border-line px-4 sm:px-6 py-5"><div className="flex-1 text-base font-extrabold">Agendar cita</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3.5 px-4 sm:px-6 py-5">
           <div>
             <span className="mb-1.5 block text-xs font-bold text-muted">Tipo de cliente</span>
             <div className="flex gap-2">
@@ -247,7 +247,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
             </select>
           </label>
         </div>
-        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+        <div className="flex gap-2.5 border-t border-line px-4 sm:px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
           <button onClick={save} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Agendar y confirmar</button>
         </div>

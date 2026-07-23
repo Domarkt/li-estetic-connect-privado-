@@ -98,7 +98,7 @@ export default function AppShell() {
       {/* Sidebar: fijo en escritorio, cajón deslizable en móvil */}
       <aside className={`fixed z-50 flex h-[100dvh] w-[244px] flex-none flex-col text-white transition-transform duration-200 md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ background: 'var(--navy)' }}>
         <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
-          <div className="flex rounded-[10px] bg-white px-2.5 py-[7px]"><img src="/li-logo.png" className="block h-[26px]" /></div>
+          <div className="flex rounded-[10px] bg-white px-2.5 py-[7px]"><img src="/li-logo.png" alt="Li Estetic Center" className="block h-[26px]" /></div>
           <div className="text-[15px] font-extrabold tracking-tight">Connect</div>
         </div>
         <div className="mb-1.5 px-3">
