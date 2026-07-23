@@ -286,7 +286,7 @@ export interface PortalPackages {
   misPaquetes?: PortalPaquete[];
   /** Los que ya terminó (quedan en su historial). */
   historial?: PortalPaquete[];
-  shop: { id: string; name: string; sessions: number; price: number }[];
+  shop: { id: string; name: string; sessions: number; price: number; imageUrl?: string | null }[];
 }
 
 // ── Equipo ──

@@ -494,7 +494,7 @@ portalRouter.get('/packages', async (req, res) => {
     active: activos[0] ? serializar(activos[0]) : null,
     misPaquetes: activos.map(serializar),
     historial: terminados.map(serializar),
-    shop: shop.map((p) => ({ id: p.id, name: p.name, sessions: p.sessions, price: p.price })),
+    shop: shop.map((p) => ({ id: p.id, name: p.name, sessions: p.sessions, price: p.price, imageUrl: p.imageUrl })),
   });
 });
 

@@ -728,10 +728,21 @@ function Paquetes() {
         <div className="mx-0.5 mb-2.5 text-sm font-extrabold">Explora nuevos paquetes</div>
         <div className="flex flex-col gap-2.5">
           {d.shop.map((p) => (
-            <div key={p.id} className="flex items-center gap-3.5 rounded-[16px] bg-card p-4 shadow-card">
-              <div className="flex h-[50px] w-[50px] flex-none items-center justify-center rounded-[13px] bg-magenta-soft text-xl text-magenta">✦</div>
-              <div className="min-w-0 flex-1"><div className="text-sm font-bold">{p.name}</div><div className="text-xs text-muted">{p.sessions} sesiones · {fmtRD(p.price)}</div></div>
-              <button onClick={() => setConfirm({ id: p.id, name: p.name, price: p.price })} className="flex-none rounded-[9px] bg-magenta px-3.5 py-2.5 text-[12.5px] font-bold text-white">Comprar</button>
+            <div key={p.id} className="overflow-hidden rounded-[16px] bg-card shadow-card">
+              {/* Con foto la oferta entra por los ojos; sin ella se ve la tarjeta simple. */}
+              {p.imageUrl && (
+                <img src={p.imageUrl} alt={p.name} className="block h-[150px] w-full object-cover" />
+              )}
+              <div className="flex items-center gap-3.5 p-4">
+                {!p.imageUrl && (
+                  <div className="flex h-[50px] w-[50px] flex-none items-center justify-center rounded-[13px] bg-magenta-soft text-xl text-magenta">✦</div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold">{p.name}</div>
+                  <div className="text-xs text-muted">{p.sessions} sesiones · {fmtRD(p.price)}</div>
+                </div>
+                <button onClick={() => setConfirm({ id: p.id, name: p.name, price: p.price })} className="flex-none rounded-[9px] bg-magenta px-3.5 py-2.5 text-[12.5px] font-bold text-white">Comprar</button>
+              </div>
             </div>
           ))}
         </div>

@@ -49,6 +49,9 @@ const catalogSchema = z.object({
   kind: z.enum(['SERVICIO', 'PAQUETE', 'COMBO', 'PRODUCTO', 'INSUMO']),
   code: z.string().trim().optional(), // código/SKU
   showInPortal: z.boolean().optional(), // visible en el portal del paciente
+  // Imagen para el portal (data URI). ~700 KB de base64 ≈ 500 KB de foto: de
+  // sobra para una promo, y evita que alguien suba una imagen enorme sin querer.
+  imageUrl: z.string().max(700_000).nullish(),
   name: z.string().min(1),
   // Precio opcional: la directora crea combos a diario y define el monto al cobrar. 0 = sin precio.
   price: z.number().int().nonnegative().optional().default(0),

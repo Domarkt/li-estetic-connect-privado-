@@ -10,6 +10,7 @@ import { fmtRD } from '../../lib/types';
 interface ItemPortal {
   id: string; name: string; code: string | null; kind: string;
   price: number; sessions: number; showInPortal: boolean;
+  imageUrl: string | null;
   visible: boolean; motivo: string | null;
 }
 
@@ -163,6 +164,76 @@ function AccesosTab() {
   );
 }
 
+/**
+ * Foto del paquete para el portal. Se reduce en el navegador antes de enviarla:
+ * una foto de celular pesa varios MB y no tiene sentido guardarla entera para
+ * mostrarla en una tarjeta pequeña.
+ */
+function ImagenPaquete({ item, onCambiada }: { item: ItemPortal; onCambiada: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  /** Redimensiona a 800px de ancho máximo y la comprime a JPEG. */
+  function comprimir(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const lector = new FileReader();
+      lector.onerror = () => reject(new Error('No se pudo leer la imagen'));
+      lector.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('El archivo no es una imagen válida'));
+        img.onload = () => {
+          const MAX = 800;
+          const escala = Math.min(1, MAX / img.width);
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * escala);
+          c.height = Math.round(img.height * escala);
+          c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.82));
+        };
+        img.src = String(lector.result);
+      };
+      lector.readAsDataURL(file);
+    });
+  }
+
+  async function subir(file: File) {
+    if (!file.type.startsWith('image/')) { toast('Elige un archivo de imagen'); return; }
+    setBusy(true);
+    try {
+      const dataUrl = await comprimir(file);
+      const r = await api.patch<{ message: string }>(`/portal-admin/catalogo/${item.id}`, { imageUrl: dataUrl });
+      toast(r.message); onCambiada();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo subir'); } finally { setBusy(false); }
+  }
+
+  async function quitar() {
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string }>(`/portal-admin/catalogo/${item.id}`, { imageUrl: null });
+      toast(r.message); onCambiada();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="flex-none">
+      <label className="relative block h-[52px] w-[52px] cursor-pointer overflow-hidden rounded-[11px] border border-line"
+        title={item.imageUrl ? 'Cambiar imagen' : 'Agregar imagen para el portal'}>
+        {item.imageUrl
+          ? <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+          : <span className="flex h-full w-full items-center justify-center bg-bg text-[16px] text-faint">🖼️</span>}
+        {busy && <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-[10px] font-bold text-white">…</span>}
+        <input type="file" accept="image/*" className="hidden" disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ''; }} />
+      </label>
+      {item.imageUrl && (
+        <button onClick={quitar} disabled={busy} className="mt-0.5 block w-full text-center text-[9.5px] font-bold text-faint hover:text-danger">
+          quitar
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Selección de qué paquetes/combos se muestran en el portal. */
 function PaquetesTab() {
   const toast = useToast();
@@ -206,6 +277,7 @@ function PaquetesTab() {
       <div className="overflow-hidden rounded-base border border-line bg-card shadow-card">
         {items.map((it) => (
           <div key={it.id} className="flex items-center gap-3 border-b border-line-2 px-4 py-3 last:border-0">
+            <ImagenPaquete item={it} onCambiada={cargar} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-navy-soft px-2 py-0.5 text-[10.5px] font-bold text-navy">{KIND_TAG[it.kind] ?? it.kind}</span>

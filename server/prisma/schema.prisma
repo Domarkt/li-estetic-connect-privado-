@@ -404,6 +404,9 @@ model CatalogItem {
   kind         CatalogKind
   code         String? // código/SKU del ítem (servicio, combo, paquete, insumo)
   showInPortal Boolean     @default(true) // si el paciente lo ve en el catálogo del portal
+  // Imagen del combo para el portal (data URI). Solo se carga en lo que ve la
+  // paciente: guardar una foto por cada insumo no aporta y engorda la base.
+  imageUrl     String?
   name         String
   category     String?
   price        Int         @default(0) // RD$ (pesos enteros). 0 = sin precio: se define al cobrar.

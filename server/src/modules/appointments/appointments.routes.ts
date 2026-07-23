@@ -14,6 +14,30 @@ import { upsertLead } from '../messaging/leads.service.js';
 
 export const appointmentsRouter = Router();
 
+/**
+ * Hasta cuándo ocupa realmente una cita la agenda de la esteticista.
+ *
+ * Si el turno ya se cerró, la esteticista quedó libre a esa hora: vale el cierre
+ * real, no la duración estimada. Antes se reservaba siempre la ventana completa,
+ * así que una cita de 3:00 a 4:00 que terminó 3:15 seguía bloqueando hasta las
+ * 4:00 y no se le podía agendar a las 3:30.
+ *
+ * Si la cita aún no se ha cerrado, se respeta la duración prevista.
+ */
+function ventanaReal(a: {
+  startsAt: Date; durationMin: number;
+  serviceStartedAt?: Date | null; serviceEndedAt?: Date | null;
+}): { ini: number; fin: number } {
+  // Si la atendió antes de la hora (llegó temprano), ocupó desde que abrió el turno.
+  const ini = a.serviceStartedAt
+    ? Math.min(a.startsAt.getTime(), a.serviceStartedAt.getTime())
+    : a.startsAt.getTime();
+  const fin = a.serviceEndedAt
+    ? Math.max(ini, a.serviceEndedAt.getTime())
+    : a.startsAt.getTime() + a.durationMin * 60_000;
+  return { ini, fin };
+}
+
 /** Agenda del día (aislada por sucursal) + contadores. */
 appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
   const { start, end } = dayRange(req.query.date as string | undefined);
@@ -151,9 +175,11 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
 
   /** ¿Choca con esta cita? Se respeta la separación mínima entre pacientes distintos. */
   const choca = (a: (typeof cercanas)[number]) => {
-    const ini = a.startsAt.getTime();
-    const fin = ini + a.durationMin * 60_000;
-    const margen = a.patientId === patient.id ? 0 : margenMs; // el mismo paciente puede encadenar sesiones
+    const { ini, fin } = ventanaReal(a);
+    // La separación es un colchón por si la cita se alarga. No aplica cuando:
+    //  · es el mismo paciente (puede encadenar sesiones), o
+    //  · el turno YA se cerró: ahí no hay nada que estimar, quedó libre de verdad.
+    const margen = (a.patientId === patient.id || a.serviceEndedAt) ? 0 : margenMs;
     return nuevoInicio < fin + margen && ini < nuevoFin + margen;
   };
 
@@ -438,8 +464,9 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
           startsAt: { gt: new Date(ini - 8 * 3_600_000), lt: new Date(fin + 8 * 3_600_000) } },
       });
       const conflict = otras.find((a) => {
-        const aIni = a.startsAt.getTime(); const aFin = aIni + a.durationMin * 60_000;
-        const m = a.patientId === appt.patientId ? 0 : margen;
+        // Misma regla que al agendar: una cita ya cerrada libera a la esteticista.
+        const { ini: aIni, fin: aFin } = ventanaReal(a);
+        const m = (a.patientId === appt.patientId || a.serviceEndedAt) ? 0 : margen;
         return ini < aFin + m && aIni < fin + m;
       });
       if (conflict) {

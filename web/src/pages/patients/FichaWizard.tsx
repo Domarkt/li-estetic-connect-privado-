@@ -18,6 +18,9 @@ interface Props {
   patientName: string;
   /** Paso inicial (1..4). Al abrir turno se entra directo en Tratamiento. */
   startStep?: number;
+  /** Plan que consume la cita: el paso 4 lo preselecciona para no descontar del
+   *  paquete equivocado cuando el paciente tiene varios. */
+  treatmentId?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -40,7 +43,7 @@ function sequenceFor(role: string): number[] {
 
 const STEP_LABELS = ['Datos & motivo', 'Antecedentes', 'Medicamentos & piel', 'Tratamiento'];
 
-export default function FichaWizard({ patientId, patientName, startStep, onClose, onSaved }: Props) {
+export default function FichaWizard({ patientId, patientName, startStep, treatmentId, onClose, onSaved }: Props) {
   const { staff } = useAuth();
   const toast = useToast();
   const seq = sequenceFor(staff!.role);
@@ -215,7 +218,7 @@ export default function FichaWizard({ patientId, patientName, startStep, onClose
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
           {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
-          {stepNum === 4 && <Step4 patientId={patientId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} policyAck={policyAck} setPolicyAck={setPolicyAck} />}
+          {stepNum === 4 && <Step4 patientId={patientId} treatmentIdCita={treatmentId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} policyAck={policyAck} setPolicyAck={setPolicyAck} />}
         </div>
 
         {/* Footer */}
@@ -404,7 +407,7 @@ type AreaOptFicha = { key: string; label: string; grupo: string };
  * que el paciente compró (con sus sesiones reales) y le deja elegir las ÁREAS a trabajar.
  * Las sesiones se reparten entre las áreas elegidas. Reutiliza el mismo endpoint del drawer.
  */
-function PlanPagado({ patientId, onPlan, onSesion }: { patientId: string; onPlan: (p: { name: string; sessions: number } | null) => void; onSesion: () => void }) {
+function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientId: string; treatmentIdCita?: string | null; onPlan: (p: { name: string; sessions: number } | null) => void; onSesion: () => void }) {
   const toast = useToast();
   // TODOS los combos comprados, no solo uno: el paciente puede tener varios y la
   // esteticista debe poder elegir cuál está trabajando hoy.
@@ -429,8 +432,10 @@ function PlanPagado({ patientId, onPlan, onSesion }: { patientId: string; onPlan
       const todos = detail.packages ?? [];
       setPaquetes(todos);
       setOpciones(opts);
-      // Se mantiene el que ya estaba elegido; si no, el primero con sesiones.
+      // Prioridad: el plan que ya se eligió a mano > EL DE LA CITA > el primero
+      // con sesiones. Así se descuenta del paquete por el que vino la paciente.
       const elegido = todos.find((p) => p.id === pkgId)
+        ?? todos.find((p) => p.id === treatmentIdCita)
         ?? todos.find((p) => p.remaining > 0) ?? todos[0] ?? null;
       setPkgId(elegido?.id ?? '');
       setSel((elegido?.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
@@ -766,8 +771,9 @@ function Bitacora({ patientId, recarga = 0 }: { patientId: string; recarga?: num
   );
 }
 
-function Step4({ patientId, tratamiento, setTratamiento, rows, setRows, policyAck, setPolicyAck }: {
+function Step4({ patientId, treatmentIdCita, tratamiento, setTratamiento, rows, setRows, policyAck, setPolicyAck }: {
   patientId: string;
+  treatmentIdCita?: string | null;
   tratamiento: string; setTratamiento: (v: string) => void;
   rows: { fecha: string; obs: string }[]; setRows: (v: { fecha: string; obs: string }[]) => void;
   policyAck: boolean; setPolicyAck: (v: boolean) => void;
@@ -790,7 +796,7 @@ function Step4({ patientId, tratamiento, setTratamiento, rows, setRows, policyAc
   };
   return (
     <div className="animate-fade">
-      <PlanPagado patientId={patientId} onPlan={onPlan} onSesion={() => setRecargaBitacora((r) => r + 1)} />
+      <PlanPagado patientId={patientId} treatmentIdCita={treatmentIdCita} onPlan={onPlan} onSesion={() => setRecargaBitacora((r) => r + 1)} />
       <label className="mb-4 flex flex-col gap-1.5"><span className={lblCls}>Tratamiento a realizar</span>
         <input className={inputCls} value={tratamiento} onChange={(e) => setTratamiento(e.target.value)} placeholder="Ej. Reducción de medidas — 10 sesiones" /></label>
       <Bitacora patientId={patientId} recarga={recargaBitacora} />

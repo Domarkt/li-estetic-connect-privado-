@@ -18,7 +18,7 @@ export default function AgendaPage() {
   const [data, setData] = useState<AgendaResponse>({ appointments: [], counters: { total: 0, confirmed: 0, pending: 0 } });
   const [cal, setCal] = useState<CalendarStatus>({ connected: false, mode: null, googleConfigured: false });
   const [schedOpen, setSchedOpen] = useState(false);
-  const [ficha, setFicha] = useState<{ id: string; name: string; step?: number } | null>(null);
+  const [ficha, setFicha] = useState<{ id: string; name: string; step?: number; treatmentId?: string | null } | null>(null);
   const [view, setView] = useState<'dia' | 'mes'>('dia');
   const [date, setDate] = useState(todayISO());
   const [remindFor, setRemindFor] = useState<Appointment | null>(null);
@@ -233,11 +233,11 @@ export default function AgendaPage() {
       )}
 
       {schedOpen && <ScheduleModal branchQuery={branchQuery ? '&' + branchQuery : ''} onClose={() => setSchedOpen(false)} onSaved={load} />}
-      {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} startStep={ficha.step} onClose={() => setFicha(null)} onSaved={load} />}
+      {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} startStep={ficha.step} treatmentId={ficha.treatmentId} onClose={() => setFicha(null)} onSaved={load} />}
       {remindFor && <RemindModal appt={remindFor} onClose={() => setRemindFor(null)} onSent={load} />}
       {finishFor && (
         <FinishModal appt={finishFor} onClose={() => setFinishFor(null)} onDone={load}
-          onRegistrar={(pa) => { setFinishFor(null); setFicha({ id: pa.id, name: pa.name, step: 4 }); }} />
+          onRegistrar={(pa) => { setFinishFor(null); setFicha({ id: pa.id, name: pa.name, step: 4, treatmentId: pa.treatmentId }); }} />
       )}
       {(checkinOpen || checkinFor) && (
         <CheckinModal appt={checkinFor}
@@ -246,7 +246,7 @@ export default function AgendaPage() {
           onAbierto={(p) => {
             // Turno abierto -> se abre su ficha directamente en Tratamiento.
             setCheckinOpen(false); setCheckinFor(null);
-            setFicha({ id: p.id, name: p.name, step: 4 });
+            setFicha({ id: p.id, name: p.name, step: 4, treatmentId: p.treatmentId });
           }} />
       )}
       {cancelFor && <CancelModal appt={cancelFor} onClose={() => setCancelFor(null)} onDone={load} />}
@@ -360,7 +360,7 @@ function CancelModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
 
 function CheckinModal({ appt, onClose, onDone, onAbierto }: {
   appt?: Appointment | null; onClose: () => void; onDone: () => void;
-  onAbierto: (p: { id: string; name: string }) => void;
+  onAbierto: (p: { id: string; name: string; treatmentId: string | null }) => void;
 }) {
   const toast = useToast();
   const [code, setCode] = useState('');
@@ -382,7 +382,7 @@ function CheckinModal({ appt, onClose, onDone, onAbierto }: {
       onDone();
       // Se pasa directo a la ficha, en Tratamiento: es lo que toca hacer ahora.
       const a = r.appointment;
-      setTimeout(() => onAbierto({ id: a.patientId, name: a.patient }), 700);
+      setTimeout(() => onAbierto({ id: a.patientId, name: a.patient, treatmentId: a.treatmentId ?? null }), 700);
     } catch (e) {
       setResult({ ok: false, text: e instanceof Error ? e.message : 'Error' });
     } finally { setBusy(false); }
@@ -428,7 +428,7 @@ function CheckinModal({ appt, onClose, onDone, onAbierto }: {
  */
 function FinishModal({ appt, onClose, onDone, onRegistrar }: {
   appt: Appointment; onClose: () => void; onDone: () => void;
-  onRegistrar: (p: { id: string; name: string }) => void;
+  onRegistrar: (p: { id: string; name: string; treatmentId: string | null }) => void;
 }) {
   const toast = useToast();
   const [pkg, setPkg] = useState<PatientPackage | null>(null);
@@ -498,7 +498,7 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
                 <div className="mb-2.5 text-[11.5px]" style={{ color: '#7A5A12' }}>
                   Si cierras sin registrar, <b>no se descuenta la sesión</b> y el paquete queda igual.
                 </div>
-                <button onClick={() => onRegistrar({ id: appt.patientId, name: appt.patient })}
+                <button onClick={() => onRegistrar({ id: appt.patientId, name: appt.patient, treatmentId: appt.treatmentId ?? null })}
                   className="w-full rounded-[9px] py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--magenta)' }}>
                   Registrar lo aplicado y firmar →
                 </button>

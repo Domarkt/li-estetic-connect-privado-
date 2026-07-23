@@ -20,7 +20,7 @@ portalAdminRouter.get('/catalogo', requireStaff, requireRole(...gestores), async
   const items = await prisma.catalogItem.findMany({
     where: { active: true, kind: { in: ['PAQUETE', 'COMBO'] } },
     orderBy: [{ kind: 'asc' }, { name: 'asc' }],
-    select: { id: true, name: true, code: true, kind: true, price: true, sessions: true, showInPortal: true },
+    select: { id: true, name: true, code: true, kind: true, price: true, sessions: true, showInPortal: true, imageUrl: true },
   });
   res.json(items.map((i) => ({
     ...i,
@@ -30,15 +30,27 @@ portalAdminRouter.get('/catalogo', requireStaff, requireRole(...gestores), async
   })));
 });
 
-const visibleSchema = z.object({ showInPortal: z.boolean() });
+const visibleSchema = z.object({
+  showInPortal: z.boolean().optional(),
+  imageUrl: z.string().max(700_000).nullish(), // foto de la promo para el portal
+});
 
 /** Publicar o quitar del portal un paquete/combo. */
 portalAdminRouter.patch('/catalogo/:id', requireStaff, requireRole(...gestores), async (req, res) => {
-  const { showInPortal } = visibleSchema.parse(req.body);
+  const b = visibleSchema.parse(req.body);
   const item = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });
   if (!item) return res.status(404).json({ error: 'Ítem no encontrado' });
-  await prisma.catalogItem.update({ where: { id: item.id }, data: { showInPortal } });
-  res.json({ ok: true, message: showInPortal ? `"${item.name}" ya se muestra en el portal` : `"${item.name}" se quitó del portal` });
+  await prisma.catalogItem.update({
+    where: { id: item.id },
+    data: {
+      ...(b.showInPortal !== undefined ? { showInPortal: b.showInPortal } : {}),
+      ...(b.imageUrl !== undefined ? { imageUrl: b.imageUrl || null } : {}),
+    },
+  });
+  const msg = b.imageUrl !== undefined
+    ? (b.imageUrl ? `Imagen de "${item.name}" actualizada` : `Imagen de "${item.name}" eliminada`)
+    : b.showInPortal ? `"${item.name}" ya se muestra en el portal` : `"${item.name}" se quitó del portal`;
+  res.json({ ok: true, message: msg });
 });
 
 // ── Accesos al portal ───────────────────────────────────────────────────────
