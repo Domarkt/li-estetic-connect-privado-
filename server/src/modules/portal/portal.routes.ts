@@ -9,6 +9,7 @@ import { notifyBranchTherapists, notifyRole } from '../notifications/notificatio
 import { sendAppointmentCancelled, sendRatingFeedback, sendGenericAlert } from '../mail/mail.service.js';
 import { decryptJson, encryptJson } from '../../utils/crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
+import { hashPassword, verifyPassword } from '../../utils/password.js';
 
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
@@ -116,6 +117,42 @@ async function mensajesVigentes(patientId: string) {
     return [];
   }
 }
+
+const cambioClaveSchema = z.object({
+  actual: z.string().min(1, 'Escribe tu contraseña actual'),
+  nueva: z.string().min(6, 'La nueva contraseña debe tener al menos 6 caracteres').max(100),
+});
+
+/**
+ * Cambiar la contraseña del portal. La inicial es el teléfono del paciente, que
+ * cualquiera cercano puede conocer; aquí puede poner una propia.
+ * Se exige la actual para que nadie la cambie desde una sesión abierta ajena.
+ */
+portalRouter.post('/change-password', async (req, res) => {
+  const b = cambioClaveSchema.parse(req.body);
+  const cuenta = await prisma.patientAccount.findUnique({
+    where: { id: req.patient!.sub },
+    include: { patient: true },
+  });
+  if (!cuenta) return res.status(404).json({ error: 'Cuenta no encontrada' });
+
+  if (!(await verifyPassword(b.actual, cuenta.passwordHash))) {
+    return res.status(401).json({ error: 'Tu contraseña actual no es correcta' });
+  }
+  const telefono = (cuenta.patient.phone || '').replace(/\D/g, '');
+  if (b.nueva.replace(/\D/g, '') === telefono && telefono.length > 0) {
+    return res.status(400).json({ error: 'Elige una contraseña distinta a tu número de teléfono' });
+  }
+  if (b.nueva === b.actual) {
+    return res.status(400).json({ error: 'La nueva contraseña debe ser distinta a la actual' });
+  }
+
+  await prisma.patientAccount.update({
+    where: { id: cuenta.id },
+    data: { passwordHash: await hashPassword(b.nueva) },
+  });
+  res.json({ ok: true, message: 'Contraseña actualizada. Úsala la próxima vez que entres.' });
+});
 
 /** Mis citas próximas. */
 portalRouter.get('/appointments', async (req, res) => {

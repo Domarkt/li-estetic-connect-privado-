@@ -3,6 +3,9 @@ import { env } from '../config/env.js';
 import type { Role } from '@prisma/client';
 
 const signOpts: SignOptions = { expiresIn: env.jwtExpires as SignOptions['expiresIn'] };
+// El portal de la paciente usa una sesión larga: cerrarla cada pocas horas la
+// obligaba a reingresar constantemente desde el celular.
+const signOptsPatient: SignOptions = { expiresIn: env.jwtPatientExpires as SignOptions['expiresIn'] };
 
 export interface StaffTokenPayload {
   kind: 'staff';
@@ -26,7 +29,7 @@ export function signStaff(payload: Omit<StaffTokenPayload, 'kind'>): string {
 }
 
 export function signPatient(payload: Omit<PatientTokenPayload, 'kind'>): string {
-  return jwt.sign({ ...payload, kind: 'patient' }, env.jwtPatientSecret, signOpts);
+  return jwt.sign({ ...payload, kind: 'patient' }, env.jwtPatientSecret, signOptsPatient);
 }
 
 export function verifyStaff(token: string): StaffTokenPayload {

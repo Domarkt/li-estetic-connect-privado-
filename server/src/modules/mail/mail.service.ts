@@ -69,8 +69,8 @@ export interface MailResult { sent: boolean; mode: 'live' | 'demo'; error?: stri
 
 /** Envía el correo de acceso al portal para que el paciente complete su ficha. */
 /**
- * Acceso al portal del paciente. NO expone credenciales: el paciente entra con
- * su propio CORREO (este) y su TELÉFONO. Incluye un breve instructivo.
+ * Acceso al portal del paciente: entra con su CORREO y, como contraseña inicial,
+ * su TELÉFONO. Se le indica que la cambie por una propia desde el portal.
  */
 export async function sendPatientAccess(to: string, opts: { name: string; phone: string; replyTo?: string }): Promise<MailResult> {
   const html = `
@@ -86,39 +86,15 @@ export async function sendPatientAccess(to: string, opts: { name: string; phone:
           <b>Cómo entrar:</b>
           <ol style="margin:8px 0 0;padding-left:18px">
             <li>Abre: <a href="${PORTAL_URL}">${PORTAL_URL}</a></li>
-            <li>Escribe tu <b>correo</b> (este) y tu <b>teléfono</b> (${opts.phone}).</li>
-            <li>Te enviamos un <b>código de 6 dígitos</b> a este correo.</li>
-            <li>Escríbelo y listo. El código vence en 10 minutos.</li>
+            <li>Escribe tu <b>correo</b> (este).</li>
+            <li>Tu <b>contraseña</b> es tu número de teléfono: <b>${opts.phone}</b></li>
+            <li>Una vez dentro, cámbiala por una tuya desde <b>Mi Ficha</b>.</li>
           </ol>
         </div>
         <p style="margin-top:14px;font-size:12.5px;color:#6A7089">Por tu seguridad, tu acceso es personal. No compartas este correo.</p>
       </div>
     </div>`;
   return deliver(to, 'Tu acceso al portal · Li Estetic Center', html, opts.replyTo);
-}
-
-/**
- * Código de un solo uso para entrar al portal. Reemplaza al acceso por
- * correo+teléfono: esos datos los puede conocer un tercero, y detrás está la
- * ficha clínica. El código vive 10 minutos y sirve una sola vez.
- */
-export async function sendPatientOtp(to: string, opts: { name: string; code: string; minutes: number; replyTo?: string }): Promise<MailResult> {
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #E7E9F2;border-radius:12px;overflow:hidden">
-      <div style="background:linear-gradient(135deg,#B31C86,#8E1268);color:#fff;padding:24px;text-align:center">
-        <div style="font-style:italic;color:#F3C3E0">Transformando Tu Cuerpo</div>
-        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
-      </div>
-      <div style="padding:24px;color:#1C2540;text-align:center">
-        <p style="text-align:left">Hola <b>${opts.name}</b>, este es tu código para entrar a tu portal:</p>
-        <div style="background:#FBEEF6;border-radius:12px;padding:18px;margin:16px 0">
-          <div style="font-size:34px;font-weight:800;letter-spacing:8px;color:#B31C86">${opts.code}</div>
-        </div>
-        <p style="text-align:left">Vence en <b>${opts.minutes} minutos</b> y solo se puede usar una vez.</p>
-        <p style="text-align:left;font-size:12.5px;color:#6A7089">Si no fuiste tú quien lo pidió, ignora este mensaje y no compartas el código con nadie. El personal de Li Estetic Center nunca te lo pedirá.</p>
-      </div>
-    </div>`;
-  return deliver(to, `${opts.code} es tu código de acceso · Li Estetic Center`, html, opts.replyTo);
 }
 
 /**

@@ -311,6 +311,86 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
           <button onClick={save} disabled={busy} className="rounded-[11px] bg-magenta py-3 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Enviar a mi esteticista'}</button>
         </div>
       )}
+
+      <CambiarClave />
+    </div>
+  );
+}
+
+/**
+ * Cambiar la contraseña del portal. La inicial es el teléfono de la paciente —
+ * un dato que cualquiera cercano puede conocer—, así que aquí pone una propia.
+ */
+function CambiarClave() {
+  const [abierto, setAbierto] = useState(false);
+  const [actual, setActual] = useState('');
+  const [nueva, setNueva] = useState('');
+  const [repetir, setRepetir] = useState('');
+  const [ver, setVer] = useState(false);
+  const [msg, setMsg] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function guardar() {
+    setMsg(null);
+    if (nueva.length < 6) { setMsg({ tipo: 'error', texto: 'La nueva contraseña debe tener al menos 6 caracteres' }); return; }
+    if (nueva !== repetir) { setMsg({ tipo: 'error', texto: 'Las contraseñas nuevas no coinciden' }); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/portal/change-password', { actual, nueva }, 'patient');
+      setMsg({ tipo: 'ok', texto: r.message });
+      setActual(''); setNueva(''); setRepetir('');
+    } catch (e) {
+      setMsg({ tipo: 'error', texto: e instanceof Error ? e.message : 'No se pudo cambiar' });
+    } finally { setBusy(false); }
+  }
+
+  const inputCls = 'w-full rounded-lg border border-line p-2.5 text-[13px] outline-none focus:border-magenta';
+
+  return (
+    <div className="rounded-[16px] bg-card p-4 shadow-card">
+      <button onClick={() => setAbierto((v) => !v)} className="flex w-full items-center gap-2 text-left">
+        <span className="text-[15px]">🔒</span>
+        <span className="flex-1">
+          <span className="block text-[13.5px] font-bold">Cambiar mi contraseña</span>
+          <span className="block text-[11.5px] text-muted">Pon una contraseña tuya, distinta a tu teléfono</span>
+        </span>
+        <span className="text-[13px] font-bold text-magenta">{abierto ? '×' : '›'}</span>
+      </button>
+
+      {abierto && (
+        <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+          <label><span className="mb-1 block text-[11px] font-bold text-muted">Contraseña actual</span>
+            <input type={ver ? 'text' : 'password'} value={actual} onChange={(e) => setActual(e.target.value)}
+              autoComplete="current-password" className={inputCls} placeholder="Si es tu primera vez, tu teléfono" />
+          </label>
+          <label><span className="mb-1 block text-[11px] font-bold text-muted">Nueva contraseña</span>
+            <input type={ver ? 'text' : 'password'} value={nueva} onChange={(e) => setNueva(e.target.value)}
+              autoComplete="new-password" className={inputCls} placeholder="Mínimo 6 caracteres" />
+          </label>
+          <label><span className="mb-1 block text-[11px] font-bold text-muted">Repetir la nueva</span>
+            <input type={ver ? 'text' : 'password'} value={repetir} onChange={(e) => setRepetir(e.target.value)}
+              autoComplete="new-password" className={inputCls} placeholder="Escríbela otra vez" />
+          </label>
+
+          <button type="button" onClick={() => setVer((v) => !v)} className="self-start text-[11.5px] font-bold text-muted">
+            {ver ? '🙈 Ocultar contraseñas' : '👁 Mostrar contraseñas'}
+          </button>
+
+          {msg && (
+            <div className="rounded-lg px-3 py-2 text-[12px] font-semibold"
+              style={msg.tipo === 'ok'
+                ? { background: 'var(--ok-soft)', color: 'var(--ok)' }
+                : { background: 'var(--danger-soft)', color: 'var(--danger)' }}>
+              {msg.texto}
+            </div>
+          )}
+
+          <button onClick={guardar} disabled={busy || !actual || !nueva}
+            className="rounded-[11px] bg-magenta py-2.5 text-[13px] font-bold text-white disabled:opacity-50">
+            {busy ? 'Guardando…' : 'Guardar contraseña'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

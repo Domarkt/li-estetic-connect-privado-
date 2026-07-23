@@ -509,11 +509,11 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
   if (!patient.email) return res.status(400).json({ error: 'El paciente necesita un correo para acceder al portal (agrégalo en su ficha).' });
   if (!patient.phone) return res.status(400).json({ error: 'El paciente necesita un teléfono para acceder al portal.' });
 
-  // Crea/activa la cuenta (login interno = teléfono; sin contraseña expuesta — el
-  // acceso se valida por correo + teléfono). El passwordHash queda como valor no usado.
+  // Crea/activa la cuenta del portal. La contraseña inicial es su propio teléfono;
+  // desde su perfil la paciente puede cambiarla por una propia.
   if (!patient.patientAccount) {
-    const unusedHash = await hashPassword('li' + Math.random().toString(36).slice(2, 12));
-    await prisma.patientAccount.create({ data: { patientId: patient.id, login: patient.phone.trim(), passwordHash: unusedHash, active: true } });
+    const claveInicial = await hashPassword(patient.phone.replace(/\D/g, ''));
+    await prisma.patientAccount.create({ data: { patientId: patient.id, login: patient.phone.trim(), passwordHash: claveInicial, active: true } });
   } else if (!patient.patientAccount.active) {
     await prisma.patientAccount.update({ where: { id: patient.patientAccount.id }, data: { active: true } });
   }

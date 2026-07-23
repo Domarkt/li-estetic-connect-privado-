@@ -297,8 +297,10 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     try {
       const pat = await prisma.patient.findUnique({ where: { id: b.patientId }, include: { patientAccount: true, branch: true } });
       if (pat?.email && pat.phone && !pat.patientAccount) {
-        const unusedHash = await hashPassword('li' + Math.random().toString(36).slice(2, 12));
-        await prisma.patientAccount.create({ data: { patientId: pat.id, login: pat.phone.trim(), passwordHash: unusedHash, active: true } });
+        // Contrasena inicial: su propio telefono. La paciente puede cambiarla
+        // por una propia desde su perfil en el portal.
+        const claveInicial = await hashPassword((pat.phone || '').replace(/\D/g, ''));
+        await prisma.patientAccount.create({ data: { patientId: pat.id, login: pat.phone.trim(), passwordHash: claveInicial, active: true } });
         await sendPatientAccess(pat.email, { name: pat.name, phone: pat.phone, replyTo: pat.branch?.email ?? undefined });
       }
     } catch { /* el acceso no debe bloquear la facturación */ }

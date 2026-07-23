@@ -65,10 +65,7 @@ export function createApp() {
 
   app.use('/api', apiLimiter);
   app.use('/api/auth/staff/login', authLimiter);
-  // Acceso del paciente por código de un solo uso: se limitan tanto el envío
-  // (para no spamear su correo) como la verificación (anti fuerza bruta).
-  app.use('/api/auth/patient/request-code', authLimiter);
-  app.use('/api/auth/patient/verify-code', authLimiter);
+  app.use('/api/auth/patient/login', authLimiter);
   app.use('/api/auth', authRouter);
   app.use('/api/audit', auditRouter);
   app.use('/api/branches', branchesRouter);

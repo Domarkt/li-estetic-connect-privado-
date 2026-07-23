@@ -823,12 +823,6 @@ model PatientAccount {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  // Código de un solo uso para entrar al portal (se guarda cifrado, nunca en claro).
-  otpHash      String?
-  otpExpiresAt DateTime?
-  otpAttempts  Int       @default(0)
-  otpSentAt    DateTime?
-
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   purchaseRequests PurchaseRequest[]

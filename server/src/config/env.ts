@@ -54,6 +54,9 @@ export const env = {
   jwtPatientSecret,
   encryptionKey,
   jwtExpires: process.env.JWT_EXPIRES ?? '12h',
+  // La paciente entra desde su celular y no debe estar reingresando: su sesión
+  // dura mucho más que la del personal (que sí trabaja en equipos compartidos).
+  jwtPatientExpires: process.env.JWT_PATIENT_EXPIRES ?? '30d',
   seedStaffPassword: process.env.SEED_STAFF_PASSWORD ?? 'liestetic',
   seedPatientPassword: process.env.SEED_PATIENT_PASSWORD ?? 'paciente',
 };
