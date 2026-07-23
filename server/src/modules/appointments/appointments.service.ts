@@ -39,8 +39,12 @@ export function serializeAppt(
   // Recurrente). No usamos el snapshot guardado en la cita para que la agenda se
   // actualice en vivo cuando la esteticista termina la ficha.
   const liveType = a.patient.type; // NUEVO | RECURRENTE
-  const activeTreatment = a.patient.treatments.find((t) => t.active) ?? a.patient.treatments[0] ?? null;
-  const balance = activeTreatment?.balance ?? 0;
+  // Saldo que se avisa en la agenda ("cobrar antes de atender"): la SUMA de todos
+  // sus planes activos. Con el primero solo, un paciente con varios paquetes podía
+  // deber y aparecer al día.
+  const balance = a.patient.treatments
+    .filter((t) => t.active)
+    .reduce((s, t) => s + t.balance, 0);
   return {
     id: a.id,
     time: a.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),

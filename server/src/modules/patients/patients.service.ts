@@ -50,6 +50,10 @@ export function serializePatient(
     ? Math.round((treatment.doneSessions / treatment.totalSessions) * 100)
     : 0;
 
+  // Avance consolidado de TODOS sus paquetes activos (para quien tiene varios).
+  const sesionesHechas = packages.reduce((s, x) => s + x.done, 0);
+  const sesionesTotales = packages.reduce((s, x) => s + x.total, 0);
+
   return {
     id: p.id,
     name: p.name,
@@ -67,8 +71,14 @@ export function serializePatient(
     fichaSent: !!p.clinicalRecord?.sentToPatientAt,
     fichaFilled: !!p.clinicalRecord?.patientFilledAt,
     plan: packages.length > 1 ? `${packages.length} paquetes activos` : (treatment?.name ?? 'Sin paquete'),
-    progLabel: treatment ? `${treatment.doneSessions}/${treatment.totalSessions}` : '—',
-    progPct,
+    // Con varios paquetes el avance es el CONSOLIDADO (suma de todos), no el del
+    // primero: mostrar "2/5" cuando además tiene 2/18 de otro plan engaña.
+    progLabel: packages.length > 1
+      ? `${sesionesHechas}/${sesionesTotales}`
+      : treatment ? `${treatment.doneSessions}/${treatment.totalSessions}` : '—',
+    progPct: packages.length > 1
+      ? (sesionesTotales > 0 ? Math.round((sesionesHechas / sesionesTotales) * 100) : 0)
+      : progPct,
     // Saldo total: suma de lo pendiente en TODOS los paquetes activos.
     balance: packages.reduce((s, x) => s + x.balance, 0),
     packages,
