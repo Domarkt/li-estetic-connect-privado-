@@ -17,6 +17,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'mensajes', label: 'Mensajes', badge: 6 },
     { key: 'facturacion', label: 'Facturación' },
     { key: 'catalogo', label: 'Catálogo' },
+    { key: 'portal', label: 'Portal del paciente' },
     { key: 'inventario', label: 'Inventario' },
     { key: 'puntos', label: 'Puntos & Comisiones' },
     { key: 'reportes', label: 'Reportes' },
@@ -59,6 +60,7 @@ const PAGE_TITLE: Record<string, { title: string; sub: string }> = {
   equipo: { title: 'Equipo', sub: 'Colaboradoras y usuarios del sistema' },
   seguimiento: { title: 'Seguimiento', sub: 'Pipeline de ventas' },
   cierre: { title: 'Cierre de caja', sub: 'Conteo diario y cuadre por sucursal' },
+  portal: { title: 'Portal del paciente', sub: 'Paquetes visibles, mensajes/ofertas y accesos' },
   configuracion: { title: 'Configuración', sub: 'Metas, reglas de puntos y premios' },
 };
 

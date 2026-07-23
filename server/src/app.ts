@@ -20,6 +20,7 @@ import { pipelineRouter } from './modules/messaging/pipeline.routes.js';
 import { pointsRouter } from './modules/points/points.routes.js';
 import { configRouter } from './modules/config/config.routes.js';
 import { portalRouter } from './modules/portal/portal.routes.js';
+import { portalAdminRouter } from './modules/portal/portal.admin.routes.js';
 import { cashCloseRouter } from './modules/cashclose/cashclose.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
@@ -81,6 +82,7 @@ export function createApp() {
   app.use('/api/pipeline', pipelineRouter);
   app.use('/api/points', pointsRouter);
   app.use('/api/config', configRouter);
+  app.use('/api/portal-admin', portalAdminRouter);
   app.use('/api/portal', portalRouter);
   app.use('/api/cashclose', cashCloseRouter);
   app.use('/api/notifications', notificationsRouter);

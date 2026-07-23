@@ -883,3 +883,24 @@ model TreatmentSession {
   @@index([patientId])
   @@index([at])
 }
+
+// Mensajes y ofertas que la administracion publica en el portal del paciente.
+// Es el canal directo hacia las pacientes sin depender de WhatsApp ni correo.
+model PortalMessage {
+  id          String    @id @default(cuid())
+  branchId    String? // null = todas las sucursales
+  kind        String    @default("AVISO") // OFERTA | AVISO | CONSEJO
+  title       String
+  body        String
+  ctaLabel    String? // texto del boton (ej. "Reservar")
+  ctaLink     String? // enlace opcional
+  active      Boolean   @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([active])
+  @@index([branchId])
+}

@@ -11,7 +11,6 @@ import { notifyRole } from '../notifications/notifications.service.js';
 import { audit } from '../audit/audit.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { getAreaLabelMap } from '../patients/areas.service.js';
 
 export const appointmentsRouter = Router();
 
@@ -299,7 +298,15 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
   const endedAt = new Date();
   const durationSec = Math.max(0, Math.round((endedAt.getTime() - appt.serviceStartedAt.getTime()) / 1000));
 
-  // Consumir sesiones del paquete: el de la cita, o el único activo si solo hay uno.
+  // IMPORTANTE — aquí NO se descuentan sesiones.
+  //
+  // El descuento ocurre en un solo lugar: cuando la esteticista registra en la
+  // ficha el procedimiento aplicado y el paciente lo valida con su firma
+  // (POST /patients/treatments/:id/session). Antes descontaban los dos sitios y,
+  // si se usaban ambos en la misma visita, se consumían dos sesiones.
+  //
+  // Cerrar turno solo cierra el contador de atención y habilita la calificación.
+  // Lo marcado aquí se guarda como referencia de la visita, sin afectar contadores.
   const activos = appt.patient.treatments.filter((t) => t.active && t.doneSessions < t.totalSessions);
   const target = appt.treatmentId
     ? activos.find((t) => t.id === appt.treatmentId) ?? null
@@ -307,39 +314,17 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
 
   let sessionMsg = '';
   if (target) {
-    // Las áreas trabajadas se indican al cerrar; si no se indican, se usan las de la cita.
-    const trabajadas = (b.areas?.length ? b.areas : appt.areas) ?? [];
-    const conAreas = target.areas.filter((a) => trabajadas.includes(a.area) && a.doneSessions < a.totalSessions);
-
-    // Se consume 1 sesión POR ÁREA trabajada (un combo de 12 con 2 áreas son 6 y 6).
-    const consumidas = conAreas.length || 1;
-    const detalle: string[] = [];
-    const areaLabels = await getAreaLabelMap();
-
-    for (const a of conAreas) {
-      const done = Math.min(a.totalSessions, a.doneSessions + 1);
-      await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: done } });
-      detalle.push(`${areaLabels[a.area] ?? a.area} ${done}/${a.totalSessions}`);
-    }
-
-    const done = Math.min(target.totalSessions, target.doneSessions + consumidas);
-    const restantes = target.totalSessions - done;
-    await prisma.treatment.update({
-      where: { id: target.id },
-      // Al agotar las sesiones el paquete se cierra y deja de aparecer como activo.
-      data: { doneSessions: done, ...(restantes === 0 ? { active: false } : {}) },
-    });
     await prisma.appointment.update({
       where: { id: appt.id },
-      data: { sessionNo: done, treatmentId: target.id, ...(b.areas?.length ? { areas: b.areas } : {}) },
+      data: { treatmentId: target.id, ...(b.areas?.length ? { areas: b.areas } : {}) },
     });
-
-    sessionMsg = restantes === 0
-      ? ` · ${target.name}: completado (${done}/${target.totalSessions}) 🎉`
-      : ` · ${target.name}: ${done}/${target.totalSessions} (quedan ${restantes})`;
-    if (detalle.length) sessionMsg += ` · ${detalle.join(' · ')}`;
-  } else if (activos.length > 1) {
-    sessionMsg = ' · Ojo: el paciente tiene varios paquetes, no se descontó sesión (elige el paquete al agendar)';
+    const inicioDelDia = new Date(endedAt); inicioDelDia.setHours(0, 0, 0, 0);
+    const yaFirmada = await prisma.treatmentSession.count({
+      where: { treatmentId: target.id, at: { gte: inicioDelDia } },
+    });
+    sessionMsg = yaFirmada > 0
+      ? ` · ${target.name}: sesión del día ya registrada y firmada`
+      : ` · Recuerda registrar en la ficha lo aplicado de "${target.name}" y pedir la firma del paciente`;
   }
 
   await prisma.appointment.update({

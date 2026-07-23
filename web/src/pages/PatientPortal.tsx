@@ -116,9 +116,32 @@ function Proceso() {
         </div>
       )}
 
+      {/* Ofertas y avisos que publica la dirección desde el portal de administración. */}
+      {(d.mensajes ?? []).map((m) => (
+        <div key={m.id} className="rounded-[16px] p-4"
+          style={m.kind === 'OFERTA'
+            ? { background: 'linear-gradient(135deg,#B31C86,#8E1268)', color: '#fff' }
+            : { background: 'var(--magenta-soft)', border: '1px solid var(--magenta)' }}>
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="text-[13px]">{m.kind === 'OFERTA' ? '🎁' : m.kind === 'CONSEJO' ? '💡' : '📣'}</span>
+            <span className="text-[13.5px] font-extrabold" style={{ color: m.kind === 'OFERTA' ? '#fff' : 'var(--magenta)' }}>{m.title}</span>
+          </div>
+          <div className="text-[12.5px] leading-normal" style={{ color: m.kind === 'OFERTA' ? 'rgba(255,255,255,.92)' : 'var(--muted)' }}>{m.body}</div>
+          {m.ctaLabel && (
+            m.ctaLink
+              ? <a href={m.ctaLink} target="_blank" rel="noopener noreferrer"
+                  className="mt-2.5 block rounded-[10px] py-2.5 text-center text-[12.5px] font-bold"
+                  style={m.kind === 'OFERTA' ? { background: '#fff', color: 'var(--magenta)' } : { background: 'var(--magenta)', color: '#fff' }}>{m.ctaLabel}</a>
+              : <div className="mt-2.5 rounded-[10px] py-2.5 text-center text-[12.5px] font-bold"
+                  style={m.kind === 'OFERTA' ? { background: 'rgba(255,255,255,.18)', color: '#fff' } : { background: 'var(--card)', color: 'var(--magenta)' }}>{m.ctaLabel}</div>
+          )}
+        </div>
+      ))}
+
+      {/* Consejo del día: rota, para que no sea siempre el mismo mensaje. */}
       <div className="rounded-[16px] border p-4" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
-        <div className="mb-1.5 text-[13.5px] font-bold" style={{ color: '#1E5A82' }}>💧 Cuidados post-tratamiento</div>
-        <div className="text-[12.5px] leading-normal" style={{ color: '#2C6B94' }}>{d.tips}</div>
+        <div className="mb-1.5 text-[13.5px] font-bold" style={{ color: '#1E5A82' }}>{d.tips.icon} {d.tips.title}</div>
+        <div className="text-[12.5px] leading-normal" style={{ color: '#2C6B94' }}>{d.tips.body}</div>
       </div>
     </div>
   );
@@ -391,23 +414,50 @@ function RateCard({ item, onDone }: { item: PortalHistoryItem; onDone: (msg: str
     finally { setBusy(false); }
   }
 
+  // La sesión sin calificar se destaca: antes el botón quedaba gris y apagado, y
+  // nada invitaba a dejar la reseña.
   return (
-    <div className="rounded-[16px] bg-card p-4 shadow-card">
+    <div className="rounded-[16px] p-4 shadow-card"
+      style={rated
+        ? { background: 'var(--card)' }
+        : { background: 'var(--card)', border: '1.5px solid var(--magenta)', boxShadow: '0 6px 20px rgba(179,28,134,.12)' }}>
+      {!rated && (
+        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-magenta-soft px-2.5 py-1 text-[11px] font-extrabold text-magenta">
+          ✨ ¡Cuéntanos cómo te fue!
+        </div>
+      )}
       <div className="text-[13px] font-bold">{item.service}</div>
       <div className="mb-2 text-[11.5px] text-muted">{item.date} · {item.therapist}{item.durationMin != null ? ` · ⏱ ${item.durationMin} min` : ''}</div>
-      <div className="flex gap-1">
+
+      <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} disabled={rated} onClick={() => setStars(n)} className="text-[24px] leading-none disabled:cursor-default" style={{ color: n <= stars ? '#F5B301' : 'var(--line)' }}>★</button>
+          <button key={n} disabled={rated} onClick={() => setStars(n)}
+            aria-label={`Calificar con ${n} estrella${n > 1 ? 's' : ''}`}
+            className="leading-none transition-transform disabled:cursor-default"
+            style={{ fontSize: rated ? 22 : 30, color: n <= stars ? '#F5B301' : (rated ? 'var(--line)' : '#E4C98A') }}>★</button>
         ))}
+        {!rated && stars === 0 && <span className="ml-1.5 text-[11.5px] font-semibold text-magenta">← toca las estrellas</span>}
       </div>
+
       {!rated && stars > 0 && (
         <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
           placeholder={stars < 5 ? '¿Qué ocurrió? Cuéntanos para mejorar (requerido)' : 'Comparte tu experiencia (opcional)'}
           className="mt-2 w-full resize-none rounded-[10px] border border-line p-2.5 text-[12.5px] outline-none focus:border-magenta" />
       )}
-      {rated
-        ? <div className="mt-1 text-[11.5px] font-semibold text-ok">✓ Calificada{item.ratingComment ? ` · "${item.ratingComment}"` : ''}</div>
-        : <button onClick={send} disabled={busy || stars === 0} className="mt-2 w-full rounded-[10px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar calificación'}</button>}
+
+      {rated ? (
+        <div className="mt-1 text-[11.5px] font-semibold text-ok">✓ ¡Gracias por calificar!{item.ratingComment ? ` · "${item.ratingComment}"` : ''}</div>
+      ) : (
+        <>
+          {/* Siempre en color: si aún no hay estrellas, guía en vez de apagarse. */}
+          <button onClick={() => (stars === 0 ? onDone('Toca una estrella para calificar tu sesión') : send())} disabled={busy}
+            className="mt-2.5 w-full rounded-[10px] bg-magenta py-3 text-[13px] font-bold text-white disabled:opacity-70"
+            style={{ boxShadow: '0 4px 14px rgba(179,28,134,.28)' }}>
+            {busy ? 'Enviando…' : stars === 0 ? '⭐ Calificar mi sesión' : 'Enviar calificación'}
+          </button>
+          <div className="mt-1.5 text-center text-[10.5px] text-faint">Tu opinión nos ayuda a mejorar tu experiencia 💜</div>
+        </>
+      )}
     </div>
   );
 }

@@ -241,7 +241,15 @@ export interface PortalProceso {
   notices?: { id: string; service: string; date: string; reason: string }[];
   treatment: { name: string; total: number; done: number; pct: number } | null;
   nextAppointment: { date: string; day: string; month: string; time: string; service: string; therapist: string; branch: string; code: string | null; checkedIn: boolean } | null;
-  tips: string;
+  /** Consejo del día (rota por día y paciente). */
+  tips: { icon: string; title: string; body: string };
+  /** Ofertas y avisos publicados por la dirección desde el portal de administración. */
+  mensajes?: PortalMensaje[];
+}
+export interface PortalMensaje {
+  id: string; kind: 'OFERTA' | 'AVISO' | 'CONSEJO';
+  title: string; body: string;
+  ctaLabel?: string | null; ctaLink?: string | null;
 }
 export interface PortalAppointment { id: string; date: string; service: string; therapist: string; code: string | null; checkedIn: boolean }
 export interface PortalBranch { id: string; name: string; place: string; phone: string; waNumber: string }

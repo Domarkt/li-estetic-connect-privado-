@@ -22,6 +22,7 @@ const MessagesPage = lazy(() => import('./pages/messaging/MessagesPage'));
 const PipelinePage = lazy(() => import('./pages/messaging/PipelinePage'));
 const PointsPage = lazy(() => import('./pages/points/PointsPage'));
 const ConfigPage = lazy(() => import('./pages/config/ConfigPage'));
+const PortalAdminPage = lazy(() => import('./pages/portal/PortalAdminPage'));
 const EquipoPage = lazy(() => import('./pages/team/EquipoPage'));
 const CashClosePage = lazy(() => import('./pages/cashclose/CashClosePage'));
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'));
@@ -80,6 +81,7 @@ export default function App() {
             <Route path="mensajes" element={<MessagesPage />} />
             <Route path="facturacion" element={<BillingPage />} />
             <Route path="catalogo" element={<CatalogPage />} />
+            <Route path="portal" element={<PortalAdminPage />} />
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="equipos" element={<EquiposPage />} />
             <Route path="chat" element={<ChatPage />} />

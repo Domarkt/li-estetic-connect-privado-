@@ -17,6 +17,8 @@ export type AuditAction =
   | 'CATALOG_DELETE'
   | 'TREATMENT_AREAS'     // se (re)definieron las áreas de un plan
   | 'TREATMENT_SESSION'   // se registró el procedimiento aplicado (firmado)
+  | 'PORTAL_ACCESS'      // se retiró/devolvió el acceso al portal de un paciente
+  | 'PORTAL_MESSAGE'     // se publicó un mensaje/oferta en el portal
   | 'PORTAL_LOGIN';       // el paciente entró a su portal
 
 interface AuditInput {

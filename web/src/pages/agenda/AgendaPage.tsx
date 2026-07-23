@@ -69,7 +69,7 @@ export default function AgendaPage() {
   }, [load, toast]);
 
   // Si la cita pertenece a un combo con áreas, se pregunta cuáles se trabajaron
-  // (cada área consume una sesión). Si no, se cierra directo.
+  // (queda como referencia; el descuento va con la firma en la ficha). Si no, se cierra directo.
   async function finishService(a: Appointment) {
     if (a.treatmentId) { setFinishFor(a); return; }
     if (!window.confirm(`¿Cerrar el turno de ${a.patient}? Quedarás libre para el siguiente paciente y ${a.patient} podrá calificar el servicio.`)) return;
@@ -392,7 +392,8 @@ function CheckinModal({ appt, onClose, onDone }: { appt?: Appointment | null; on
 
 /**
  * Cierre de turno de una cita que pertenece a un combo: la esteticista marca qué
- * áreas trabajó. Cada área marcada consume una sesión del combo.
+ * áreas trabajó. NO descuenta sesiones: eso ocurre al registrar el procedimiento
+ * aplicado en la ficha, donde el paciente lo valida con su firma.
  */
 function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
@@ -443,15 +444,19 @@ function FinishModal({ appt, onClose, onDone }: { appt: Appointment; onClose: ()
           </div>
 
           <div className="flex flex-col gap-3 px-6 py-5">
+            {/* El descuento de sesiones vive en un solo sitio: la ficha, con la firma. */}
+            <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>
+              ℹ️ Cerrar turno no descuenta sesiones. El descuento se hace en la <b>ficha</b>, al registrar el procedimiento aplicado con la <b>firma del paciente</b>.
+            </div>
             {cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
             {!cargando && areas.length === 0 && (
               <div className="rounded-[10px] bg-bg px-3.5 py-3 text-[12.5px] text-muted">
-                Este paquete no tiene áreas definidas. Se descontará <b>una sesión</b> al cerrar.
+                Este paquete no tiene áreas definidas.
               </div>
             )}
             {!cargando && areas.length > 0 && (
               <>
-                <div className="text-xs font-bold text-muted">¿Qué áreas trabajaste? Cada una descuenta una sesión.</div>
+                <div className="text-xs font-bold text-muted">¿Qué áreas trabajaste? <span className="font-semibold text-faint">(queda como referencia de la visita)</span></div>
                 {areas.map((a) => {
                   const on = sel.has(a.area);
                   const agotada = a.remaining === 0;

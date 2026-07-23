@@ -13,7 +13,30 @@ import { upsertLead } from '../messaging/leads.service.js';
 export const portalRouter = Router();
 portalRouter.use(requirePatient);
 
-const CARE_TIPS = 'Toma abundante agua, evita alimentos con sodio y camina 20 min hoy para potenciar tus resultados.';
+/**
+ * Consejos post-tratamiento. Antes había uno solo y el paciente veía siempre el
+ * mismo mensaje, que dejaba de leerse. Se rota por día y por paciente, así cada
+ * visita al portal aporta algo distinto.
+ */
+const CARE_TIPS = [
+  { icon: '💧', title: 'Hidrátate bien', body: 'Toma al menos 8 vasos de agua hoy: ayuda a tu cuerpo a eliminar lo que movilizamos en la sesión.' },
+  { icon: '🧂', title: 'Cuida el sodio', body: 'Evita los alimentos muy salados y los embutidos por 24 horas. El sodio retiene líquido y frena tus resultados.' },
+  { icon: '🚶‍♀️', title: 'Muévete un poco', body: 'Una caminata de 20 a 30 minutos potencia el efecto del tratamiento. No hace falta ir al gimnasio.' },
+  { icon: '🥗', title: 'Come ligero hoy', body: 'Prioriza proteína magra, frutas y vegetales. Tu cuerpo aprovecha mejor la sesión cuando no está pesado.' },
+  { icon: '😴', title: 'Descansa', body: 'Dormir de 7 a 8 horas es parte del tratamiento: es cuando tu piel y tus tejidos se reparan.' },
+  { icon: '☀️', title: 'Protégete del sol', body: 'Usa protector solar en las zonas tratadas. La exposición directa puede manchar la piel sensibilizada.' },
+  { icon: '🧴', title: 'Humecta la zona', body: 'Aplica crema humectante en las áreas trabajadas. La piel bien hidratada responde mejor a la próxima sesión.' },
+  { icon: '🚭', title: 'Evita alcohol y cigarrillo', body: 'Ambos reducen la oxigenación de los tejidos y hacen que veas resultados más lento.' },
+  { icon: '📅', title: 'Sé constante', body: 'Los resultados se construyen con la continuidad. No dejes pasar mucho tiempo entre una sesión y otra.' },
+  { icon: '👗', title: 'Ropa cómoda', body: 'Usa prendas holgadas el resto del día para no comprimir las zonas trabajadas.' },
+];
+
+/** Elige el consejo del día: cambia cada día y no es igual para todas las pacientes. */
+function tipDelDia(patientId: string) {
+  const dia = Math.floor(Date.now() / 86_400_000);
+  const semilla = patientId.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+  return CARE_TIPS[(dia + semilla) % CARE_TIPS.length];
+}
 
 /** Inicio del día de hoy: las citas de hoy siguen visibles aunque su hora ya pasó. */
 function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
@@ -59,9 +82,40 @@ portalRouter.get('/proceso', async (req, res) => {
       // "Abierto" solo mientras el turno sigue abierto (no si ya se cerró).
       checkedIn: !!nextAppt.codeUsedAt && !nextAppt.serviceEndedAt,
     } : null,
-    tips: CARE_TIPS,
+    tips: tipDelDia(patientId),
+    // Mensajes y ofertas que la dirección publicó para las pacientes.
+    mensajes: await mensajesVigentes(patientId),
   });
 });
+
+/**
+ * Mensajes/ofertas vigentes para este paciente: activos, dentro de fechas y de su
+ * sucursal (o de todas). Best-effort: un fallo aquí no puede tumbar el portal.
+ */
+async function mensajesVigentes(patientId: string) {
+  try {
+    const p = await prisma.patient.findUnique({ where: { id: patientId }, select: { branchId: true } });
+    const ahora = new Date();
+    const rows = await prisma.portalMessage.findMany({
+      where: {
+        active: true,
+        OR: [{ branchId: null }, { branchId: p?.branchId ?? undefined }],
+        AND: [
+          { OR: [{ startsAt: null }, { startsAt: { lte: ahora } }] },
+          { OR: [{ endsAt: null }, { endsAt: { gte: ahora } }] },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+    return rows.map((m) => ({
+      id: m.id, kind: m.kind, title: m.title, body: m.body,
+      ctaLabel: m.ctaLabel, ctaLink: m.ctaLink,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /** Mis citas próximas. */
 portalRouter.get('/appointments', async (req, res) => {
@@ -347,7 +401,12 @@ portalRouter.post('/appointments/:id/cancel', async (req, res) => {
 portalRouter.get('/packages', async (req, res) => {
   const [treatment, shop] = await Promise.all([
     prisma.treatment.findFirst({ where: { patientId: req.patient!.patientId, active: true }, orderBy: { createdAt: 'desc' } }),
-    prisma.catalogItem.findMany({ where: { active: true, showInPortal: true, kind: { in: ['PAQUETE', 'COMBO'] } }, orderBy: { price: 'asc' } }),
+    // Solo con precio: al paciente no se le puede ofrecer "RD$0". Los combos que la
+    // directora arma al momento (sin precio fijo) se venden en recepción, no aquí.
+    prisma.catalogItem.findMany({
+      where: { active: true, showInPortal: true, price: { gt: 0 }, kind: { in: ['PAQUETE', 'COMBO'] } },
+      orderBy: { price: 'asc' },
+    }),
   ]);
   res.json({
     active: treatment ? {
