@@ -191,6 +191,9 @@ export interface Receipt {
   date: string; patient: string; patientEmail?: string | null; patientPhone?: string | null; concept: string;
   items: { name: string; qty: number; total: number }[];
   subtotal: number; itbis: number; total: number; method: string;
+  // Comprobante fiscal: consumo (B02) o crédito fiscal (B01, con RNC del cliente).
+  ncfType?: string; ncfLabel?: string; itbisApplied?: boolean;
+  clientRnc?: string | null; clientName?: string | null;
   payments?: { method: string; amount: number }[];
   paymentKind?: string;
 }

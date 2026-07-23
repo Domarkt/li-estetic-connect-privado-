@@ -41,6 +41,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   // Fecha de la cita de la que se precargó el servicio (para avisarlo en pantalla).
   const [desdeAgenda, setDesdeAgenda] = useState<string | null>(null);
+
+  // ── Datos fiscales del comprobante ──
+  // No todos los servicios estéticos llevan ITBIS: se decide al cobrar.
+  const [conItbis, setConItbis] = useState(true);
+  // B02 consumo final (lo normal) | B01 crédito fiscal (exige RNC del cliente).
+  const [ncfType, setNcfType] = useState<'B02' | 'B01'>('B02');
+  const [rnc, setRnc] = useState('');
+  const [razonSocial, setRazonSocial] = useState('');
   const [step, setStep] = useState<'form' | 'review'>('form');
   const [busy, setBusy] = useState(false);
   const [pQuery, setPQuery] = useState('');
@@ -151,6 +159,13 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     if (!amt) return 'Escribe el monto a cobrar';
     if (freeAbono && amt >= cartTotal) return 'El abono debe ser menor que el total del carrito';
     if (splitOn && assigned !== amt) return `El pago dividido (${fmtRD(assigned)}) debe sumar el total (${fmtRD(amt)})`;
+    // Crédito fiscal: sin identificación del comprador el comprobante no sirve
+    // y después no se puede corregir.
+    if (ncfType === 'B01') {
+      const d = rnc.replace(/\D/g, '');
+      if (d.length !== 9 && d.length !== 11) return 'Escribe el RNC (9 dígitos) o la cédula (11 dígitos) del cliente';
+      if (!razonSocial.trim()) return 'Escribe el nombre o razón social de la factura';
+    }
     return null;
   }
 
@@ -170,6 +185,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
         items: usingCart ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty, catalogItemId: c.catalogId })) : undefined,
         fullAmount: freeAbono ? cartTotal : undefined,
+        itbisApplied: conItbis,
+        ncfType,
+        ...(ncfType === 'B01' ? { clientRnc: rnc.trim(), clientName: razonSocial.trim() } : {}),
       });
       toast(r.message); onEmitted(r.receipt); onClose();
     } catch (e) {
@@ -316,6 +334,54 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               </div>
             )}
 
+            {/* 3b · Comprobante fiscal: tipo de factura e ITBIS */}
+            <div>
+              <span className="mb-1.5 block text-xs font-bold text-muted">Tipo de comprobante</span>
+              <div className="grid grid-cols-2 gap-2">
+                {([['B02', 'Consumo', 'Lo normal'], ['B01', 'Crédito fiscal', 'Requiere RNC']] as const).map(([k, label, hint]) => {
+                  const on = ncfType === k;
+                  return (
+                    <button key={k} onClick={() => setNcfType(k)}
+                      className="flex flex-col items-start rounded-[9px] border px-3 py-2 text-left"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                      <span className="text-[12.5px] font-bold" style={{ color: on ? 'var(--magenta)' : 'var(--muted)' }}>{label}</span>
+                      <span className="text-[10.5px] text-faint">{hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Crédito fiscal: identificación del comprador (obligatoria). */}
+              {ncfType === 'B01' && (
+                <div className="mt-2 flex flex-col gap-2 rounded-[10px] border border-magenta/40 bg-magenta-soft p-2.5">
+                  <div className="text-[11px] font-bold text-magenta">Datos para el crédito fiscal</div>
+                  <input value={rnc} onChange={(e) => setRnc(e.target.value.replace(/[^0-9-]/g, ''))} inputMode="numeric"
+                    placeholder="RNC (9 dígitos) o cédula (11 dígitos)"
+                    className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
+                  <input value={razonSocial} onChange={(e) => setRazonSocial(e.target.value)}
+                    placeholder="Nombre o razón social"
+                    className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
+                  <span className="text-[10.5px] text-muted">Estos datos van impresos en la factura y no se pueden corregir después.</span>
+                </div>
+              )}
+
+              {/* ITBIS a solicitud: hay servicios estéticos que no lo llevan. */}
+              <button onClick={() => setConItbis((v) => !v)}
+                className="mt-2 flex w-full items-center justify-between rounded-[9px] border border-line bg-card px-3 py-2.5 text-left">
+                <span className="flex flex-col">
+                  <span className="text-[12.5px] font-bold">Aplicar ITBIS (18%)</span>
+                  <span className="text-[10.5px] text-faint">
+                    {conItbis
+                      ? `Incluido en el precio · ${fmtRD(amt - Math.round(amt / 1.18))} de ${fmtRD(amt || 0)}`
+                      : 'Este cobro se factura sin ITBIS'}
+                  </span>
+                </span>
+                <span className="relative flex h-6 w-11 flex-none items-center rounded-full transition" style={{ background: conItbis ? 'var(--magenta)' : 'var(--line)' }}>
+                  <span className="absolute h-5 w-5 rounded-full bg-white transition-all" style={{ left: conItbis ? 22 : 2 }} />
+                </span>
+              </button>
+            </div>
+
             {/* 4 · Monto: total del carrito (TOTAL) o campo de abono/derivado */}
             {usingCart && payKind === 'TOTAL' ? (
               <div className="flex items-center justify-between rounded-[11px] border-2 border-magenta bg-magenta-soft px-4 py-3">
@@ -373,6 +439,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           <div className="flex flex-col gap-3 overflow-y-auto px-4 sm:px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
             <Row k="Tipo de pago" v={KIND_LABEL[(treatmentId || hasCharges || freeAbono) ? payKind : 'TOTAL']} />
+            <Row k="Comprobante" v={ncfType === 'B01' ? 'Crédito fiscal' : 'Consumo'} />
+            {ncfType === 'B01' && (
+              <div className="rounded-[11px] border border-magenta/40 bg-magenta-soft p-3">
+                <div className="mb-1 text-[11.5px] font-bold text-magenta">Crédito fiscal · se emite a</div>
+                <div className="text-[13px] font-bold">{razonSocial.trim()}</div>
+                <div className="text-[12px] text-muted">RNC/Cédula: {rnc.trim()}</div>
+              </div>
+            )}
             {/* Detalle del recibo */}
             <div className="rounded-[11px] border border-line-2 p-3">
               <div className="mb-1.5 text-[11.5px] font-bold text-muted">Servicios</div>
@@ -385,6 +459,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               <div className="mb-1.5 text-[11.5px] font-bold text-muted">Desglose de pago</div>
               {paymentsList.map((p) => <div key={p.method} className="flex justify-between py-0.5 text-[13px]"><span>{METHOD_LABEL[p.method]}</span><span className="font-bold">{fmtRD(p.amount)}</span></div>)}
               <div className="mt-1.5 flex justify-between border-t border-line-2 pt-1.5 text-[15px] font-extrabold"><span>Total</span><span className="text-magenta">{fmtRD(amt)}</span></div>
+              <div className="mt-1 text-right text-[11px] text-faint">
+                {conItbis ? `ITBIS 18% incluido (${fmtRD(amt - Math.round(amt / 1.18))})` : 'Sin ITBIS'}
+              </div>
             </div>
             {t && (payKind === 'ABONO' || payKind === 'SALDO') && (
               <div className="rounded-md px-3 py-2 text-[12px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>Saldo tras el pago: {fmtRD(balanceAfter)}{balanceAfter > 0 && t.remaining > 0 ? ` · ${fmtRD(Math.round(balanceAfter / t.remaining))}/sesión` : ''}</div>

@@ -12,17 +12,51 @@ const METHOD_LABEL: Record<PaymentMethod, string> = {
   EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', TARJETA: 'Tarjeta', AZUL: 'Azul',
 };
 
-/** ITBIS 18% incluido en el monto: total dado → subtotal + itbis. */
-export function splitItbis(total: number) {
+/** Tipos de comprobante que emite la estética. */
+export type NcfType = 'B02' | 'B01';
+export const NCF_LABEL: Record<NcfType, string> = {
+  B02: 'Factura de consumo',
+  B01: 'Factura de crédito fiscal',
+};
+
+/**
+ * Desglose del ITBIS.
+ *
+ * El precio SIEMPRE se cobra con el impuesto ya incluido; aquí solo se separa
+ * para el comprobante. No todos los servicios estéticos llevan ITBIS, así que
+ * cuando no aplica el subtotal es el total y el impuesto queda en cero.
+ */
+export function splitItbis(total: number, aplica = true) {
+  if (!aplica) return { subtotal: total, itbis: 0 };
   const subtotal = Math.round(total / 1.18);
   return { subtotal, itbis: total - subtotal };
 }
 
 /**
- * Reserva atómicamente el próximo No. de recibo y NCF (e-CF) de la sucursal.
+ * Valida un RNC (9 dígitos) o cédula (11 dígitos) dominicanos.
+ * Solo se comprueba el formato: el timbrado real lo valida la DGII.
+ */
+export function rncValido(raw: string): boolean {
+  const d = (raw || '').replace(/\D/g, '');
+  return d.length === 9 || d.length === 11;
+}
+
+/** Formato legible: 1-31-46233-2 (RNC) / 001-1234567-8 (cédula). */
+export function formatRnc(raw: string): string {
+  const d = (raw || '').replace(/\D/g, '');
+  if (d.length === 9) return `${d[0]}-${d.slice(1, 3)}-${d.slice(3, 8)}-${d[8]}`;
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 10)}-${d[10]}`;
+  return raw;
+}
+
+/**
+ * Reserva atómicamente el próximo No. de recibo y NCF de la sucursal.
+ *
+ * Cada tipo de comprobante lleva su PROPIA secuencia (la DGII las exige
+ * separadas): B02 para consumo final y B01 para crédito fiscal.
  * En producción, el NCF/e-CF se valida y timbra contra la DGII.
  */
-export async function allocateSequence(branchId: string) {
+export async function allocateSequence(branchId: string, ncfType: NcfType = 'B02') {
   return prisma.$transaction(async (tx) => {
     const seq = await tx.invoiceSequence.upsert({
       where: { branchId },
@@ -30,15 +64,20 @@ export async function allocateSequence(branchId: string) {
       update: {},
     });
     const nextNumber = seq.lastNumber + 1;
-    const nextNcf = seq.lastNcf + 1;
+    const esCredito = ncfType === 'B01';
+    const nextNcf = (esCredito ? seq.lastNcfB01 : seq.lastNcf) + 1;
+
     await tx.invoiceSequence.update({
       where: { branchId },
-      data: { lastNumber: nextNumber, lastNcf: nextNcf },
+      data: {
+        lastNumber: nextNumber,
+        ...(esCredito ? { lastNcfB01: nextNcf } : { lastNcf: nextNcf }),
+      },
     });
     return {
       number: `F-${nextNumber}`,
-      // e-CF consumidor final: prefijo + 10 dígitos. Placeholder hasta integrar DGII.
-      ncf: `${seq.ncfType}${String(nextNcf).padStart(10, '0')}`,
+      // NCF: prefijo del tipo + 10 dígitos. Placeholder hasta integrar DGII.
+      ncf: `${ncfType}${String(nextNcf).padStart(10, '0')}`,
     };
   });
 }
@@ -92,6 +131,12 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     subtotal: i.subtotal,
     itbis: i.itbis,
     total: i.total,
+    // Comprobante fiscal: en crédito fiscal el recibo debe mostrar a quién se emite.
+    ncfType: i.ncfType,
+    ncfLabel: NCF_LABEL[(i.ncfType as NcfType)] ?? 'Factura de consumo',
+    itbisApplied: i.itbisApplied,
+    clientRnc: i.clientRnc,
+    clientName: i.clientName,
     method: paymentLines(i).length > 1 ? 'Mixto' : METHOD_LABEL[i.method],
     payments: paymentLines(i), // desglose para el recibo
     paymentKind: i.paymentKind,

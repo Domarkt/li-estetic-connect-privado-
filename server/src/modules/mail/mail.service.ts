@@ -155,6 +155,9 @@ export interface ReceiptMail {
   subtotal: number; itbis: number; total: number; method: string;
   payments?: { method: string; amount: number }[];
   branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; rnc: string;
+  // Comprobante fiscal: consumo (B02) o crédito fiscal (B01, a nombre del cliente).
+  ncfLabel?: string; itbisApplied?: boolean;
+  clientRnc?: string | null; clientName?: string | null;
 }
 
 const rd = (n: number) => `RD$${n.toLocaleString('en-US')}`;
@@ -188,14 +191,15 @@ export async function sendReceipt(to: string, r: ReceiptMail, replyTo?: string):
 
         <div style="background:#F5F6FB;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:16px">
           <b>Recibo:</b> ${r.id}${r.ncf ? ` &nbsp;·&nbsp; <b>NCF:</b> ${r.ncf}` : ''}<br/>
-          <b>Fecha:</b> ${r.date}
+          <b>Fecha:</b> ${r.date}${r.ncfLabel ? `<br/><b>Comprobante:</b> ${r.ncfLabel}` : ''}
+          ${r.clientName ? `<br/><b>Facturar a:</b> ${r.clientName}${r.clientRnc ? ` &nbsp;·&nbsp; <b>RNC/Cédula:</b> ${r.clientRnc}` : ''}` : ''}
         </div>
 
         <table style="width:100%;border-collapse:collapse;font-size:14px">${lineas}</table>
 
         <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px">
           <tr><td style="padding:3px 0;color:#6A7089">Subtotal</td><td style="padding:3px 0;text-align:right">${rd(r.subtotal)}</td></tr>
-          <tr><td style="padding:3px 0;color:#6A7089">ITBIS (18%)</td><td style="padding:3px 0;text-align:right">${rd(r.itbis)}</td></tr>
+          <tr><td style="padding:3px 0;color:#6A7089">${r.itbisApplied === false ? 'ITBIS' : 'ITBIS (18%)'}</td><td style="padding:3px 0;text-align:right">${r.itbisApplied === false ? 'No aplica' : rd(r.itbis)}</td></tr>
           <tr>
             <td style="padding:9px 0 0;font-weight:bold;font-size:16px;border-top:2px solid #1C2540">Total</td>
             <td style="padding:9px 0 0;font-weight:bold;font-size:16px;text-align:right;border-top:2px solid #1C2540;color:#B31C86">${rd(r.total)}</td>

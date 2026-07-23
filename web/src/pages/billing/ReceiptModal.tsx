@@ -114,11 +114,23 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
               <div style={{ fontSize: 11, color: '#6A7089' }}>{receipt.branchName} · {receipt.branchAddress}</div>
               <div style={{ fontSize: 11, color: '#6A7089' }}>RNC {receipt.rnc} · Tel. {receipt.branchPhone}</div>
               {receipt.branchEmail && <div style={{ fontSize: 11, color: '#6A7089' }}>{receipt.branchEmail}</div>}
-              {receipt.ncf && <div style={{ fontSize: 11, color: '#6A7089' }}>NCF (e-CF): {receipt.ncf}</div>}
+              {receipt.ncf && <div style={{ fontSize: 11, color: '#6A7089' }}>NCF: {receipt.ncf}</div>}
+              {/* El tipo de comprobante debe quedar visible en la factura. */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: receipt.ncfType === 'B01' ? '#B31C86' : '#6A7089', marginTop: 3 }}>
+                {receipt.ncfLabel ?? 'Factura de consumo'}
+              </div>
             </div>
             <Row k="Recibo No." v={receipt.id} />
             <Row k="Fecha" v={receipt.date} />
-            <Row k="Cliente" v={receipt.patient} mb={14} />
+            {/* Crédito fiscal: se emite a nombre del cliente, con su RNC. */}
+            {receipt.ncfType === 'B01' && receipt.clientName ? (
+              <>
+                <Row k="Facturar a" v={receipt.clientName} />
+                <Row k="RNC / Cédula" v={receipt.clientRnc ?? '—'} mb={14} />
+              </>
+            ) : (
+              <Row k="Cliente" v={receipt.patient} mb={14} />
+            )}
             <div style={{ borderTop: '1px dashed #C8CCDA', borderBottom: '1px dashed #C8CCDA', padding: '12px 0', marginBottom: 12 }}>
               {receipt.items.map((it, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -128,7 +140,9 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
               ))}
             </div>
             <Row k="Subtotal" v={fmtRD(receipt.subtotal)} small />
-            <Row k="ITBIS incluido (18%)" v={fmtRD(receipt.itbis)} small />
+            {receipt.itbisApplied === false
+              ? <Row k="ITBIS" v="No aplica" small />
+              : <Row k="ITBIS incluido (18%)" v={fmtRD(receipt.itbis)} small />}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, borderTop: '2px solid #1C2540', paddingTop: 10, marginTop: 8 }}>
               <span>TOTAL</span><span style={{ color: '#B31C86' }}>{fmtRD(receipt.total)}</span>
             </div>

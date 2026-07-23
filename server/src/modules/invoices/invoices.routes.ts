@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import {
-  allocateSequence, splitItbis, invoiceInclude, serializeInvoiceRow, serializeReceipt,
+  allocateSequence, splitItbis, invoiceInclude, serializeInvoiceRow, serializeReceipt, rncValido, formatRnc,
 } from './invoices.service.js';
 import { awardSalePoints } from '../points/points.automation.js';
 import { decrementSoldProducts } from '../inventory/inventory.service.js';
@@ -121,6 +121,12 @@ const billSchema = z.object({
   items: z.array(z.object({ name: z.string().min(1), price: z.number().int().nonnegative(), qty: z.number().int().positive().default(1), catalogItemId: z.string().optional() })).optional(),
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
   paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
+  // Tipo de comprobante: consumo final (B02) o crédito fiscal (B01, exige RNC).
+  ncfType: z.enum(['B02', 'B01']).default('B02'),
+  clientRnc: z.string().trim().optional(),
+  clientName: z.string().trim().max(120).optional(),
+  // No todos los servicios estéticos llevan ITBIS: recepción lo decide al cobrar.
+  itbisApplied: z.boolean().default(true),
   fullAmount: z.number().int().positive().optional(), // precio total del combo/compra (para abono a concepto libre)
 });
 
@@ -155,8 +161,19 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     }
   }
 
-  const { subtotal, itbis } = splitItbis(amount);
-  const { number, ncf } = await allocateSequence(branchId);
+  // Crédito fiscal: la DGII exige identificar al comprador. Sin RNC/cédula válido
+  // no se emite, porque después no se puede corregir el comprobante.
+  if (b.ncfType === 'B01') {
+    if (!b.clientRnc || !rncValido(b.clientRnc)) {
+      return res.status(400).json({ error: 'Para crédito fiscal necesitas el RNC (9 dígitos) o la cédula (11 dígitos) del cliente' });
+    }
+    if (!b.clientName?.trim()) {
+      return res.status(400).json({ error: 'Escribe el nombre o razón social a la que se emite la factura' });
+    }
+  }
+
+  const { subtotal, itbis } = splitItbis(amount, b.itbisApplied);
+  const { number, ncf } = await allocateSequence(branchId, b.ncfType);
 
   // Líneas de la factura: cada servicio/producto DETALLADO por separado (para conciliar).
   let lineItems: { name: string; qty: number; unitPrice: number; total: number }[];
@@ -208,6 +225,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       number, ncf, branchId, patientId: b.patientId ?? null, cashierId: req.staff!.sub,
       treatmentId: b.treatmentId ?? null, paymentKind: b.paymentKind,
       concept: b.concept, subtotal, itbis, total: amount, method: dominant,
+      ncfType: b.ncfType, itbisApplied: b.itbisApplied,
+      clientRnc: b.ncfType === 'B01' ? formatRnc(b.clientRnc!) : null,
+      clientName: b.ncfType === 'B01' ? b.clientName!.trim() : null,
       payments: b.payments, status: 'PAGADA',
       items: { create: lineItems },
     },

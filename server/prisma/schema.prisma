@@ -620,25 +620,30 @@ model CalendarConnection {
 // ─────────────────────────────────────────────────────────────
 
 model Invoice {
-  id          String        @id @default(cuid())
-  number      String        @unique // F-2219
-  branchId    String
-  patientId   String?
-  cashierId   String?
-  therapistId String? // esteticista atribuida a la venta (para puntos/comisiones)
-  treatmentId String? // si el cobro/abono aplica a un tratamiento
-  concept     String
-  subtotal    Int // RD$
-  itbis       Int // 18%
-  total       Int
-  method      PaymentMethod // método dominante (para filtros/listado)
-  payments    Json? // desglose de pago dividido: [{ method, amount }]
-  paymentKind String        @default("TOTAL") // TOTAL | ABONO | SALDO
-  status      InvoiceStatus @default(PAGADA)
+  id           String        @id @default(cuid())
+  number       String        @unique // F-2219
+  branchId     String
+  patientId    String?
+  cashierId    String?
+  therapistId  String? // esteticista atribuida a la venta (para puntos/comisiones)
+  treatmentId  String? // si el cobro/abono aplica a un tratamiento
+  concept      String
+  subtotal     Int // RD$
+  itbis        Int // 18% (0 si el servicio se factura sin ITBIS)
+  // Tipo de comprobante fiscal: B02 consumo final | B01 credito fiscal (exige RNC).
+  ncfType      String        @default("B02")
+  clientRnc    String? // RNC o cedula del cliente (obligatorio en credito fiscal)
+  clientName   String? // razon social a la que se emite
+  itbisApplied Boolean       @default(true) // si no aplica, subtotal = total e itbis = 0
+  total        Int
+  method       PaymentMethod // método dominante (para filtros/listado)
+  payments     Json? // desglose de pago dividido: [{ method, amount }]
+  paymentKind  String        @default("TOTAL") // TOTAL | ABONO | SALDO
+  status       InvoiceStatus @default(PAGADA)
   // DGII e-CF
-  ncf         String? // secuencia NCF
-  ecfTrackId  String? // TrackId DGII
-  issuedAt    DateTime      @default(now())
+  ncf          String? // secuencia NCF
+  ecfTrackId   String? // TrackId DGII
+  issuedAt     DateTime      @default(now())
 
   branch    Branch        @relation(fields: [branchId], references: [id])
   patient   Patient?      @relation(fields: [patientId], references: [id])
@@ -666,7 +671,8 @@ model InvoiceSequence {
   branchId   String @unique
   lastNumber Int    @default(2218) // arranca cerca del prototipo
   ncfType    String @default("B02") // consumidor final
-  lastNcf    Int    @default(0)
+  lastNcf    Int    @default(0) // secuencia B02 (consumo final)
+  lastNcfB01 Int    @default(0) // secuencia B01 (credito fiscal) - va aparte por exigencia DGII
 }
 
 // Cargos que la esteticista envía a recepción para facturar (Fase 2/4)

@@ -66,13 +66,20 @@ export async function buildReceiptImage(r: Receipt): Promise<Blob> {
   text(`${r.branchName} · ${r.branchAddress}`, cx, 'center', '400 13px Arial', MUT); y += 17;
   text(`RNC ${r.rnc} · Tel. ${r.branchPhone}`, cx, 'center', '400 13px Arial', MUT); y += 17;
   if (r.branchEmail) { text(r.branchEmail, cx, 'center', '400 13px Arial', MUT); y += 17; }
-  if (r.ncf) { text(`NCF (e-CF): ${r.ncf}`, cx, 'center', '400 13px Arial', MUT); y += 17; }
+  if (r.ncf) { text(`NCF: ${r.ncf}`, cx, 'center', '400 13px Arial', MUT); y += 17; }
+  // Tipo de comprobante: debe verse también en la imagen que recibe el paciente.
+  text(r.ncfLabel ?? 'Factura de consumo', cx, 'center', '700 13px Arial', r.ncfType === 'B01' ? MAGENTA : MUT); y += 17;
   y += 8; hr(false); y += 24;
 
   // ── Datos ──
   rowKV('Recibo No.', r.id); y += 22;
   rowKV('Fecha', r.date); y += 22;
-  rowKV('Cliente', r.patient); y += 26;
+  if (r.ncfType === 'B01' && r.clientName) {
+    rowKV('Facturar a', r.clientName); y += 22;
+    rowKV('RNC / Cédula', r.clientRnc ?? '—'); y += 26;
+  } else {
+    rowKV('Cliente', r.patient); y += 26;
+  }
 
   // ── Detalle ──
   hr(); y += 22;
@@ -91,7 +98,9 @@ export async function buildReceiptImage(r: Receipt): Promise<Blob> {
 
   // ── Totales ──
   rowKV('Subtotal', fmtRD(r.subtotal), { bold: false, size: 14 }); y += 22;
-  rowKV('ITBIS incluido (18%)', fmtRD(r.itbis), { bold: false, size: 14 }); y += 20;
+  if (r.itbisApplied === false) rowKV('ITBIS', 'No aplica', { bold: false, size: 14 });
+  else rowKV('ITBIS incluido (18%)', fmtRD(r.itbis), { bold: false, size: 14 });
+  y += 20;
   y += 8; hr(false); y += 28;
   ctx.font = '800 20px Arial'; ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.fillText('TOTAL', left, y);
   ctx.fillStyle = MAGENTA; ctx.textAlign = 'right'; ctx.fillText(fmtRD(r.total), right, y);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitItbis } from './invoices.service.js';
+import { splitItbis, rncValido, formatRnc } from './invoices.service.js';
 
 /**
  * El precio que cobra la estética SIEMPRE lleva el ITBIS incluido (18%).
@@ -33,5 +33,61 @@ describe('splitItbis · desglose del ITBIS incluido', () => {
 
   it('un total de cero no genera impuesto', () => {
     expect(splitItbis(0)).toEqual({ subtotal: 0, itbis: 0 });
+  });
+
+  // No todos los servicios estéticos llevan ITBIS: recepción lo decide al cobrar.
+  it('sin ITBIS, el subtotal es el total y el impuesto queda en cero', () => {
+    expect(splitItbis(3500, false)).toEqual({ subtotal: 3500, itbis: 0 });
+    expect(splitItbis(12_345, false)).toEqual({ subtotal: 12_345, itbis: 0 });
+  });
+
+  it('el desglose cuadra con el total lleve o no lleve ITBIS', () => {
+    for (const total of [500, 3500, 9_999, 45_000]) {
+      for (const aplica of [true, false]) {
+        const { subtotal, itbis } = splitItbis(total, aplica);
+        expect(subtotal + itbis).toBe(total);
+      }
+    }
+  });
+});
+
+/**
+ * En crédito fiscal (B01) la DGII exige identificar al comprador: RNC de 9
+ * dígitos o cédula de 11. Emitir sin esto deja un comprobante que no se puede
+ * corregir después.
+ */
+describe('rncValido · identificación del comprador', () => {
+  it('acepta RNC de 9 dígitos', () => {
+    expect(rncValido('131462332')).toBe(true);
+    expect(rncValido('1-31-46233-2')).toBe(true); // con guiones
+  });
+
+  it('acepta cédula de 11 dígitos', () => {
+    expect(rncValido('00112345678')).toBe(true);
+    expect(rncValido('001-1234567-8')).toBe(true);
+  });
+
+  it('rechaza longitudes que no son ni RNC ni cédula', () => {
+    for (const malo of ['', '123', '12345678', '1234567890', '123456789012']) {
+      expect(rncValido(malo), `"${malo}" no debería pasar`).toBe(false);
+    }
+  });
+
+  it('rechaza texto sin dígitos suficientes', () => {
+    expect(rncValido('no-tengo')).toBe(false);
+  });
+});
+
+describe('formatRnc · presentación en el comprobante', () => {
+  it('formatea el RNC de empresa', () => {
+    expect(formatRnc('131462332')).toBe('1-31-46233-2');
+  });
+
+  it('formatea la cédula', () => {
+    expect(formatRnc('00112345678')).toBe('001-1234567-8');
+  });
+
+  it('deja intacto lo que no reconoce', () => {
+    expect(formatRnc('abc')).toBe('abc');
   });
 });
