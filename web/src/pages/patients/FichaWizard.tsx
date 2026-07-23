@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import { Portal } from '../../components/Modal';
 import { MOTIVOS, ANTECEDENTES, MEDICAMENTOS, FOTOTIPOS, FOTOTIPO_DESC } from './fichaConstants';
+import type { PatientPackage } from '../../lib/types';
 
 interface Props {
   patientId: string;
@@ -200,7 +201,7 @@ export default function FichaWizard({ patientId, patientName, onClose, onSaved }
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
           {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
-          {stepNum === 4 && <Step4 tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} policyAck={policyAck} setPolicyAck={setPolicyAck} />}
+          {stepNum === 4 && <Step4 patientId={patientId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} policyAck={policyAck} setPolicyAck={setPolicyAck} />}
         </div>
 
         {/* Footer */}
@@ -382,7 +383,110 @@ function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setP
   );
 }
 
-function Step4({ tratamiento, setTratamiento, rows, setRows, policyAck, setPolicyAck }: {
+type AreaOptFicha = { key: string; label: string; grupo: string };
+
+/**
+ * Panel del PLAN PAGADO en el paso clínico: le muestra a la esteticista el servicio/combo
+ * que el paciente compró (con sus sesiones reales) y le deja elegir las ÁREAS a trabajar.
+ * Las sesiones se reparten entre las áreas elegidas. Reutiliza el mismo endpoint del drawer.
+ */
+function PlanPagado({ patientId, onPlan }: { patientId: string; onPlan: (p: { name: string; sessions: number } | null) => void }) {
+  const toast = useToast();
+  const [pkg, setPkg] = useState<PatientPackage | null>(null);
+  const [opciones, setOpciones] = useState<AreaOptFicha[]>([]);
+  const [sel, setSel] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    setLoading(true);
+    Promise.all([
+      api.get<{ packages?: PatientPackage[] }>(`/patients/${patientId}`),
+      api.get<AreaOptFicha[]>('/catalog/body-areas').catch(() => []),
+    ]).then(([detail, opts]) => {
+      if (!vivo) return;
+      const activo = (detail.packages ?? []).find((p) => p.remaining > 0) ?? (detail.packages ?? [])[0] ?? null;
+      setPkg(activo);
+      setOpciones(opts);
+      setSel((activo?.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
+      onPlan(activo ? { name: activo.name, sessions: activo.total } : null);
+      setLoading(false);
+    }).catch(() => { if (vivo) { setLoading(false); } });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  if (loading) return <div className="mb-4 rounded-[11px] border border-line bg-bg px-4 py-3 text-[12.5px] text-muted">Cargando servicio pagado…</div>;
+  if (!pkg) return (
+    <div className="mb-4 rounded-[11px] border border-dashed border-line px-4 py-3 text-[12.5px] text-muted">
+      Aún no hay un servicio/combo pagado para este paciente. Aparecerá aquí una vez recepción registre el cobro.
+    </div>
+  );
+
+  const grupos = [
+    { label: 'Corporal', grupo: 'CORPORAL', areas: opciones.filter((o) => o.grupo === 'CORPORAL') },
+    { label: 'Láser', grupo: 'LASER', areas: opciones.filter((o) => o.grupo === 'LASER') },
+  ].filter((g) => (pkg.areaGroup ? g.grupo === pkg.areaGroup : true) && g.areas.length > 0);
+  const extras = (pkg.areas ?? []).filter((a) => a.isExtra).map((a) => a.area);
+  const toggle = (k: string) => { if (extras.includes(k)) return; setSel((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k])); };
+  const porArea = sel.length ? Math.floor(pkg.total / sel.length) : 0;
+
+  async function guardarAreas() {
+    if (!sel.length) { toast('Elige al menos un área a trabajar'); return; }
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string }>(`/patients/treatments/${pkg!.id}/areas`, { areas: sel });
+      toast(r.message);
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mb-4 rounded-[11px] border border-magenta/40 bg-magenta-soft p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-magenta text-[13px] text-white">✦</span>
+        <div className="flex-1">
+          <div className="text-[13.5px] font-extrabold text-magenta">{pkg.name}</div>
+          <div className="text-[11.5px] text-muted">{pkg.total} sesiones · {pkg.done} hechas · {pkg.remaining} restantes</div>
+        </div>
+      </div>
+      {(pkg.services ?? []).length > 0 && (
+        <div className="mb-2.5 flex flex-wrap gap-1.5">
+          {pkg.services!.map((s) => (
+            <span key={s.id} className="rounded-full bg-card px-2 py-0.5 text-[11px] font-bold text-navy">
+              {s.name}{s.total ? ` · ${s.done ?? 0}/${s.total}` : s.qty ? ` ×${s.qty}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="mb-1.5 text-[11.5px] font-bold text-muted">Áreas a trabajar <span className="font-semibold text-faint">({sel.length} · {porArea} sesiones c/u)</span></div>
+      {grupos.map((g) => (
+        <div key={g.label} className="mb-2 flex flex-col gap-1.5">
+          {grupos.length > 1 && <div className="text-[10.5px] font-bold uppercase tracking-wide text-faint">{g.label}</div>}
+          <div className="flex flex-wrap gap-1.5">
+            {g.areas.map((a) => {
+              const on = sel.includes(a.key); const isExtra = extras.includes(a.key);
+              return (
+                <button key={a.key} type="button" onClick={() => toggle(a.key)} disabled={isExtra}
+                  className="rounded-full border px-3 py-1.5 text-[12px] font-bold disabled:opacity-60"
+                  style={{ borderColor: on || isExtra ? 'var(--magenta)' : 'var(--line)', background: on || isExtra ? 'var(--card)' : 'transparent', color: on || isExtra ? 'var(--magenta)' : 'var(--muted)' }}>
+                  {on ? '✓ ' : ''}{a.label}{isExtra ? ' (adicional)' : ''}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={guardarAreas} disabled={busy}
+        className="mt-1 w-full rounded-[9px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
+        {busy ? 'Guardando…' : 'Guardar áreas del plan'}
+      </button>
+    </div>
+  );
+}
+
+function Step4({ patientId, tratamiento, setTratamiento, rows, setRows, policyAck, setPolicyAck }: {
+  patientId: string;
   tratamiento: string; setTratamiento: (v: string) => void;
   rows: { fecha: string; obs: string }[]; setRows: (v: { fecha: string; obs: string }[]) => void;
   policyAck: boolean; setPolicyAck: (v: boolean) => void;
@@ -391,11 +495,21 @@ function Step4({ tratamiento, setTratamiento, rows, setRows, policyAck, setPolic
     const next = rows.map((r, j) => (j === i ? { ...r, [k]: v } : r));
     setRows(next);
   };
+  // Ajusta el # de filas de control a las sesiones REALES del plan pagado (no un 10 fijo).
+  const onPlan = (p: { name: string; sessions: number } | null) => {
+    if (!p) return;
+    if (!tratamiento.trim()) setTratamiento(`${p.name} — ${p.sessions} sesiones`);
+    if (p.sessions > 0 && rows.length !== p.sessions) {
+      const vacias = rows.every((r) => !r.fecha && !r.obs);
+      if (vacias) setRows(Array.from({ length: p.sessions }, () => ({ fecha: '', obs: '' })));
+    }
+  };
   return (
     <div className="animate-fade">
+      <PlanPagado patientId={patientId} onPlan={onPlan} />
       <label className="mb-4 flex flex-col gap-1.5"><span className={lblCls}>Tratamiento a realizar</span>
         <input className={inputCls} value={tratamiento} onChange={(e) => setTratamiento(e.target.value)} placeholder="Ej. Reducción de medidas — 10 sesiones" /></label>
-      <div className="mb-2.5 text-[12.5px] font-extrabold uppercase text-navy">Control de citas (1 – 10)</div>
+      <div className="mb-2.5 text-[12.5px] font-extrabold uppercase text-navy">Control de citas (1 – {rows.length})</div>
       <div className="mb-4 overflow-hidden rounded-[11px] border border-line">
         <div className="grid grid-cols-[60px_1fr_1.6fr] px-3.5 py-2.5 text-[11.5px] font-bold uppercase text-navy" style={{ background: 'var(--navy-soft)' }}>
           <div>Cita</div><div>Fecha</div><div>Observaciones</div>

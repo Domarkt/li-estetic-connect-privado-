@@ -102,6 +102,8 @@ export type CatalogKind = 'SERVICIO' | 'PAQUETE' | 'COMBO' | 'PRODUCTO' | 'INSUM
 export interface CatalogItem {
   id: string;
   kind: CatalogKind;
+  code?: string | null; // código/SKU
+  showInPortal?: boolean; // visible en el portal del paciente
   name: string;
   category: string | null;
   price: number;

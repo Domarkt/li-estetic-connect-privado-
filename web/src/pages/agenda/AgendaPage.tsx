@@ -33,7 +33,8 @@ export default function AgendaPage() {
   const isMasa = staff?.role === 'ESTETICISTA';
   const isAdmin = staff?.role === 'ADMIN';
   // Abrir/cerrar turno es exclusivo de la esteticista (y admin). Recepción cancela citas.
-  const canOpenTurno = isMasa || isAdmin;
+  // Abrir/cerrar turno: esteticista, admin y también recepción (respaldo en cabina).
+  const canOpenTurno = isMasa || isAdmin || staff?.role === 'RECEPCIONISTA';
   const canCancel = staff?.role === 'RECEPCIONISTA' || isAdmin;
   const isToday = date === todayISO();
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long' });

@@ -33,7 +33,7 @@ export default function CatalogPage() {
   }, [reload]);
 
   const texto = q.trim().toLowerCase();
-  const shown = items.filter((i) => i.kind === tab && (!texto || i.name.toLowerCase().includes(texto)));
+  const shown = items.filter((i) => i.kind === tab && (!texto || i.name.toLowerCase().includes(texto) || (i.code ?? '').toLowerCase().includes(texto)));
   const refresh = () => setReload((r) => r + 1);
 
   return (
@@ -75,7 +75,10 @@ export default function CatalogPage() {
             </div>
             {shown.map((it) => (
               <div key={it.id} className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line-2 px-4 py-2.5 hover:bg-bg">
-                <div className="truncate text-[13px] font-bold">{it.name}</div>
+                <div className="min-w-0">
+                  {it.code && <div className="font-mono text-[10.5px] font-bold text-faint">{it.code}</div>}
+                  <div className="truncate text-[13px] font-bold">{it.name}</div>
+                </div>
                 <div className="truncate text-[12px] text-muted">
                   {STOCKABLE(it.kind) ? (it.unit ? `Por ${it.unit}` : 'Inventariable') : it.sessions > 1 ? `${it.sessions} sesiones` : it.category ?? it.tag ?? '1 sesión'}
                 </div>
@@ -103,6 +106,7 @@ export default function CatalogPage() {
                 {STOCKABLE(it.kind) ? (it.unit ? `Por ${it.unit}` : 'Inventariable') : it.category ?? it.tag ?? `${it.sessions} ses`}
               </span>
             </div>
+            {it.code && <div className="mb-0.5 font-mono text-[10.5px] font-bold text-faint">{it.code}</div>}
             <div className="mb-1.5 text-sm font-bold leading-tight">{it.name}</div>
             <div className="mb-3 text-xs text-faint">{it.kind === 'INSUMO' ? 'Insumo operativo' : it.sessions > 1 ? `${it.sessions} sesiones` : it.tag || '1 sesión'}</div>
             <div className="text-[19px] font-extrabold text-magenta">{!it.price ? <span className="text-[13px] font-bold text-muted">Sin precio</span> : fmtRD(it.price)}</div>
@@ -172,10 +176,12 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
 }) {
   const toast = useToast();
   const [kind, setKind] = useState<CatalogKind>(item?.kind ?? defaultKind);
+  const [code, setCode] = useState(item?.code ?? '');
   const [name, setName] = useState(item?.name ?? '');
   const [price, setPrice] = useState(item?.price != null ? String(item.price) : '');
   const [sessions, setSessions] = useState(item?.sessions ? String(item.sessions) : '1');
   const [unit, setUnit] = useState(item?.unit ?? '');
+  const [showInPortal, setShowInPortal] = useState(item?.showInPortal ?? true);
   const [busy, setBusy] = useState(false);
   const stockable = STOCKABLE(kind);
   // Un combo/paquete incluye varias técnicas; la esteticista marca cuáles aplica por sesión.
@@ -208,6 +214,8 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
     setBusy(true);
     const payload = {
       kind, name: name.trim(),
+      code: code.trim() || undefined,
+      ...(componible ? { showInPortal } : {}),
       price: Number(price) || 0,
       sessions: Number(sessions) || 1,
       unit: stockable ? (unit.trim() || undefined) : undefined,
@@ -241,7 +249,10 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
               <option value="SERVICIO">Servicio</option><option value="PAQUETE">Paquete</option><option value="COMBO">Combo</option><option value="PRODUCTO">Producto</option><option value="INSUMO">Insumo operativo</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'INSUMO' ? 'Ej. Toallas / Papel de baño' : 'Ej. Radiofrecuencia facial'} /></label>
+          <div className="flex gap-3">
+            <label className="flex w-[130px] flex-none flex-col gap-1.5"><span className="text-xs font-bold text-muted">Código</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] uppercase outline-none focus:border-magenta" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Ej. SRV-001" /></label>
+            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'INSUMO' ? 'Ej. Toallas / Papel de baño' : 'Ej. Radiofrecuencia facial'} /></label>
+          </div>
           <div className="flex gap-3">
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">{kind === 'INSUMO' ? 'Costo (opcional)' : 'Precio RD$ (opcional)'}</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} placeholder="Dejar vacío = sin precio" /></label>
             {stockable ? (
@@ -251,6 +262,20 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             )}
           </div>
           {stockable && <p className="text-[11.5px] text-faint">El stock se controla por sucursal en la pestaña <b>Inventario</b>.</p>}
+
+          {/* Curaduría del portal: la admin decide si el paciente ve este combo/paquete. */}
+          {componible && (
+            <button type="button" onClick={() => setShowInPortal((v) => !v)}
+              className="flex items-center justify-between rounded-[9px] border border-line bg-bg px-3.5 py-3 text-left">
+              <span className="flex flex-col">
+                <span className="text-[13px] font-bold">Mostrar en el portal del paciente</span>
+                <span className="text-[11px] text-faint">{showInPortal ? 'Los pacientes lo ven en la tienda del portal.' : 'Oculto: solo se vende desde recepción.'}</span>
+              </span>
+              <span className="relative flex h-6 w-11 flex-none items-center rounded-full transition" style={{ background: showInPortal ? 'var(--magenta)' : 'var(--line)' }}>
+                <span className="absolute h-5 w-5 rounded-full bg-white transition-all" style={{ left: showInPortal ? 22 : 2 }} />
+              </span>
+            </button>
+          )}
 
           {/* Tipo de áreas del combo: define qué grupo se ofrece al asignar áreas al paciente. */}
           {componible && (

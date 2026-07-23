@@ -155,7 +155,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
         payments: paymentsList, treatmentId: treatmentId ?? undefined,
         paymentKind: (treatmentId || chargeIds.length || freeAbono) ? payKind : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
-        items: usingCart ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty })) : undefined,
+        items: usingCart ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty, catalogItemId: c.catalogId })) : undefined,
         fullAmount: freeAbono ? cartTotal : undefined,
       });
       toast(r.message); onEmitted(r.receipt); onClose();

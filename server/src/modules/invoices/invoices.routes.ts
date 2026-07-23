@@ -11,6 +11,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, sendReceipt } from '../mail/mail.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
+import { createTreatmentFromCatalog } from '../patients/areas.service.js';
 
 export const invoicesRouter = Router();
 
@@ -87,7 +88,8 @@ const billSchema = z.object({
   payments: z.array(z.object({ method: methodEnum, amount: z.number().int().positive() })).min(1),
   chargeItemIds: z.array(z.string()).optional(), // marca estos cargos como facturados
   // Carrito: varios servicios/productos en un mismo recibo (cada uno detallado, con cantidad).
-  items: z.array(z.object({ name: z.string().min(1), price: z.number().int().nonnegative(), qty: z.number().int().positive().default(1) })).optional(),
+  // catalogItemId: si la línea es un combo/paquete, con esto se le crea el plan de sesiones al paciente.
+  items: z.array(z.object({ name: z.string().min(1), price: z.number().int().nonnegative(), qty: z.number().int().positive().default(1), catalogItemId: z.string().optional() })).optional(),
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
   paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
   fullAmount: z.number().int().positive().optional(), // precio total del combo/compra (para abono a concepto libre)
@@ -193,6 +195,18 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     await prisma.chargeItem.create({
       data: { branchId, patientId: b.patientId, name: `Saldo pendiente: ${b.concept}`, price: saldoServicios, createdById: req.staff!.sub },
     });
+  }
+
+  // Crea el PLAN de sesiones cuando se cobra un combo/paquete: aquí es donde el servicio
+  // pagado queda ligado al paciente (con sus sesiones reales, áreas y técnicas), para que
+  // la esteticista lo vea al recibir la cita y pueda definir las áreas a trabajar.
+  if (b.patientId && b.items?.length) {
+    for (const it of b.items) {
+      if (!it.catalogItemId) continue;
+      try {
+        await createTreatmentFromCatalog(b.patientId, it.catalogItemId, { qty: it.qty, paid: true });
+      } catch { /* el plan no debe bloquear el cobro */ }
+    }
   }
 
   // Atribuye la venta a la esteticista que atiende al paciente (ficha) para puntos y comisiones.

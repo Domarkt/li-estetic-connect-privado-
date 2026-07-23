@@ -103,6 +103,46 @@ export async function seedTreatmentTechniques(treatmentId: string, items: { name
   });
 }
 
+/**
+ * Crea el tratamiento activo del paciente a partir de un ítem del catálogo (combo/paquete)
+ * cuando se COBRA. Aquí es donde nace el plan que verá la esteticista: sesiones reales del
+ * ítem (no un 10 fijo), áreas por defecto y conteo por técnica. Best-effort e idempotente:
+ * si el paciente ya tiene un tratamiento activo de ese mismo ítem, no crea otro.
+ *
+ * @returns el id del tratamiento creado, o null si se omitió (ya existía o el ítem no aplica).
+ */
+export async function createTreatmentFromCatalog(
+  patientId: string,
+  catalogItemId: string,
+  opts: { qty?: number; paid?: boolean } = {},
+): Promise<string | null> {
+  const item = await prisma.catalogItem.findUnique({
+    where: { id: catalogItemId },
+    include: { incluye: { include: { service: true } } },
+  });
+  // Solo los combos/paquetes generan un plan de sesiones; los servicios sueltos no.
+  if (!item || (item.kind !== 'COMBO' && item.kind !== 'PAQUETE')) return null;
+
+  // Idempotencia: no duplicar el plan si ya tiene uno activo de este mismo ítem.
+  const yaTiene = await prisma.treatment.findFirst({ where: { patientId, catalogItemId: item.id, active: true } });
+  if (yaTiene) return null;
+
+  const qty = Math.max(1, opts.qty ?? 1);
+  const total = Math.max(1, (item.sessions ?? 1) * qty);
+  const precio = (item.price ?? 0) * qty;
+  const treatment = await prisma.treatment.create({
+    data: {
+      patientId, name: item.name, catalogItemId: item.id,
+      totalSessions: total, doneSessions: 0,
+      // El dinero se concilia por factura/cargo; el saldo del plan queda en 0 si se pagó.
+      price: precio, balance: opts.paid ? 0 : precio,
+    },
+  });
+  if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);
+  if (item.incluye?.length) await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty * qty })));
+  return treatment.id;
+}
+
 /** Serializa las técnicas de un tratamiento para la interfaz. */
 export function serializeTechniques(techs: { id: string; name: string; total: number; done: number }[]) {
   return techs.map((t) => ({

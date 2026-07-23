@@ -347,7 +347,7 @@ portalRouter.post('/appointments/:id/cancel', async (req, res) => {
 portalRouter.get('/packages', async (req, res) => {
   const [treatment, shop] = await Promise.all([
     prisma.treatment.findFirst({ where: { patientId: req.patient!.patientId, active: true }, orderBy: { createdAt: 'desc' } }),
-    prisma.catalogItem.findMany({ where: { active: true, kind: { in: ['PAQUETE', 'COMBO'] } }, orderBy: { price: 'asc' } }),
+    prisma.catalogItem.findMany({ where: { active: true, showInPortal: true, kind: { in: ['PAQUETE', 'COMBO'] } }, orderBy: { price: 'asc' } }),
   ]);
   res.json({
     active: treatment ? {

@@ -400,8 +400,10 @@ model TreatmentArea {
 
 model CatalogItem {
   id        String      @id @default(cuid())
-  kind      CatalogKind
-  name      String
+  kind         CatalogKind
+  code         String? // código/SKU del ítem (servicio, combo, paquete, insumo)
+  showInPortal Boolean @default(true) // si el paciente lo ve en el catálogo del portal
+  name         String
   category  String?
   price     Int         @default(0) // RD$ (pesos enteros). 0 = sin precio: se define al cobrar.
   sessions  Int         @default(1)

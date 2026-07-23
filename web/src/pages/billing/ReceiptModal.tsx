@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type Receipt } from '../../lib/types';
+import { buildReceiptImage } from './receiptImage';
 
 const SIZES: { key: string; label: string; width: string }[] = [
   { key: 'carta', label: 'Carta/A4', width: '380px' },
@@ -21,6 +22,47 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
   const [correo, setCorreo] = useState(receipt.patientEmail ?? '');
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [imgBusy, setImgBusy] = useState(false);
+
+  // Normaliza el celular RD para wa.me (10 dígitos → +1). Best-effort.
+  function waPhone(p?: string | null): string {
+    const d = (p ?? '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.length === 10) return '1' + d;
+    return d;
+  }
+
+  /**
+   * Genera el recibo como IMAGEN y lo envía por WhatsApp.
+   * En celular: menú nativo de compartir (adjunta la imagen directo en WhatsApp).
+   * En escritorio: descarga la imagen y abre el chat para adjuntarla con un toque.
+   */
+  async function enviarImagenWhatsapp() {
+    if (imgBusy) return;
+    setImgBusy(true);
+    try {
+      const blob = await buildReceiptImage(receipt);
+      const file = new File([blob], `recibo-${receipt.id}.png`, { type: 'image/png' });
+      const texto = `Hola ${receipt.patient} 💜 Aquí tienes tu recibo de Li Estetic Center. ¡Gracias por tu visita!`;
+      const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean };
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], text: texto, title: `Recibo ${receipt.id}` });
+        toast('Recibo compartido');
+      } else {
+        // Escritorio: descarga la imagen y abre WhatsApp Web para adjuntarla.
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+        URL.revokeObjectURL(url);
+        const ph = waPhone(receipt.patientPhone);
+        window.open(ph ? `https://wa.me/${ph}?text=${encodeURIComponent(texto)}` : 'https://web.whatsapp.com', '_blank', 'noopener');
+        toast('Imagen descargada · adjúntala en el chat de WhatsApp');
+      }
+      setEnviado(true);
+    } catch (e) {
+      // Si el usuario cancela el menú de compartir, no es un error real.
+      if ((e as Error)?.name !== 'AbortError') toast(e instanceof Error ? e.message : 'No se pudo generar la imagen');
+    } finally { setImgBusy(false); }
+  }
 
   function print() {
     try { window.print(); } catch { /* ignore */ }
@@ -113,6 +155,16 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
             <span className="text-[13px] font-extrabold">Enviar el recibo al paciente</span>
             {enviado && <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[11px] font-bold text-ok">✓ Enviado</span>}
           </div>
+
+          {/* Enviar el recibo como IMAGEN por WhatsApp (no como texto). */}
+          <button onClick={enviarImagenWhatsapp} disabled={imgBusy}
+            className="mb-2.5 flex w-full items-center justify-center gap-2 rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60"
+            style={{ background: '#25D366' }}>
+            <span className="text-[15px]">🖼️</span> {imgBusy ? 'Generando imagen…' : 'Enviar recibo (imagen) por WhatsApp'}
+          </button>
+          <div className="mb-2.5 text-center text-[11px] text-faint">En el celular abre WhatsApp con la imagen adjunta. En la computadora la descarga y abre el chat.</div>
+          <div className="mb-2.5 border-t border-line" />
+          <div className="mb-1.5 text-[11.5px] font-bold text-muted">O envíalo como texto / correo:</div>
           <div className="flex flex-col gap-2">
             <label className="flex items-center gap-2.5 rounded-[10px] border px-3.5 py-2.5"
               style={{ borderColor: porWhatsapp ? 'var(--magenta)' : 'var(--line)', background: porWhatsapp ? 'var(--magenta-soft)' : 'var(--card)' }}>
