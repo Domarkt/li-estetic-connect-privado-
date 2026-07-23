@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import { notFound, errorHandler } from './middleware/error.js';
+import { auditRouter } from './modules/audit/audit.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
 import { catalogRouter } from './modules/catalog/catalog.routes.js';
@@ -63,8 +64,12 @@ export function createApp() {
 
   app.use('/api', apiLimiter);
   app.use('/api/auth/staff/login', authLimiter);
-  app.use('/api/auth/patient/login', authLimiter);
+  // Acceso del paciente por código de un solo uso: se limitan tanto el envío
+  // (para no spamear su correo) como la verificación (anti fuerza bruta).
+  app.use('/api/auth/patient/request-code', authLimiter);
+  app.use('/api/auth/patient/verify-code', authLimiter);
   app.use('/api/auth', authRouter);
+  app.use('/api/audit', auditRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/catalog', catalogRouter);
   app.use('/api/patients', patientsRouter);

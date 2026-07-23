@@ -112,19 +112,19 @@ enum ChargeItemStatus {
 // ─────────────────────────────────────────────────────────────
 
 model Branch {
-  id        String   @id @default(cuid())
-  code      String   @unique // e1, e2, e3
-  name      String // Estética 1
-  place     String // Plaza San Vicente, 1er nivel
-  dotColor  String // color de marca de la sucursal
-  address   String // dirección impresa en el recibo
-  phone     String   @default("809-000-0000")
-  email     String? // correo de la sucursal (contacto + reply-to de los correos a pacientes)
+  id            String   @id @default(cuid())
+  code          String   @unique // e1, e2, e3
+  name          String // Estética 1
+  place         String // Plaza San Vicente, 1er nivel
+  dotColor      String // color de marca de la sucursal
+  address       String // dirección impresa en el recibo
+  phone         String   @default("809-000-0000")
+  email         String? // correo de la sucursal (contacto + reply-to de los correos a pacientes)
   // Metas (parametrizables por Admin — Fase 6)
-  monthlyGoal    Int  @default(0)
-  dailyGoal      Int  @default(0)
-  perAsesorGoal  Int  @default(0)
-  createdAt DateTime @default(now())
+  monthlyGoal   Int      @default(0)
+  dailyGoal     Int      @default(0)
+  perAsesorGoal Int      @default(0)
+  createdAt     DateTime @default(now())
 
   users         User[]
   patients      Patient[]
@@ -142,33 +142,33 @@ model Branch {
 
 // Cierre de caja diario (conteo ciego por recepción, cuadre por admin)
 model CashClose {
-  id            String   @id @default(cuid())
-  branchId      String
-  day           DateTime // fecha del cierre (00:00 local)
-  status        String   @default("ENVIADO") // ENVIADO | CUADRADO
+  id               String    @id @default(cuid())
+  branchId         String
+  day              DateTime // fecha del cierre (00:00 local)
+  status           String    @default("ENVIADO") // ENVIADO | CUADRADO
   // Conteo de recepción
-  denominations Json // { "2000": qty, "1000": qty, ... } efectivo
-  cardVouchers  Json // [montos de vouchers de tarjeta]
-  countedCash     Int @default(0)
-  countedCard     Int @default(0)
-  countedTransfer Int @default(0)
-  countedAzul     Int @default(0)
+  denominations    Json // { "2000": qty, "1000": qty, ... } efectivo
+  cardVouchers     Json // [montos de vouchers de tarjeta]
+  countedCash      Int       @default(0)
+  countedCard      Int       @default(0)
+  countedTransfer  Int       @default(0)
+  countedAzul      Int       @default(0)
   // Snapshot de lo ESPERADO según facturas del día (no visible para recepción)
-  expectedCash     Int @default(0)
-  expectedCard     Int @default(0)
-  expectedTransfer Int @default(0)
-  expectedAzul     Int @default(0)
-  notes          String?
-  submittedById  String?
-  reconciledById String?
-  reconciledAt   DateTime?
+  expectedCash     Int       @default(0)
+  expectedCard     Int       @default(0)
+  expectedTransfer Int       @default(0)
+  expectedAzul     Int       @default(0)
+  notes            String?
+  submittedById    String?
+  reconciledById   String?
+  reconciledAt     DateTime?
   // Resolución del descuadre por el administrador
-  adminNote      String? // comentario: a qué se debe la diferencia
-  resolution     String? // NONE | REAL_OK | FALTANTE_DESCONTAR | SOBRANTE_DEPOSITAR | AJUSTE_METODO
-  deductUserId   String? // usuario al que se le descuenta el faltante real
-  deductAmount   Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  adminNote        String? // comentario: a qué se debe la diferencia
+  resolution       String? // NONE | REAL_OK | FALTANTE_DESCONTAR | SOBRANTE_DEPOSITAR | AJUSTE_METODO
+  deductUserId     String? // usuario al que se le descuenta el faltante real
+  deductAmount     Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id])
 
@@ -195,32 +195,32 @@ model StaffDeduction {
 // ─────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role
-  branchId     String? // ADMIN puede ser null (todas las sucursales)
-  active       Boolean  @default(true)
+  id               String   @id @default(cuid())
+  name             String
+  email            String   @unique
+  passwordHash     String
+  role             Role
+  branchId         String? // ADMIN puede ser null (todas las sucursales)
+  active           Boolean  @default(true)
   // Permiso extra: gestionar el catálogo (servicios/productos) sin ser admin.
-  canManageCatalog Boolean @default(false)
-  avatarColor  String   @default("#B31C86")
-  createdAt    DateTime @default(now())
+  canManageCatalog Boolean  @default(false)
+  avatarColor      String   @default("#B31C86")
+  createdAt        DateTime @default(now())
 
   branch Branch? @relation(fields: [branchId], references: [id])
 
   // Como esteticista asignada
-  appointments    Appointment[]  @relation("TherapistAppointments")
-  clinicalRecords ClinicalRecord[] @relation("TherapistRecords")
-  invoicesIssued  Invoice[]      @relation("CashierInvoices")
-  pointsLedger    PointsEntry[]
-  redemptions     Redemption[]
+  appointments     Appointment[]     @relation("TherapistAppointments")
+  clinicalRecords  ClinicalRecord[]  @relation("TherapistRecords")
+  invoicesIssued   Invoice[]         @relation("CashierInvoices")
+  pointsLedger     PointsEntry[]
+  redemptions      Redemption[]
   therapistProfile TherapistProfile?
-  chargeItems     ChargeItem[]   @relation("ChargeItemCreatedBy")
-  notifications   Notification[]
-  deductions      StaffDeduction[]
-  assetsAssigned  Asset[]        @relation("AssetAssignee")
-  assetEvents     AssetEvent[]   @relation("AssetReporter")
+  chargeItems      ChargeItem[]      @relation("ChargeItemCreatedBy")
+  notifications    Notification[]
+  deductions       StaffDeduction[]
+  assetsAssigned   Asset[]           @relation("AssetAssignee")
+  assetEvents      AssetEvent[]      @relation("AssetReporter")
 }
 
 // Alertas internas para el personal (aviso a la esteticista, ficha lista, etc.)
@@ -284,19 +284,19 @@ model Patient {
 
 // Ficha clínica digital (una por paciente, 4 pasos divididos por rol)
 model ClinicalRecord {
-  id       String      @id @default(cuid())
-  patientId String     @unique
-  status   FichaStatus @default(PENDIENTE)
-  fichaNo  Int         @default(autoincrement())
+  id        String      @id @default(cuid())
+  patientId String      @unique
+  status    FichaStatus @default(PENDIENTE)
+  fichaNo   Int         @default(autoincrement())
 
   // Paso 1 — Datos & motivo (Recepción)
   consultDate DateTime?
   motivos     String[] // Envejecimiento, Arrugas, Manchas, ...
 
   // Paso 2 — Antecedentes (Esteticista)
-  antecedentes  Json? // { alergias:bool, diabetes:bool, ... }
-  ginecoObst    Json? // { embarazos, partos, abortos, lactancia }
-  quirurgicos   Json? // { implantes, cirugia, observaciones }
+  antecedentes Json? // { alergias:bool, diabetes:bool, ... }
+  ginecoObst   Json? // { embarazos, partos, abortos, lactancia }
+  quirurgicos  Json? // { implantes, cirugia, observaciones }
 
   // Paso 3 — Medicamentos & piel (Esteticista)
   medicamentos Json? // { asa:bool, acenocumarol:bool, ... }
@@ -315,12 +315,12 @@ model ClinicalRecord {
   cancelPolicyAck Boolean @default(false)
   signatureData   String? // firma (base64/svg) — slot
 
-  therapistId    String?
+  therapistId     String?
   sentToPatientAt DateTime? // recepción envió la ficha al paciente para autocompletarla
   patientFilledAt DateTime? // el paciente completó su parte clínica
-  completedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   therapist User?   @relation("TherapistRecords", fields: [therapistId], references: [id])
@@ -328,20 +328,20 @@ model ClinicalRecord {
 
 // Tratamiento/paquete activo de un paciente (progreso de sesiones)
 model Treatment {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   patientId     String
   catalogItemId String?
   name          String
   totalSessions Int
-  doneSessions  Int      @default(0)
-  price         Int      @default(0) // valor total del paquete RD$
-  balance       Int      @default(0) // saldo pendiente RD$ (pesos enteros)
+  doneSessions  Int       @default(0)
+  price         Int       @default(0) // valor total del paquete RD$
+  balance       Int       @default(0) // saldo pendiente RD$ (pesos enteros)
   expiresAt     DateTime?
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
 
-  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  patient     Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem?         @relation(fields: [catalogItemId], references: [id])
   invoices    Invoice[]
   areas       TreatmentArea[]
   techniques  TreatmentTechnique[]
@@ -367,12 +367,12 @@ model TreatmentTechnique {
 // Catálogo de áreas del cuerpo (administrable): corporal (abdomen, espalda…) y láser
 // (piernas, axilas…). La administración puede agregar más desde Configuración.
 model BodyArea {
-  id        String  @id @default(cuid())
-  key       String  @unique // clave estable guardada en citas y tratamientos (ej. MUSLO)
+  id        String   @id @default(cuid())
+  key       String   @unique // clave estable guardada en citas y tratamientos (ej. MUSLO)
   label     String // nombre visible (ej. Muslo)
   grupo     String // CORPORAL | LASER
-  active    Boolean @default(true)
-  sortOrder Int     @default(0)
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
   createdAt DateTime @default(now())
 }
 
@@ -399,28 +399,28 @@ model TreatmentArea {
 // ─────────────────────────────────────────────────────────────
 
 model CatalogItem {
-  id        String      @id @default(cuid())
+  id           String      @id @default(cuid())
   kind         CatalogKind
   code         String? // código/SKU del ítem (servicio, combo, paquete, insumo)
-  showInPortal Boolean @default(true) // si el paciente lo ve en el catálogo del portal
+  showInPortal Boolean     @default(true) // si el paciente lo ve en el catálogo del portal
   name         String
-  category  String?
-  price     Int         @default(0) // RD$ (pesos enteros). 0 = sin precio: se define al cobrar.
-  sessions  Int         @default(1)
-  stock     Int? // (legacy) stock global; el stock real es por sucursal en StockLevel
-  unit      String? // unidad de medida del producto/insumo: "unidad", "rollo", "litro", "caja"...
-  tag       String? // "Ahorro RD$2,000", "Popular"
-  areaGroup   String? // combos/paquetes: familia de áreas — CORPORAL | LASER (para el selector)
-  defaultAreas String[] @default([]) // áreas que trae el combo por defecto (se cargan al venderlo)
-  active    Boolean     @default(true)
-  createdAt DateTime    @default(now())
+  category     String?
+  price        Int         @default(0) // RD$ (pesos enteros). 0 = sin precio: se define al cobrar.
+  sessions     Int         @default(1)
+  stock        Int? // (legacy) stock global; el stock real es por sucursal en StockLevel
+  unit         String? // unidad de medida del producto/insumo: "unidad", "rollo", "litro", "caja"...
+  tag          String? // "Ahorro RD$2,000", "Popular"
+  areaGroup    String? // combos/paquetes: familia de áreas — CORPORAL | LASER (para el selector)
+  defaultAreas String[]    @default([]) // áreas que trae el combo por defecto (se cargan al venderlo)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
 
-  treatments   Treatment[]
-  chargeItems  ChargeItem[]
-  stockLevels  StockLevel[]
-  stockMoves   StockMovement[]
-  incluye      ComboService[] @relation("ComboIncluye") // si es combo/paquete: técnicas que incluye
-  incluidoEn   ComboService[] @relation("ServicioEnCombo")
+  treatments  Treatment[]
+  chargeItems ChargeItem[]
+  stockLevels StockLevel[]
+  stockMoves  StockMovement[]
+  incluye     ComboService[]  @relation("ComboIncluye") // si es combo/paquete: técnicas que incluye
+  incluidoEn  ComboService[]  @relation("ServicioEnCombo")
 }
 
 // Técnica/servicio incluido en un combo o paquete (vacumterapia, cavitación,
@@ -499,21 +499,21 @@ model AssetEvent {
 // El hilo es la sucursal (branchId). Datos del emisor/paciente denormalizados
 // para no depender de relaciones (y sobrevivir a cambios de sucursal del paciente).
 model TeamMessage {
-  id          String   @id @default(cuid())
-  branchId    String // hilo = sucursal
-  senderId    String
-  senderName  String
-  senderRole  String // ADMIN | RECEPCIONISTA | ESTETICISTA
-  targetRole  String   @default("ALL") // ALL | RECEPCIONISTA | ESTETICISTA — a quién va dirigido
-  body        String   @default("") // puede ir vacío si el mensaje es solo un adjunto
-  patientId   String? // paciente etiquetado (opcional)
-  patientName String?
+  id             String   @id @default(cuid())
+  branchId       String // hilo = sucursal
+  senderId       String
+  senderName     String
+  senderRole     String // ADMIN | RECEPCIONISTA | ESTETICISTA
+  targetRole     String   @default("ALL") // ALL | RECEPCIONISTA | ESTETICISTA — a quién va dirigido
+  body           String   @default("") // puede ir vacío si el mensaje es solo un adjunto
+  patientId      String? // paciente etiquetado (opcional)
+  patientName    String?
   // Adjunto (foto/video/documento) guardado como data URL base64 en la propia DB.
   attachmentData String? // data:...;base64,... (límite ~10 MB)
   attachmentName String? // nombre original del archivo
   attachmentKind String? // image | video | file
   attachmentMime String? // tipo MIME original
-  createdAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@index([branchId, createdAt])
 }
@@ -550,38 +550,38 @@ model StockMovement {
 // ─────────────────────────────────────────────────────────────
 
 model Appointment {
-  id            String            @id @default(cuid())
-  branchId      String
-  patientId     String
-  therapistId   String?
-  serviceName   String
-  catalogItemId String?
-  treatmentId   String? // paquete/combo al que pertenece esta sesión (para descontarla al cerrar)
-  areas         String[] @default([]) // áreas trabajadas en esta cita (consume 1 sesión por área)
-  techniques    String[] @default([]) // checklist de técnicas aplicadas ese día (cavitación, radiofrecuencia...)
-  startsAt      DateTime
-  durationMin   Int               @default(60)
-  status        AppointmentStatus @default(SIN_CONFIRMAR)
-  patientType   PatientType       @default(RECURRENTE) // marcado al agendar
-  sessionNo     Int? // sesión N del tratamiento
-  notes         String?
-  code          String?           @unique // código único de turno (lo valida la esteticista en cabina)
-  codeUsedAt    DateTime? // cuándo se validó el código (turno abierto); evita reuso
-  serviceStartedAt DateTime? // inicia al abrir turno (contador, oculto para la esteticista)
-  serviceEndedAt   DateTime? // "Proceso terminado"
+  id                 String            @id @default(cuid())
+  branchId           String
+  patientId          String
+  therapistId        String?
+  serviceName        String
+  catalogItemId      String?
+  treatmentId        String? // paquete/combo al que pertenece esta sesión (para descontarla al cerrar)
+  areas              String[]          @default([]) // áreas trabajadas en esta cita (consume 1 sesión por área)
+  techniques         String[]          @default([]) // checklist de técnicas aplicadas ese día (cavitación, radiofrecuencia...)
+  startsAt           DateTime
+  durationMin        Int               @default(60)
+  status             AppointmentStatus @default(SIN_CONFIRMAR)
+  patientType        PatientType       @default(RECURRENTE) // marcado al agendar
+  sessionNo          Int? // sesión N del tratamiento
+  notes              String?
+  code               String?           @unique // código único de turno (lo valida la esteticista en cabina)
+  codeUsedAt         DateTime? // cuándo se validó el código (turno abierto); evita reuso
+  serviceStartedAt   DateTime? // inicia al abrir turno (contador, oculto para la esteticista)
+  serviceEndedAt     DateTime? // "Proceso terminado"
   serviceDurationSec Int? // duración calculada del servicio
-  rating        Int? // calificación del paciente (1-5)
-  ratingComment String? // comentario si la calificación es < 5
-  googleEventId String? // sync Google Calendar (Fase 3)
-  reminderSentAt DateTime?
-  cancelReason  String? // motivo de cancelación (obligatorio al cancelar)
-  cancelledBy   String? // STAFF | PATIENT
-  cancelledAt   DateTime?
-  createdAt     DateTime          @default(now())
+  rating             Int? // calificación del paciente (1-5)
+  ratingComment      String? // comentario si la calificación es < 5
+  googleEventId      String? // sync Google Calendar (Fase 3)
+  reminderSentAt     DateTime?
+  cancelReason       String? // motivo de cancelación (obligatorio al cancelar)
+  cancelledBy        String? // STAFF | PATIENT
+  cancelledAt        DateTime?
+  createdAt          DateTime          @default(now())
 
-  branch      Branch  @relation(fields: [branchId], references: [id])
-  patient     Patient @relation(fields: [patientId], references: [id])
-  therapist   User?   @relation("TherapistAppointments", fields: [therapistId], references: [id])
+  branch    Branch  @relation(fields: [branchId], references: [id])
+  patient   Patient @relation(fields: [patientId], references: [id])
+  therapist User?   @relation("TherapistAppointments", fields: [therapistId], references: [id])
 
   @@index([branchId, startsAt])
   @@index([patientId])
@@ -602,14 +602,14 @@ model Integration {
 
 // Conexión OAuth a Google Calendar por usuario/sucursal (Fase 3)
 model CalendarConnection {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   ownerType    String // "user" | "branch"
   ownerId      String
   accessToken  String
   refreshToken String?
   expiresAt    DateTime?
-  calendarId   String   @default("primary")
-  createdAt    DateTime @default(now())
+  calendarId   String    @default("primary")
+  createdAt    DateTime  @default(now())
 
   @@unique([ownerType, ownerId])
 }
@@ -619,30 +619,30 @@ model CalendarConnection {
 // ─────────────────────────────────────────────────────────────
 
 model Invoice {
-  id         String        @id @default(cuid())
-  number     String        @unique // F-2219
-  branchId   String
-  patientId  String?
-  cashierId  String?
+  id          String        @id @default(cuid())
+  number      String        @unique // F-2219
+  branchId    String
+  patientId   String?
+  cashierId   String?
   therapistId String? // esteticista atribuida a la venta (para puntos/comisiones)
   treatmentId String? // si el cobro/abono aplica a un tratamiento
-  concept    String
-  subtotal   Int // RD$
-  itbis      Int // 18%
-  total      Int
-  method     PaymentMethod // método dominante (para filtros/listado)
-  payments   Json? // desglose de pago dividido: [{ method, amount }]
-  paymentKind String       @default("TOTAL") // TOTAL | ABONO | SALDO
-  status     InvoiceStatus @default(PAGADA)
+  concept     String
+  subtotal    Int // RD$
+  itbis       Int // 18%
+  total       Int
+  method      PaymentMethod // método dominante (para filtros/listado)
+  payments    Json? // desglose de pago dividido: [{ method, amount }]
+  paymentKind String        @default("TOTAL") // TOTAL | ABONO | SALDO
+  status      InvoiceStatus @default(PAGADA)
   // DGII e-CF
-  ncf        String? // secuencia NCF
-  ecfTrackId String? // TrackId DGII
-  issuedAt   DateTime      @default(now())
+  ncf         String? // secuencia NCF
+  ecfTrackId  String? // TrackId DGII
+  issuedAt    DateTime      @default(now())
 
-  branch    Branch     @relation(fields: [branchId], references: [id])
-  patient   Patient?   @relation(fields: [patientId], references: [id])
-  cashier   User?      @relation("CashierInvoices", fields: [cashierId], references: [id])
-  treatment Treatment? @relation(fields: [treatmentId], references: [id])
+  branch    Branch        @relation(fields: [branchId], references: [id])
+  patient   Patient?      @relation(fields: [patientId], references: [id])
+  cashier   User?         @relation("CashierInvoices", fields: [cashierId], references: [id])
+  treatment Treatment?    @relation(fields: [treatmentId], references: [id])
   items     InvoiceItem[]
 
   @@index([branchId, issuedAt])
@@ -693,17 +693,17 @@ model ChargeItem {
 // ─────────────────────────────────────────────────────────────
 
 model Conversation {
-  id           String   @id @default(cuid())
-  branchId     String
-  channel      Channel
-  externalId   String? // id del hilo en la plataforma
-  contactName  String
+  id            String   @id @default(cuid())
+  branchId      String
+  channel       Channel
+  externalId    String? // id del hilo en la plataforma
+  contactName   String
   contactHandle String?
-  avatarColor  String   @default("#B31C86")
-  unread       Int      @default(0)
-  lastMessage  String?
-  lastAt       DateTime @default(now())
-  createdAt    DateTime @default(now())
+  avatarColor   String   @default("#B31C86")
+  unread        Int      @default(0)
+  lastMessage   String?
+  lastAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   branch   Branch    @relation(fields: [branchId], references: [id])
   messages Message[]
@@ -760,20 +760,20 @@ model PointsEntry {
 
 // Regla parametrizable de ganar/perder puntos (Admin)
 model PointsRule {
-  id       String  @id @default(cuid())
-  label    String
-  points   Int // + o -
-  isEarn   Boolean // true=ganar, false=deducción
-  active   Boolean @default(true)
-  sortOrder Int    @default(0)
+  id        String  @id @default(cuid())
+  label     String
+  points    Int // + o -
+  isEarn    Boolean // true=ganar, false=deducción
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
 }
 
 model Reward {
-  id        String  @id @default(cuid())
-  label     String
-  cost      Int // puntos
-  icon      String  @default("✦")
-  active    Boolean @default(true)
+  id     String  @id @default(cuid())
+  label  String
+  cost   Int // puntos
+  icon   String  @default("✦")
+  active Boolean @default(true)
 
   redemptions Redemption[]
 }
@@ -792,11 +792,11 @@ model Redemption {
 
 // Meta mensual por sucursal (histórico parametrizable)
 model BranchGoal {
-  id       String @id @default(cuid())
-  branchId String
-  period   String // "2026-07"
-  monthly  Int
-  daily    Int
+  id        String @id @default(cuid())
+  branchId  String
+  period    String // "2026-07"
+  monthly   Int
+  daily     Int
   perAsesor Int
 
   branch Branch @relation(fields: [branchId], references: [id])
@@ -816,6 +816,12 @@ model PatientAccount {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // Código de un solo uso para entrar al portal (se guarda cifrado, nunca en claro).
+  otpHash      String?
+  otpExpiresAt DateTime?
+  otpAttempts  Int       @default(0)
+  otpSentAt    DateTime?
+
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   purchaseRequests PurchaseRequest[]
@@ -831,4 +837,27 @@ model PurchaseRequest {
   createdAt        DateTime @default(now())
 
   patientAccount PatientAccount @relation(fields: [patientAccountId], references: [id], onDelete: Cascade)
+}
+
+// Registro de auditoría: quién hizo qué y cuándo. Imprescindible con datos
+// clínicos y dinero en efectivo (quién leyó una ficha, quién cobró o anuló,
+// quién cambió un precio). Se guarda el nombre en el momento del hecho, para
+// que el rastro sobreviva aunque después se desactive al usuario.
+model AuditLog {
+  id       String   @id @default(cuid())
+  at       DateTime @default(now())
+  userId   String?
+  userName String?
+  role     String?
+  branchId String?
+  action   String // FICHA_VIEW | INVOICE_CREATE | APPOINTMENT_CANCEL | PRICE_CHANGE ...
+  entity   String // Patient | Invoice | Appointment | CatalogItem ...
+  entityId String?
+  summary  String? // texto legible para la pantalla de auditoría
+  ip       String?
+
+  @@index([at])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([userId])
 }

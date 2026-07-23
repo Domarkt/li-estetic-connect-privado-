@@ -8,6 +8,7 @@ import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
 import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
+import { audit } from '../audit/audit.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { getAreaLabelMap } from '../patients/areas.service.js';
@@ -405,6 +406,11 @@ appointmentsRouter.post('/:id/cancel', requireStaff, requireRole('ADMIN', 'RECEP
     });
   }
 
+  await audit(req, {
+    action: 'APPOINTMENT_CANCEL', entity: 'Appointment', entityId: appt.id, branchId: appt.branchId,
+    summary: `Canceló la cita de ${appt.patient.name} (${appt.serviceName}, ${fecha} ${hora}). Motivo: ${reason}`,
+  });
+
   res.json({ ok: true, emailSent, message: appt.patient.email ? (emailSent ? 'Cita cancelada · aviso enviado al paciente' : 'Cita cancelada · no se pudo enviar el correo') : 'Cita cancelada' });
 });
 
@@ -464,6 +470,13 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
     },
     include: apptInclude,
   });
+
+  if (cambiaTerapeuta && nuevoTherapistId !== appt.therapistId) {
+    await audit(req, {
+      action: 'APPOINTMENT_REASSIGN', entity: 'Appointment', entityId: appt.id, branchId: appt.branchId,
+      summary: `Cita de ${updated.patient.name}: esteticista → ${updated.therapist?.name ?? 'Sin asignar'}`,
+    });
+  }
 
   // Avisa a la esteticista recién asignada (si cambió y hay alguien).
   if (cambiaTerapeuta && nuevoTherapistId && nuevoTherapistId !== appt.therapistId) {

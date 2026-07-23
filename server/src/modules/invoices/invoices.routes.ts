@@ -12,6 +12,7 @@ import { sendPatientAccess, sendReceipt } from '../mail/mail.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { createTreatmentFromCatalog } from '../patients/areas.service.js';
+import { audit } from '../audit/audit.service.js';
 
 export const invoicesRouter = Router();
 
@@ -131,7 +132,18 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
 
   // Líneas de la factura: cada servicio/producto DETALLADO por separado (para conciliar).
   let lineItems: { name: string; qty: number; unitPrice: number; total: number }[];
-  let saldoServicios = 0; // saldo pendiente cuando el cobro de servicios es un abono
+  // Dónde queda el dinero pendiente cuando el cobro es un abono. Son excluyentes:
+  //  · saldoPlan      → va al balance del tratamiento (combo/paquete comprado).
+  //  · saldoServicios → queda como cargo pendiente (servicios sueltos sin plan).
+  let saldoServicios = 0;
+  let saldoPlan = 0;
+
+  // ¿El carrito incluye un plan (combo/paquete)? Eso decide dónde vive el saldo.
+  const idsCarrito = (b.items ?? []).map((i) => i.catalogItemId).filter((x): x is string => !!x);
+  const planesEnCarrito = idsCarrito.length
+    ? await prisma.catalogItem.count({ where: { id: { in: idsCarrito }, kind: { in: ['PAQUETE', 'COMBO'] } } })
+    : 0;
+  const carritoTienePlan = planesEnCarrito > 0;
   const charges = b.chargeItemIds?.length
     ? await prisma.chargeItem.findMany({ where: { id: { in: b.chargeItemIds }, branchId } })
     : [];
@@ -147,10 +159,12 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   } else if (b.items?.length) {
     // Carrito: cada servicio/producto detallado a su precio y cantidad.
     lineItems = b.items.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty }));
-    // Abono al carrito: el resto (total del carrito − abonado) queda como saldo pendiente.
+    // Abono al carrito: el resto (total del carrito − abonado) queda pendiente. Si se
+    // compró un plan, ese saldo vive en el tratamiento; si no, como cargo pendiente.
     if (b.paymentKind === 'ABONO' && b.patientId && b.fullAmount && b.fullAmount > amount) {
-      saldoServicios = b.fullAmount - amount;
-      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
+      const faltante = b.fullAmount - amount;
+      if (carritoTienePlan) saldoPlan = faltante; else saldoServicios = faltante;
+      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -faltante, total: -faltante });
     }
   } else {
     lineItems = [{ name: b.concept, qty: 1, unitPrice: amount, total: amount }];
@@ -197,14 +211,27 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     });
   }
 
+  await audit(req, {
+    action: 'INVOICE_CREATE', entity: 'Invoice', entityId: invoice.id, branchId,
+    summary: `Recibo ${number} · ${b.concept} · RD$${amount.toLocaleString('en-US')} (${dominant})`,
+  });
+
   // Crea el PLAN de sesiones cuando se cobra un combo/paquete: aquí es donde el servicio
   // pagado queda ligado al paciente (con sus sesiones reales, áreas y técnicas), para que
   // la esteticista lo vea al recibir la cita y pueda definir las áreas a trabajar.
+  //
+  // Si el cobro fue un abono, el faltante se registra en el balance del PLAN (fuente
+  // única), no como un cargo pendiente aparte.
   if (b.patientId && b.items?.length) {
-    for (const it of b.items) {
-      if (!it.catalogItemId) continue;
+    const planes = b.items.filter((it) => it.catalogItemId);
+    // El saldo se atribuye al primer plan del carrito (lo normal: se compra uno).
+    let porRepartir = saldoPlan;
+    for (const it of planes) {
       try {
-        await createTreatmentFromCatalog(b.patientId, it.catalogItemId, { qty: it.qty, paid: true });
+        const creado = await createTreatmentFromCatalog(b.patientId, it.catalogItemId!, {
+          qty: it.qty, outstanding: porRepartir,
+        });
+        if (creado) porRepartir = 0;
       } catch { /* el plan no debe bloquear el cobro */ }
     }
   }
@@ -233,8 +260,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     if (leadPat) await upsertLead({ branchId: leadPat.branchId, patientId: b.patientId, name: leadPat.name, stage: 'VENDIDO', summary: 'Compra registrada' });
   }
 
-  const msg = saldoServicios > 0
-    ? `Abono registrado · saldo pendiente RD$${saldoServicios.toLocaleString('en-US')}`
+  const pendiente = saldoServicios || saldoPlan;
+  const msg = pendiente > 0
+    ? `Abono registrado · saldo pendiente RD$${pendiente.toLocaleString('en-US')}`
     : (b.paymentKind === 'ABONO' || b.paymentKind === 'SALDO') && treatmentAfter
     ? `${b.paymentKind === 'SALDO' ? 'Saldo pagado' : 'Abono registrado'} · saldo restante ${'RD$' + treatmentAfter.balance.toLocaleString('en-US')}${treatmentAfter.balance > 0 ? ` (${'RD$' + treatmentAfter.perSession.toLocaleString('en-US')}/sesión en ${treatmentAfter.remaining} sesiones)` : ''}`
     : 'Recibo emitido · pago registrado en caja';

@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff } from '../../middleware/auth.js';
+import { audit } from '../audit/audit.service.js';
 
 export const catalogRouter = Router();
 
@@ -96,6 +97,13 @@ catalogRouter.patch('/:id', requireStaff, requireCatalogManager, async (req, res
   }
 
   const item = await prisma.catalogItem.update({ where: { id: req.params.id }, data, include: conServicios });
+  // El precio es lo más sensible del catálogo: queda rastro de quién lo cambió.
+  if (data.price !== undefined && data.price !== exists.price) {
+    await audit(req, {
+      action: 'PRICE_CHANGE', entity: 'CatalogItem', entityId: item.id,
+      summary: `Precio de "${item.name}": RD$${exists.price.toLocaleString('en-US')} → RD$${item.price.toLocaleString('en-US')}`,
+    });
+  }
   res.json(serialize(item));
 });
 
@@ -140,5 +148,9 @@ catalogRouter.delete('/:id', requireStaff, requireCatalogManager, async (req, re
   const exists = await prisma.catalogItem.findUnique({ where: { id: req.params.id } });
   if (!exists) return res.status(404).json({ error: 'Ítem no encontrado' });
   await prisma.catalogItem.update({ where: { id: req.params.id }, data: { active: false } });
+  await audit(req, {
+    action: 'CATALOG_DELETE', entity: 'CatalogItem', entityId: exists.id,
+    summary: `Eliminó del catálogo "${exists.name}" (${exists.kind})`,
+  });
   res.json({ ok: true, message: 'Elemento eliminado del catálogo' });
 });

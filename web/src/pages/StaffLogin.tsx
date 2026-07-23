@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { Icon } from '../components/icons';
@@ -24,7 +24,9 @@ export default function StaffLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState('');
+  const [params] = useSearchParams();
+  // Aviso cuando el 401 global cerró la sesión por token vencido.
+  const [error, setError] = useState(params.get('expirada') ? 'Tu sesión venció. Inicia sesión de nuevo.' : '');
   const [busy, setBusy] = useState(false);
 
   // Sucursales para el selector (endpoint público de conveniencia en login).

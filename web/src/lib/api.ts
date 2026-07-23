@@ -24,6 +24,22 @@ export class ApiError extends Error {
 
 type Kind = 'staff' | 'patient' | 'none';
 
+/**
+ * Cierra la sesión vencida y manda al login correspondiente con un aviso.
+ * Se protege con una bandera porque una pantalla suele lanzar varias llamadas a
+ * la vez: sin esto, un token vencido dispararía N redirecciones.
+ */
+let redirigiendo = false;
+function handleSessionExpired(kind: Exclude<Kind, 'none'>) {
+  if (redirigiendo) return;
+  redirigiendo = true;
+  const destino = kind === 'patient' ? '/portal/login' : '/login';
+  tokenStore.clearStaff();
+  tokenStore.clearPatient();
+  // assign (no replace) para que el navegador recargue limpio el estado de la app.
+  window.location.assign(`${destino}?expirada=1`);
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -53,6 +69,11 @@ async function request<T>(
     } catch {
       /* ignore */
     }
+    // Sesión vencida o token inválido: en vez de dejar toasts crípticos por toda
+    // la pantalla, se cierra la sesión y se lleva al login con un mensaje claro.
+    // Se excluyen las llamadas 'none' (los propios login), donde un 401 significa
+    // "credenciales incorrectas" y debe mostrarse en el formulario.
+    if (res.status === 401 && kind !== 'none') handleSessionExpired(kind);
     throw new ApiError(res.status, msg);
   }
   if (res.status === 204) return undefined as T;

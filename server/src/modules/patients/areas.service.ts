@@ -114,7 +114,7 @@ export async function seedTreatmentTechniques(treatmentId: string, items: { name
 export async function createTreatmentFromCatalog(
   patientId: string,
   catalogItemId: string,
-  opts: { qty?: number; paid?: boolean } = {},
+  opts: { qty?: number; outstanding?: number } = {},
 ): Promise<string | null> {
   const item = await prisma.catalogItem.findUnique({
     where: { id: catalogItemId },
@@ -134,8 +134,11 @@ export async function createTreatmentFromCatalog(
     data: {
       patientId, name: item.name, catalogItemId: item.id,
       totalSessions: total, doneSessions: 0,
-      // El dinero se concilia por factura/cargo; el saldo del plan queda en 0 si se pagó.
-      price: precio, balance: opts.paid ? 0 : precio,
+      // FUENTE ÚNICA del dinero pendiente de un plan: este balance.
+      // Si el paciente abonó, aquí queda lo que falta; si pagó todo, queda en 0.
+      // No se crean cargos sintéticos de "saldo" en paralelo.
+      price: precio,
+      balance: Math.max(0, Math.min(opts.outstanding ?? 0, precio)),
     },
   });
   if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);

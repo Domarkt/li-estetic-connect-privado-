@@ -9,7 +9,8 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, seedTreatmentAreas, seedTreatmentTechniques, serializeTechniques, getAreaLabelMap } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap } from './areas.service.js';
+import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
 export const patientsRouter = Router();
@@ -169,6 +170,11 @@ patientsRouter.patch('/treatments/:treatmentId/areas', requireStaff, requireRole
 
   const actualizado = await definirAreas(t.id, areas);
   const labels = await getAreaLabelMap();
+  await audit(req, {
+    action: 'TREATMENT_AREAS', entity: 'Treatment', entityId: t.id,
+    summary: `Definió áreas de ${t.name} (${t.patient.name}): ${areas.map((a) => labels[a] ?? a).join(', ')}`,
+    branchId: t.patient.branchId,
+  });
   res.json({
     ok: true,
     areas: serializeAreas(actualizado?.areas ?? [], labels),
@@ -364,6 +370,11 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
   });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  // Dato clínico sensible: queda registrado quién lo abrió.
+  await audit(req, {
+    action: 'FICHA_VIEW', entity: 'Patient', entityId: patient.id,
+    summary: `Abrió la ficha clínica de ${patient.name}`, branchId: patient.branchId,
+  });
   res.json({
     patient: {
       id: patient.id, name: patient.name, phone: patient.phone,
@@ -528,26 +539,19 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
     },
   });
 
-  // Crea el tratamiento activo si se indicó y aún no existe
-  if (complete && fields.tratamiento) {
-    const exists = await prisma.treatment.findFirst({ where: { patientId: patient.id, active: true } });
-    if (!exists) {
-      const item = await prisma.catalogItem.findFirst({
-        where: { name: { contains: fields.tratamiento.split(' —')[0] } },
-        include: { incluye: { include: { service: true } } },
-      });
-      const total = item?.sessions ?? 10;
-      const treatment = await prisma.treatment.create({
-        data: {
-          patientId: patient.id, name: fields.tratamiento, catalogItemId: item?.id ?? null,
-          totalSessions: total, doneSessions: 0, balance: item?.price ?? 0,
-        },
-      });
-      // Carga las áreas por defecto y el conteo por técnica que trae el combo.
-      if (item?.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);
-      if (item?.incluye?.length) await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty })));
-    }
-  }
+  // NOTA: el plan de sesiones NO se crea aquí.
+  //
+  // Antes se intentaba adivinar el combo por el texto libre de "tratamiento" y,
+  // si no coincidía con ningún ítem del catálogo, se creaba con 10 sesiones fijas
+  // — de ahí que la ficha mostrara 10 sesiones sin importar lo comprado.
+  //
+  // Ahora el plan nace en el COBRO (invoices), con el ítem real del catálogo, sus
+  // sesiones, sus áreas y sus técnicas. Ver createTreatmentFromCatalog().
+
+  await audit(req, {
+    action: 'FICHA_UPDATE', entity: 'Patient', entityId: patient.id,
+    summary: `${complete ? 'Completó' : 'Guardó'} la parte clínica de ${patient.name}`, branchId: patient.branchId,
+  });
 
   const type = complete ? await syncPatientType(patient.id) : patient.type;
   res.json({ ok: true, complete: !!complete, type, message: complete ? 'Ficha clínica guardada correctamente' : 'Progreso guardado' });
