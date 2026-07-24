@@ -47,12 +47,12 @@ inventoryRouter.get('/', requireStaff, requireRole(...viewers), branchScope, asy
         const lv = levels[0];
         const qty = lv?.qty ?? 0;
         const minQty = lv?.minQty ?? 0;
-        return { id: it.id, kind: it.kind, name: it.name, unit: it.unit, price: it.price, qty, minQty, low: qty <= minQty };
+        return { id: it.id, code: it.code, kind: it.kind, name: it.name, unit: it.unit, price: it.price, qty, minQty, low: qty <= minQty };
       }
       // Admin "Todas": total + desglose por sucursal.
       const total = levels.reduce((s, l) => s + l.qty, 0);
       return {
-        id: it.id, kind: it.kind, name: it.name, unit: it.unit, price: it.price,
+        id: it.id, code: it.code, kind: it.kind, name: it.name, unit: it.unit, price: it.price,
         qty: total, minQty: 0, low: levels.some((l) => l.qty <= l.minQty && l.minQty > 0),
         levels: levels.map((l) => ({ branchId: l.branchId, branch: byId.get(l.branchId)?.name ?? '', qty: l.qty, minQty: l.minQty, low: l.qty <= l.minQty })),
       };

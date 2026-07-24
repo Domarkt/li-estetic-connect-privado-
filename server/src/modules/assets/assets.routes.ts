@@ -6,6 +6,13 @@ import { notifyRole } from '../notifications/notifications.service.js';
 
 export const assetsRouter = Router();
 
+/**
+ * Quién registra equipos y suministros: los mismos que gestionan el catálogo.
+ * Antes solo ADMIN, así que recepción veía las pestañas pero no podía agregar
+ * nada. Borrar sigue siendo exclusivo del administrador.
+ */
+const GESTORES = ['ADMIN', 'RECEPCIONISTA'] as const;
+
 // Tipos de evento que puede registrar cada rol.
 const STAFF_EVENTS = ['AVERIA', 'INCIDENTE', 'NOTA'] as const;
 const ADMIN_EVENTS = ['ENTRADA', 'SALIDA', 'MANTENIMIENTO', 'AVERIA', 'INCIDENTE', 'NOTA', 'BAJA'] as const;
@@ -15,10 +22,21 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /** Código legible del activo: EQ-0001 / SU-0001. */
+/**
+ * Siguiente código libre del tipo (EQ-0001 equipos, SU-0001 suministros).
+ * Se calcula sobre el máximo ya usado, no sobre el total: contando filas se
+ * repetía el código si alguna se borraba por el medio.
+ */
 async function nextCode(kind: string) {
   const prefix = kind === 'EQUIPO' ? 'EQ' : 'SU';
-  const count = await prisma.asset.count({ where: { kind } });
-  return `${prefix}-${String(count + 1).padStart(4, '0')}`;
+  const usados = await prisma.asset.findMany({
+    where: { code: { startsWith: `${prefix}-` } }, select: { code: true },
+  });
+  const max = usados.reduce((m, x) => {
+    const n = parseInt((x.code ?? '').slice(prefix.length + 1), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
 }
 
 /**
@@ -65,7 +83,7 @@ const createSchema = z.object({
 });
 
 /** Alta de activo (solo Admin). Registra una ENTRADA en el historial. */
-assetsRouter.post('/', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+assetsRouter.post('/', requireStaff, requireRole(...GESTORES), branchScope, async (req, res) => {
   const b = createSchema.parse(req.body);
   const branchId = b.branchId ?? req.scopeBranchId;
   if (!branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
@@ -85,7 +103,7 @@ const updateSchema = createSchema.partial().extend({
 });
 
 /** Editar / reasignar / cambiar estado de un activo (solo Admin). */
-assetsRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) => {
+assetsRouter.patch('/:id', requireStaff, requireRole(...GESTORES), async (req, res) => {
   const b = updateSchema.parse(req.body);
   const asset = await prisma.asset.findUnique({ where: { id: req.params.id } });
   if (!asset) return res.status(404).json({ error: 'Activo no encontrado' });

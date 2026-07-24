@@ -20,7 +20,7 @@ const TABS: { k: TabKey; label: string }[] = [
 
 interface Level { branchId: string; branch: string; qty: number; minQty: number; low: boolean }
 interface Row {
-  id: string; kind: Kind; name: string; unit: string | null; price: number;
+  id: string; code?: string | null; kind: Kind; name: string; unit: string | null; price: number;
   qty: number; minQty: number; low: boolean; levels?: Level[];
 }
 interface InvResp { scope: string; items: Row[]; branches: { id: string; name: string; code: string }[] }
@@ -49,7 +49,7 @@ export default function InventarioPage() {
   }, [reload, branchQ, isAsset]);
 
   const texto = q.trim().toLowerCase();
-  const rows = (data?.items ?? []).filter((i) => i.kind === (tab as Kind) && (!texto || i.name.toLowerCase().includes(texto)));
+  const rows = (data?.items ?? []).filter((i) => i.kind === (tab as Kind) && (!texto || i.name.toLowerCase().includes(texto) || (i.code ?? '').toLowerCase().includes(texto)));
   const lowCount = rows.filter((r) => r.low && r.qty <= r.minQty && r.minQty > 0).length;
 
   return (
@@ -84,13 +84,16 @@ export default function InventarioPage() {
       {!isAsset && (
         <div className="mb-3.5 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5">
           <span className="text-faint">🔍</span>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre…"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre o código…"
             className="w-full bg-transparent text-[13.5px] outline-none placeholder:text-faint" />
           <span className="flex-none text-[12px] font-bold text-muted">{rows.length}</span>
         </div>
       )}
 
-      {isAsset && <AssetsPanel kind={tab as 'EQUIPO' | 'SUMINISTRO'} canManage={!!isAdmin} branchQ={branchQ} />}
+      {/* Equipos y suministros los registra quien gestiona el catálogo (admin y
+          recepción), igual que productos e insumos. Antes solo admin, así que en
+          esas pestañas no aparecía el botón de agregar. */}
+      {isAsset && <AssetsPanel kind={tab as 'EQUIPO' | 'SUMINISTRO'} canManage={puedeCrear} branchQ={branchQ} />}
 
       {!isAsset && <>
       {allBranches && (
@@ -104,7 +107,10 @@ export default function InventarioPage() {
           {rows.map((r) => (
             <div key={r.id} className="rounded-base border border-line bg-card p-4 shadow-card">
               <div className="mb-2 flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1 text-[13.5px] font-bold leading-tight">{r.name}</div>
+                <div className="min-w-0 flex-1">
+                  {r.code && <div className="font-mono text-[10.5px] font-bold text-faint">{r.code}</div>}
+                  <div className="text-[13.5px] font-bold leading-tight">{r.name}</div>
+                </div>
                 {r.low && r.minQty > 0 && <span className="flex-none rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">bajo</span>}
               </div>
               <div className="mb-2 flex items-baseline gap-1.5">
@@ -146,6 +152,7 @@ export default function InventarioPage() {
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-line last:border-0">
                 <td className="px-4 py-3">
+                  {r.code && <div className="font-mono text-[10.5px] font-bold text-faint">{r.code}</div>}
                   <div className="font-bold">{r.name}</div>
                   {allBranches && r.levels && (
                     <div className="mt-1 flex flex-wrap gap-1.5">
