@@ -41,11 +41,33 @@ export default function AssetsPanel({ kind, canManage, branchQ, mine }: { kind: 
   const refresh = () => setReload((n) => n + 1);
   const label = kind === 'EQUIPO' ? 'equipo' : 'suministro';
 
+  // Cuántos hay en cada estética (para la vista "Todas las sucursales").
+  const porSucursal = Object.entries(
+    assets.reduce<Record<string, number>>((acc, a) => {
+      acc[a.branch] = (acc[a.branch] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((x, y) => x[0].localeCompare(y[0]));
+
   return (
     <div>
       {canManage && (
         <div className="mb-3 flex justify-end">
           <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Agregar {label}</button>
+        </div>
+      )}
+
+      {/* Cuántos hay en cada estética. Cada equipo es una ficha propia con su
+          código (EQ-0001, EQ-0002…), así que dos computadoras iguales en
+          sucursales distintas son dos registros separados, no una cantidad. */}
+      {porSucursal.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[11px] border border-line bg-card px-4 py-3">
+          <span className="text-[12.5px] font-bold text-muted">Total {assets.length} · por estética:</span>
+          {porSucursal.map(([suc, n]) => (
+            <span key={suc} className="rounded-full bg-bg px-2.5 py-1 text-[11.5px] font-bold text-navy">
+              {suc}: {n}
+            </span>
+          ))}
         </div>
       )}
 
