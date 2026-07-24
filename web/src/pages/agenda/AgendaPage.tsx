@@ -512,13 +512,16 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
                 ℹ️ Cerrar turno no descuenta sesiones. El descuento se hace en la <b>ficha</b>, al registrar el procedimiento aplicado con la <b>firma del paciente</b>.
               </div>
             )}
-            {cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
-            {!cargando && areas.length === 0 && (
+            {/* Si la sesión de hoy YA se registró y firmó, no se vuelve a preguntar
+                qué se aplicó: solo se cierra el turno. Antes salía la pregunta igual
+                debajo del aviso verde, y confundía. */}
+            {registradaHoy !== true && cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
+            {registradaHoy !== true && !cargando && areas.length === 0 && (
               <div className="rounded-[10px] bg-bg px-3.5 py-3 text-[12.5px] text-muted">
                 Este paquete no tiene áreas definidas.
               </div>
             )}
-            {!cargando && areas.length > 0 && (
+            {registradaHoy !== true && !cargando && areas.length > 0 && (
               <>
                 <div className="text-xs font-bold text-muted">¿Qué áreas trabajaste? <span className="font-semibold text-faint">(queda como referencia de la visita)</span></div>
                 {areas.map((a) => {

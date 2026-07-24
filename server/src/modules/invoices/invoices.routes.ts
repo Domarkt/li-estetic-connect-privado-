@@ -288,13 +288,18 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   //
   // Si el cobro fue un abono, el faltante se registra en el balance del PLAN (fuente
   // única), no como un cargo pendiente aparte.
-  if (b.patientId && b.items?.length) {
-    const planes = b.items.filter((it) => it.catalogItemId);
-    // El saldo se atribuye al primer plan del carrito (lo normal: se compra uno).
+  if (b.patientId && (b.items?.length || charges.length)) {
+    // Tanto el carrito como los cargos que envió la esteticista (con su
+    // catalogItemId) generan plan: así un servicio de varias sesiones cobrado por
+    // recepción queda disponible para agendarle la cita después.
+    const fuentes = [
+      ...(b.items ?? []).filter((it) => it.catalogItemId).map((it) => ({ id: it.catalogItemId!, qty: it.qty })),
+      ...charges.filter((c) => c.catalogItemId).map((c) => ({ id: c.catalogItemId!, qty: 1 })),
+    ];
     let porRepartir = saldoPlan;
-    for (const it of planes) {
+    for (const it of fuentes) {
       try {
-        const creado = await createTreatmentFromCatalog(b.patientId, it.catalogItemId!, {
+        const creado = await createTreatmentFromCatalog(b.patientId, it.id, {
           qty: it.qty, outstanding: porRepartir,
         });
         if (creado) porRepartir = 0;

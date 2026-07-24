@@ -163,7 +163,9 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   }
 
   return (
-    <Overlay onClose={onClose} z={110}>
+    // No se cierra al hacer click fuera (se perdía el formulario a medio llenar):
+    // solo con la ✕ o Cancelar.
+    <Overlay onClose={() => {}} z={110}>
       <div onClick={stop} className="w-[460px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="flex items-center border-b border-line px-4 sm:px-6 py-5"><div className="flex-1 text-base font-extrabold">Agendar cita</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
         <div className="flex flex-col gap-3.5 px-4 sm:px-6 py-5">
