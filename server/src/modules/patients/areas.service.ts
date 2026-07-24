@@ -127,7 +127,10 @@ export async function createTreatmentFromCatalog(
   //  · servicios de varias sesiones (ej. "Reducción de medidas · 10 sesiones").
   // Antes solo COMBO/PAQUETE: un servicio de 10 sesiones se cobraba y el paciente
   // quedaba sin plan, sin forma de agendar ni descontar lo que ya había pagado.
-  const esPlan = item.kind === 'COMBO' || item.kind === 'PAQUETE' || (item.sessions ?? 1) > 1;
+  // Todo lo que se ATIENDE (servicio, combo o paquete) genera un plan en la ficha
+  // y el portal, aunque sea de 1 sola sesión (ej. un Scurpt). Solo se excluyen los
+  // bienes físicos: productos e insumos no son tratamientos.
+  const esPlan = item.kind === 'COMBO' || item.kind === 'PAQUETE' || item.kind === 'SERVICIO';
   if (!esPlan) return null;
 
   // Idempotencia: no duplicar el plan si ya tiene uno activo de este mismo ítem.
