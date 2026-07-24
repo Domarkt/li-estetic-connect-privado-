@@ -25,6 +25,32 @@ async function requireCatalogManager(req: Request, res: Response, next: NextFunc
   return res.status(403).json({ error: 'No tienes permiso para gestionar el catálogo' });
 }
 
+/**
+ * Prefijo del código según el tipo: C-001 combos, S-001 servicios, P-001
+ * paquetes, R-001 productos, I-001 insumos.
+ */
+const PREFIJO: Record<string, string> = {
+  COMBO: 'C', SERVICIO: 'S', PAQUETE: 'P', PRODUCTO: 'R', INSUMO: 'I',
+};
+
+/**
+ * Siguiente código libre de ese tipo (C-001, C-002…). Se calcula sobre los
+ * códigos ya existentes, así que respeta lo que se haya cargado a mano y no
+ * repite números aunque se borren ítems por el medio.
+ */
+async function siguienteCodigo(kind: string): Promise<string> {
+  const pre = PREFIJO[kind] ?? 'X';
+  const usados = await prisma.catalogItem.findMany({
+    where: { code: { startsWith: `${pre}-` } },
+    select: { code: true },
+  });
+  const max = usados.reduce((m, x) => {
+    const n = parseInt((x.code ?? '').slice(pre.length + 1), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return `${pre}-${String(max + 1).padStart(3, '0')}`;
+}
+
 /** Serializa un ítem incluyendo, si es combo/paquete, las técnicas que cubre (con su cantidad). */
 const conServicios = { incluye: { include: { service: true } } } as const;
 type ItemConServicios = { incluye?: { qty: number; service: { id: string; name: string } }[] };
@@ -70,9 +96,13 @@ const catalogSchema = z.object({
 /** Alta de ítem al catálogo (Admin o quien tenga permiso de catálogo). */
 catalogRouter.post('/', requireStaff, requireCatalogManager, async (req, res) => {
   const { services, ...data } = catalogSchema.parse(req.body);
+  // El código se asigna solo: nadie tiene que inventarlo ni llevar la cuenta.
+  // Si viene uno escrito a mano, se respeta.
+  const code = data.code?.trim() || await siguienteCodigo(data.kind);
   const item = await prisma.catalogItem.create({
     data: {
       ...data,
+      code,
       ...(services?.length ? { incluye: { create: services.map((s) => ({ serviceId: s.id, qty: s.qty })) } } : {}),
     },
     include: conServicios,
@@ -108,6 +138,49 @@ catalogRouter.patch('/:id', requireStaff, requireCatalogManager, async (req, res
     });
   }
   res.json(serialize(item));
+});
+
+/**
+ * Asigna código a todo lo que aún no lo tiene, respetando los ya puestos a mano.
+ * Se ejecuta una vez tras el despliegue para numerar el catálogo existente.
+ */
+catalogRouter.post('/generar-codigos', requireStaff, requireCatalogManager, async (_req, res) => {
+  const sinCodigo = await prisma.catalogItem.findMany({
+    where: { OR: [{ code: null }, { code: '' }] },
+    orderBy: [{ kind: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, kind: true, name: true },
+  });
+
+  // Se arranca del máximo ya usado por tipo y se sigue de ahí.
+  const contador: Record<string, number> = {};
+  for (const kind of Object.keys(PREFIJO)) {
+    const pre = PREFIJO[kind];
+    const usados = await prisma.catalogItem.findMany({
+      where: { code: { startsWith: `${pre}-` } }, select: { code: true },
+    });
+    contador[kind] = usados.reduce((m, x) => {
+      const n = parseInt((x.code ?? '').slice(pre.length + 1), 10);
+      return Number.isFinite(n) && n > m ? n : m;
+    }, 0);
+  }
+
+  const asignados: { name: string; code: string }[] = [];
+  for (const it of sinCodigo) {
+    const pre = PREFIJO[it.kind] ?? 'X';
+    contador[it.kind] = (contador[it.kind] ?? 0) + 1;
+    const code = `${pre}-${String(contador[it.kind]).padStart(3, '0')}`;
+    await prisma.catalogItem.update({ where: { id: it.id }, data: { code } });
+    asignados.push({ name: it.name, code });
+  }
+
+  res.json({
+    ok: true,
+    total: asignados.length,
+    asignados,
+    message: asignados.length
+      ? `Se numeraron ${asignados.length} ítems del catálogo`
+      : 'Todo el catálogo ya tiene su código',
+  });
 });
 
 // ── Áreas del cuerpo (administrable): las usan los combos/paquetes al asignarlas ──

@@ -23,6 +23,7 @@ import { portalRouter } from './modules/portal/portal.routes.js';
 import { portalAdminRouter } from './modules/portal/portal.admin.routes.js';
 import { cashCloseRouter } from './modules/cashclose/cashclose.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
+import { badgesRouter } from './modules/notifications/badges.routes.js';
 import { reportsRouter } from './modules/reports/reports.routes.js';
 import { inventoryRouter } from './modules/inventory/inventory.routes.js';
 import { assetsRouter } from './modules/assets/assets.routes.js';
@@ -82,6 +83,7 @@ export function createApp() {
   app.use('/api/portal-admin', portalAdminRouter);
   app.use('/api/portal', portalRouter);
   app.use('/api/cashclose', cashCloseRouter);
+  app.use('/api/badges', badgesRouter);
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/reports', reportsRouter);
   app.use('/api/inventory', inventoryRouter);

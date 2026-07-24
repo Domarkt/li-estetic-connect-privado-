@@ -18,6 +18,11 @@ const TABS: { key: CatalogKind; label: string }[] = [
 
 const STOCKABLE = (k: CatalogKind) => k === 'PRODUCTO' || k === 'INSUMO';
 
+// Inicial del código automático por tipo (debe coincidir con el servidor).
+const PREFIJO_CODIGO: Record<CatalogKind, string> = {
+  COMBO: 'C', SERVICIO: 'S', PAQUETE: 'P', PRODUCTO: 'R', INSUMO: 'I',
+};
+
 // Áreas por familia, para elegir las que trae el combo por defecto al crearlo.
 export default function CatalogPage() {
   const { staff } = useAuth();
@@ -31,6 +36,18 @@ export default function CatalogPage() {
 
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [numerando, setNumerando] = useState(false);
+  const toast = useToast();
+
+  /** Asigna código a los ítems cargados antes de que la numeración fuera automática. */
+  async function generarCodigos() {
+    setNumerando(true);
+    try {
+      const r = await api.post<{ message: string }>('/catalog/generar-codigos', {});
+      toast(r.message);
+      setReload((x) => x + 1);
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setNumerando(false); }
+  }
 
   const cargar = () => {
     setCargando(true); setErrorCarga(null);
@@ -62,6 +79,13 @@ export default function CatalogPage() {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle mode={view} onChange={setView} />
+          {/* Numera de una vez lo que se cargó antes de que el código fuera automático. */}
+          {isAdmin && items.some((i) => !i.code) && (
+            <button onClick={generarCodigos} disabled={numerando}
+              className="rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-navy hover:border-magenta disabled:opacity-60">
+              {numerando ? 'Numerando…' : `# Numerar ${items.filter((i) => !i.code).length} sin código`}
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setModal({ mode: 'add' })} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Agregar</button>
           )}
@@ -259,7 +283,19 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             </select>
           </label>
           <div className="flex gap-3">
-            <label className="flex w-[130px] flex-none flex-col gap-1.5"><span className="text-xs font-bold text-muted">Código</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] uppercase outline-none focus:border-magenta" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Ej. SRV-001" /></label>
+            {/* El código se asigna solo al guardar (C-001 combos, S-001 servicios…).
+                En edición se puede corregir; al crear no hay nada que escribir. */}
+            <label className="flex w-[130px] flex-none flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">Código</span>
+              {mode === 'edit' ? (
+                <input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] uppercase outline-none focus:border-magenta"
+                  value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Ej. C-001" />
+              ) : (
+                <div className="flex items-center rounded-[9px] border border-dashed border-line bg-bg px-3.5 py-3 text-[12.5px] font-bold text-faint">
+                  {PREFIJO_CODIGO[kind]}-… <span className="ml-1 font-semibold">auto</span>
+                </div>
+              )}
+            </label>
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === 'INSUMO' ? 'Ej. Toallas / Papel de baño' : 'Ej. Radiofrecuencia facial'} /></label>
           </div>
           <div className="flex gap-3">

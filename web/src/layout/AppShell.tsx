@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useBranch } from './BranchContext';
 import { Icon, NAV_ICON } from '../components/icons';
 import { ROLE_LABEL, type Role } from '../lib/types';
 import NotificationBell from './NotificationBell';
 
-interface NavItem { key: string; label: string; badge?: number }
+// Los contadores del menú NO se declaran aquí: vienen de /badges con datos
+// reales. Antes eran números fijos escritos a mano y el sistema avisaba de
+// mensajes que no existían.
+interface NavItem { key: string; label: string }
+/** Contadores reales por sección (0 = no se muestra globito). */
+interface Badges { mensajes: number; agenda: number; notificaciones: number }
 
 const NAV: Record<Role, NavItem[]> = {
   ADMIN: [
@@ -14,7 +20,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'sucursales', label: 'Sucursales' },
     { key: 'pacientes', label: 'Pacientes' },
     { key: 'agenda', label: 'Agenda' },
-    { key: 'mensajes', label: 'Mensajes', badge: 6 },
+    { key: 'mensajes', label: 'Mensajes' },
     { key: 'facturacion', label: 'Facturación' },
     { key: 'catalogo', label: 'Catálogo' },
     { key: 'portal', label: 'Portal del paciente' },
@@ -26,8 +32,8 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'configuracion', label: 'Configuración' },
   ],
   RECEPCIONISTA: [
-    { key: 'agenda', label: 'Agenda', badge: 3 },
-    { key: 'mensajes', label: 'Mensajes', badge: 6 },
+    { key: 'agenda', label: 'Agenda' },
+    { key: 'mensajes', label: 'Mensajes' },
     { key: 'pacientes', label: 'Pacientes' },
     { key: 'facturacion', label: 'Cobro & Facturación' },
     { key: 'inventario', label: 'Inventario' },
@@ -36,7 +42,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'seguimiento', label: 'Seguimiento' },
   ],
   ESTETICISTA: [
-    { key: 'agenda', label: 'Mi Agenda', badge: 4 },
+    { key: 'agenda', label: 'Mi Agenda' },
     { key: 'pacientes', label: 'Pacientes' },
     { key: 'equipos', label: 'Equipos' },
     { key: 'chat', label: 'Chat equipo' },
@@ -72,6 +78,17 @@ export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Contadores reales del menú. Arrancan en 0: mejor no avisar nada que avisar
+  // de mensajes inexistentes. Se refrescan al cambiar de pantalla o de sucursal.
+  const [badgeData, setBadgeData] = useState<Badges>({ mensajes: 0, agenda: 0, notificaciones: 0 });
+
+  useEffect(() => {
+    if (!staff) return;
+    const q = staff.role === 'ADMIN' && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
+    api.get<Badges>(`/badges${q}`)
+      .then(setBadgeData)
+      .catch(() => setBadgeData({ mensajes: 0, agenda: 0, notificaciones: 0 }));
+  }, [staff, activeBranch, location.pathname]);
 
   if (!staff) return null;
   // Con el permiso de catálogo, el colaborador ve "Catálogo" aunque no sea admin.
@@ -79,6 +96,13 @@ export default function AppShell() {
   const items = staff.canManageCatalog && !base.some((i) => i.key === 'catalogo')
     ? [...base, { key: 'catalogo', label: 'Catálogo' }]
     : base;
+  // Qué contador le toca a cada sección del menú. Lo que no esté aquí no lleva
+  // globito (antes "Mensajes" mostraba un 6 fijo aunque la bandeja estuviera vacía).
+  const badges: Record<string, number> = {
+    mensajes: badgeData.mensajes,
+    agenda: badgeData.agenda,
+  };
+
   const current = location.pathname.split('/')[2] ?? 'dashboard';
   const page = PAGE_TITLE[current] ?? PAGE_TITLE.dashboard;
 
@@ -122,7 +146,10 @@ export default function AppShell() {
               }>
               <span className="flex opacity-90"><Icon name={NAV_ICON[n.key]} size={18} /></span>
               <span className="flex-1 text-left">{n.label}</span>
-              {n.badge ? <span className="rounded-full bg-magenta px-[7px] py-px text-[10.5px] font-bold text-white">{n.badge}</span> : null}
+              {/* Solo se muestra si de verdad hay algo pendiente. */}
+              {badges[n.key] > 0 && (
+                <span className="rounded-full bg-magenta px-[7px] py-px text-[10.5px] font-bold text-white">{badges[n.key]}</span>
+              )}
             </NavLink>
           ))}
         </nav>
