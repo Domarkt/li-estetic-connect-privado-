@@ -443,6 +443,7 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
       age: ageFromBirth(patient.birthDate) ?? patient.age, email: patient.email,
       sex: patient.sex,
       birthDate: patient.birthDate, occupation: patient.occupation,
+      sector: patient.sector, province: patient.province,
       address: patient.address != null ? decrypt(patient.address) : patient.address,
       cedula: patient.cedula != null ? decrypt(patient.cedula) : patient.cedula,
     },
@@ -460,7 +461,9 @@ const step1Schema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   cedula: z.string().optional(),
   occupation: z.string().optional(),
-  address: z.string().optional(),
+  address: z.string().optional(), // calle y número (cifrado)
+  sector: z.string().optional(),
+  province: z.string().optional(),
   motivos: z.array(z.string()).default([]),
 });
 
@@ -487,6 +490,8 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
       email: body.email ? body.email : patient.email,
       birthDate: newBirth,
       occupation: body.occupation ?? patient.occupation,
+      sector: body.sector ?? patient.sector,
+      province: body.province ?? patient.province,
       // Cédula y dirección son PII: se guardan cifradas.
       ...encryptPatientWrite({
         ...(body.address !== undefined ? { address: body.address } : {}),

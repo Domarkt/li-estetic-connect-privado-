@@ -152,7 +152,13 @@ export async function createTreatmentFromCatalog(
     },
   });
   if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);
-  if (item.incluye?.length) await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty * qty })));
+  if (item.incluye?.length) {
+    await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty * qty })));
+  } else {
+    // Servicio suelto: se siembra a sí mismo como técnica. Sin esto la esteticista
+    // no tenía nada que marcar al registrar y la sesión nunca se descontaba.
+    await seedTreatmentTechniques(treatment.id, [{ name: item.name, qty: total }]);
+  }
   return treatment.id;
 }
 

@@ -185,7 +185,9 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
 
   if (b.therapistId) {
     // Con esteticista asignada: esa persona no puede atender dos pacientes a la vez.
-    const conflict = cercanas.find((a) => a.therapistId === b.therapistId && choca(a));
+    // El MISMO paciente no bloquea a la esteticista: puede tener varios servicios
+    // combinados en la misma cabina y horario.
+    const conflict = cercanas.find((a) => a.therapistId === b.therapistId && a.patientId !== patient.id && choca(a));
     if (conflict) {
       const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
       const quien = conflict.therapist?.name ?? 'la esteticista';
@@ -250,7 +252,9 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
     const fecha = startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
     const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
     const mail = await sendAppointmentConfirmation(patient.email, {
-      name: patient.name, service: serviceName, date: fecha, time: hora, code: appt.code ?? '',
+      // Cliente NUEVO: sin código — se le entrega al pagar en recepción.
+      name: patient.name, service: serviceName, date: fecha, time: hora,
+      code: patient.type === 'NUEVO' ? '' : (appt.code ?? ''),
       branchName: appt.branch.name, branchPlace: appt.branch.place,
       replyTo: appt.branch.email ?? undefined,
     });
@@ -272,7 +276,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA',
   let whatsappUrl: string | null = null;
   if (patient.phone) {
     const cuando = startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
-    const codigo = appt.code ? ` Tu código de cita es ${appt.code}.` : '';
+    const codigo = appt.code && patient.type !== 'NUEVO' ? ` Tu código de cita es ${appt.code}.` : '';
     const confirmText = `Hola ${patient.name.split(' ')[0]} 💜 Confirmamos tu cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. — Li Estetic Center`;
     whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(confirmText)}`;
   }
@@ -363,16 +367,15 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     },
   });
 
-  // Descontar del conteo por técnica del combo cada técnica aplicada hoy.
-  if (target && b.techniques?.length) {
-    const techs = await prisma.treatmentTechnique.findMany({ where: { treatmentId: target.id } });
-    for (const nombre of b.techniques) {
-      const tech = techs.find((x) => x.name === nombre);
-      if (tech && tech.done < tech.total) {
-        await prisma.treatmentTechnique.update({ where: { id: tech.id }, data: { done: tech.done + 1 } });
-      }
-    }
-  }
+  // Recepción recibe el aviso: puede despedir al paciente, cobrarle otro
+  // servicio o agendarle la próxima cita.
+  await notifyRole('RECEPCIONISTA', {
+    type: 'GENERAL',
+    title: 'Turno cerrado',
+    body: `${appt.patient.name} terminó su atención (${appt.serviceName}).`,
+    link: '/app/agenda',
+  }, appt.branchId).catch(() => {});
+
 
   const tecnicasMsg = b.techniques?.length ? ` · Aplicado: ${b.techniques.join(', ')}` : '';
   res.json({ ok: true, message: `Proceso terminado.${sessionMsg}${tecnicasMsg}` });

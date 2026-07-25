@@ -117,12 +117,12 @@ export async function sendAppointmentConfirmation(
           <b>Servicio:</b> ${opts.service}<br/>
           <b>Fecha:</b> ${opts.date} · <b>Hora:</b> ${opts.time}<br/>
           ${opts.branchName ? `<b>Sucursal:</b> ${opts.branchName}${opts.branchPlace ? ` · ${opts.branchPlace}` : ''}<br/>` : ''}
-          <b>Código de tu turno:</b> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;color:#B31C86">${opts.code}</span>
+          ${opts.code ? `<b>Código de tu turno:</b> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;color:#B31C86">${opts.code}</span>` : '<b>Preséntate en recepción:</b> allí te entregarán tu código de turno al registrarte.'}
         </p>
         <p>Preséntalo al llegar. Cuando visites la estética y realices tu primer servicio, te daremos acceso a tu <b>portal del paciente</b> para ver tu proceso y tu ficha. ¡Te esperamos!</p>
       </div>
     </div>`;
-  return deliver(to, `Tu cita en Li Estetic Center · código ${opts.code}`, html, opts.replyTo);
+  return deliver(to, opts.code ? `Tu cita en Li Estetic Center · código ${opts.code}` : 'Tu cita en Li Estetic Center quedó agendada', html, opts.replyTo);
 }
 
 export interface ReceiptMail {

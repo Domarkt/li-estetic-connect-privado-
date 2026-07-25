@@ -25,7 +25,7 @@ interface Props {
   onSaved: () => void;
 }
 
-interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; cedula?: string | null; occupation?: string | null; address?: string | null; birthDate?: string | null }
+interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; cedula?: string | null; occupation?: string | null; address?: string | null; sector?: string | null; province?: string | null; birthDate?: string | null }
 interface FichaData {
   consultDate?: string | null; motivos?: string[];
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
@@ -56,7 +56,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
   const [busy, setBusy] = useState(false);
 
   // Estado del formulario
-  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', cedula: '', occupation: '', address: '', consultDate: '' });
+  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', cedula: '', occupation: '', address: '', sector: '', province: '', consultDate: '' });
   const [motivos, setMotivos] = useState<Set<string>>(new Set());
   const [antecedentes, setAntecedentes] = useState<Record<string, boolean>>({});
   const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', lactancia: false });
@@ -88,6 +88,8 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
           cedula: patient.cedula ?? d.cedula,
           occupation: patient.occupation ?? d.occupation,
           address: patient.address ?? d.address,
+          sector: patient.sector ?? d.sector,
+          province: patient.province ?? d.province,
           birthDate: patient.birthDate ? String(patient.birthDate).slice(0, 10) : d.birthDate,
           consultDate: ficha?.consultDate ? String(ficha.consultDate).slice(0, 10) : d.consultDate,
         }));
@@ -135,6 +137,8 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
       cedula: datos.cedula || undefined,
       occupation: datos.occupation || undefined,
       address: datos.address || undefined,
+      sector: datos.sector || undefined,
+      province: datos.province || undefined,
       motivos: [...motivos],
     });
   }
@@ -255,7 +259,7 @@ function ageFromISO(iso: string): string {
   return a >= 0 && a < 130 ? String(a) : '';
 }
 
-type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; cedula: string; occupation: string; address: string; consultDate: string };
+type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; cedula: string; occupation: string; address: string; sector: string; province: string; consultDate: string };
 
 function Step1({ datos, setDatos, motivos, setMotivos }: {
   datos: Datos; setDatos: React.Dispatch<React.SetStateAction<Datos>>;
@@ -284,7 +288,12 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
             ))}
           </div>
         </div>
-        <label className="col-span-3 flex flex-col gap-1.5"><span className={lblCls}>Dirección</span><input className={inputCls} value={datos.address} onChange={(e) => set('address', e.target.value)} /></label>
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>Calle y número</span><input className={inputCls} value={datos.address} onChange={(e) => set('address', e.target.value)} placeholder="C/ Duarte #12" /></label>
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>Sector</span><input className={inputCls} value={datos.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Villa Verde" /></label>
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>Provincia</span>
+          <input className={inputCls} list="prov-do" value={datos.province} onChange={(e) => set('province', e.target.value)} placeholder="La Romana" />
+          <datalist id="prov-do">{['Distrito Nacional','Santo Domingo','Santiago','La Romana','La Altagracia','San Pedro de Macorís','La Vega','Puerto Plata','Duarte','San Cristóbal','Espaillat','Azua','Barahona','Monseñor Nouel','Peravia','Hermanas Mirabal','Monte Plata','Sánchez Ramírez','María Trinidad Sánchez','Samaná','Valverde','Montecristi','Hato Mayor','El Seibo','San Juan','Baoruco','Independencia','Pedernales','Elías Piña','Santiago Rodríguez','Dajabón','San José de Ocoa'].map((pr) => <option key={pr} value={pr} />)}</datalist>
+        </label>
       </div>
       <div className={sectionCls}>A · Motivo de la consulta</div>
       <div className="grid grid-cols-3 gap-2.5">
@@ -413,6 +422,8 @@ function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
   // esteticista debe poder elegir cuál está trabajando hoy.
   const [paquetes, setPaquetes] = useState<PatientPackage[]>([]);
   const [pkgId, setPkgId] = useState<string>('');
+  // Otros planes que se trabajan EN LA MISMA visita (procesos combinables en cabina).
+  const [extraIds, setExtraIds] = useState<string[]>([]);
   const [opciones, setOpciones] = useState<AreaOptFicha[]>([]);
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -503,7 +514,14 @@ function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
                       {agotado ? 'Sin sesiones disponibles' : `${p.done}/${p.total} · quedan ${p.remaining}`}
                     </span>
                   </span>
-                  {on && <span className="flex-none text-[12px] font-bold text-magenta">✓</span>}
+                  {on ? <span className="flex-none text-[12px] font-bold text-magenta">✓</span> : !agotado && (
+                    <span role="button" tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); setExtraIds((x) => x.includes(p.id) ? x.filter((i) => i !== p.id) : [...x, p.id]); }}
+                      className="flex-none rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
+                      style={extraIds.includes(p.id) ? { borderColor: 'var(--magenta)', color: 'var(--magenta)', background: 'var(--magenta-soft)' } : { borderColor: 'var(--line)', color: 'var(--muted)' }}>
+                      {extraIds.includes(p.id) ? '✓ hoy también' : '+ hoy también'}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -550,7 +568,9 @@ function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
         {busy ? 'Guardando…' : 'Guardar áreas del plan'}
       </button>
 
-      <AplicadoHoy pkg={pkg} onRegistrada={() => { recargar(); onSesion(); }} />
+      <AplicadoHoy pkg={pkg}
+        extras={paquetes.filter((x) => x.id !== pkg.id && extraIds.includes(x.id))}
+        onRegistrada={() => { setExtraIds([]); recargar(); onSesion(); }} />
     </div>
   );
 }
@@ -562,10 +582,12 @@ function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
  * Antes el combo solo mostraba el contador (0/5) y no había forma de decir cuál de
  * los procedimientos se aplicó ese día.
  */
-function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada: () => void }) {
+function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; extras?: PatientPackage[]; onRegistrada: () => void }) {
   const toast = useToast();
   const [abierto, setAbierto] = useState(false);
   const [tecnicas, setTecnicas] = useState<string[]>([]);
+  // Técnicas marcadas de los planes ADICIONALES de hoy: clave "planId::técnica".
+  const [tecExtras, setTecExtras] = useState<string[]>([]);
   // Vienen marcadas las áreas disponibles del plan: es lo normal (se trabajan
   // las áreas del combo). Antes quedaban sin marcar y sus contadores no avanzaban.
   const [areasHoy, setAreasHoy] = useState<string[]>(
@@ -589,17 +611,28 @@ function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada:
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   async function registrar() {
-    if (!tecnicas.length && !areasHoy.length) { toast('Marca qué procedimiento se aplicó'); return; }
+    if (!tecnicas.length && !areasHoy.length && !tecExtras.length) { toast('Marca qué procedimiento se aplicó'); return; }
     if (!firma) { toast('Falta la firma del paciente para validar'); return; }
     setBusy(true);
     try {
-      const r = await api.post<{ message: string; sesiones: SesionAplicada[] }>(
-        `/patients/treatments/${pkg.id}/session`,
-        { techniques: tecnicas, areas: areasHoy, signature: firma, notes: notas || undefined },
-      );
-      toast(r.message);
-      setSesiones(r.sesiones);
-      setTecnicas([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false);
+      let msg = 'Sesiones registradas y firmadas';
+      if (tecnicas.length || areasHoy.length) {
+        const r = await api.post<{ message: string; sesiones: SesionAplicada[] }>(
+          `/patients/treatments/${pkg.id}/session`,
+          { techniques: tecnicas, areas: areasHoy, signature: firma, notes: notas || undefined },
+        );
+        msg = r.message; setSesiones(r.sesiones);
+      }
+      // Planes combinados en la misma visita: una sesión cada uno, con la misma firma.
+      for (const ex of extras) {
+        const tecs = tecExtras.filter((k) => k.startsWith(ex.id + '::')).map((k) => k.slice(ex.id.length + 2));
+        if (!tecs.length) continue;
+        const areasEx = (ex.areas ?? []).filter((a) => a.remaining > 0 && !a.isExtra).map((a) => a.area);
+        await api.post(`/patients/treatments/${ex.id}/session`,
+          { techniques: tecs, areas: areasEx, signature: firma, notes: notas || undefined });
+      }
+      toast(msg);
+      setTecnicas([]); setTecExtras([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false);
       onRegistrada();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
@@ -675,6 +708,31 @@ function AplicadoHoy({ pkg, onRegistrada }: { pkg: PatientPackage; onRegistrada:
               </div>
             </div>
           )}
+
+          {/* Planes combinados en la misma cabina: se marca qué se aplicó de cada
+              uno y se descuentan todos con la misma firma. */}
+          {extras.map((ex) => {
+            const disp = (ex.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
+            if (!disp.length) return null;
+            return (
+              <div key={ex.id} className="rounded-[9px] border border-magenta/30 bg-magenta-soft/40 p-2.5">
+                <div className="mb-1.5 text-[11.5px] font-bold text-magenta">También hoy · {ex.name}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {disp.map((s) => {
+                    const k = `${ex.id}::${s.name}`;
+                    const on = tecExtras.includes(k);
+                    return (
+                      <button key={s.id} type="button" onClick={() => setTecExtras((x) => x.includes(k) ? x.filter((i) => i !== k) : [...x, k])}
+                        className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                        style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                        {on ? '✓ ' : ''}{s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
 
           <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Observaciones de la sesión (opcional)"
             className="rounded-[9px] border border-line px-3 py-2.5 text-[12.5px] outline-none focus:border-magenta" />
@@ -797,8 +855,6 @@ function Step4({ patientId, treatmentIdCita, tratamiento, setTratamiento, rows, 
   return (
     <div className="animate-fade">
       <PlanPagado patientId={patientId} treatmentIdCita={treatmentIdCita} onPlan={onPlan} onSesion={() => setRecargaBitacora((r) => r + 1)} />
-      <label className="mb-4 flex flex-col gap-1.5"><span className={lblCls}>Tratamiento a realizar</span>
-        <input className={inputCls} value={tratamiento} onChange={(e) => setTratamiento(e.target.value)} placeholder="Ej. Reducción de medidas — 10 sesiones" /></label>
       <Bitacora patientId={patientId} recarga={recargaBitacora} />
       {/* Filas antiguas escritas a mano: se conservan visibles para no perder lo
           que ya se había anotado antes de la bitácora automática. */}

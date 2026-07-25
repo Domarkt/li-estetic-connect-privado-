@@ -265,7 +265,9 @@ model Patient {
   age         Int?
   birthDate   DateTime?
   occupation  String?
-  address     String?
+  address     String? // calle y número (cifrado, PII)
+  sector      String? // sector/barrio
+  province    String? // provincia (La Romana, Santiago…): para saber de dónde visitan
   type        PatientType @default(NUEVO)
   avatarColor String      @default("#B31C86")
   createdAt   DateTime    @default(now())
