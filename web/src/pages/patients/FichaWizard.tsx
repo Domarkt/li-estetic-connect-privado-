@@ -43,6 +43,9 @@ function sequenceFor(role: string): number[] {
 
 const STEP_LABELS = ['Datos & motivo', 'Antecedentes', 'Medicamentos & piel', 'Tratamiento'];
 
+/** Consentimiento informado que el paciente valida con su firma al aplicar el procedimiento. */
+const CONSENTIMIENTO = 'Declaro que he recibido información clara, completa y comprensible sobre el procedimiento estético que me será realizado, ya sea mediante aparatología —como cavitación, radiofrecuencia, vacunterapia, lipoláser, láser, HIFU, microdermoabrasión u otros equipos—, tratamientos faciales o corporales, peeling, masajes reductores, drenajes y masajes postquirúrgicos, aplicación de toxina botulínica (Botox), mesoterapia, inyecciones u otros procedimientos estéticos. Se me han explicado el objetivo del tratamiento, la forma en que se realizará, los beneficios esperados, las posibles molestias, riesgos, efectos secundarios, contraindicaciones, cuidados posteriores y alternativas disponibles. Confirmo que he informado de manera verdadera cualquier enfermedad, alergia, medicamento, embarazo, cirugía reciente o condición de salud que pueda influir en el procedimiento. Comprendo que los resultados pueden variar en cada persona, que podrían requerirse varias sesiones y que no se garantiza un resultado exacto. Entiendo que los tratamientos postquirúrgicos no sustituyen la evaluación ni las indicaciones del médico cirujano y que los procedimientos inyectables o invasivos deberán ser realizados por el profesional autorizado correspondiente. Autorizo voluntariamente a Li Estetic Center y al profesional responsable a realizar el procedimiento indicado, así como a suspenderlo o modificarlo si se detecta alguna condición que pueda representar un riesgo para mi salud. Comprendo claramente que puedo cambiar de opinión y cancelar el procedimiento antes de que este sea iniciado. Declaro que tuve la oportunidad de hacer preguntas, que recibí respuestas satisfactorias y que me comprometo a seguir todas las indicaciones antes y después del tratamiento, así como a informar inmediatamente cualquier reacción inesperada.';
+
 export default function FichaWizard({ patientId, patientName, startStep, treatmentId, onClose, onSaved }: Props) {
   const { staff } = useAuth();
   const toast = useToast();
@@ -590,6 +593,7 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
   const [tecExtras, setTecExtras] = useState<string[]>([]);
   // Paso a paso: 1 = marcar lo aplicado · 2 = firma del paciente y guardar.
   const [paso, setPaso] = useState(1);
+  const [consiente, setConsiente] = useState(false); // aceptó el consentimiento
   // Vienen marcadas las áreas disponibles del plan: es lo normal (se trabajan
   // las áreas del combo). Antes quedaban sin marcar y sus contadores no avanzaban.
   const [areasHoy, setAreasHoy] = useState<string[]>(
@@ -635,7 +639,7 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
           { techniques: tecs, areas: areasEx, signature: firma, notes: notas || undefined });
       }
       toast(msg);
-      setTecnicas([]); setTecExtras([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false); setPaso(1);
+      setTecnicas([]); setTecExtras([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false); setPaso(1); setConsiente(false);
       onRegistrada();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
@@ -644,7 +648,7 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
     <div className="mt-3 border-t border-magenta/25 pt-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[12px] font-extrabold text-navy">Procedimiento aplicado hoy</span>
-        <button type="button" onClick={() => { setAbierto((v) => !v); setPaso(1); }} className="text-[11.5px] font-bold text-magenta">
+        <button type="button" onClick={() => { setAbierto((v) => !v); setPaso(1); setConsiente(false); }} className="text-[11.5px] font-bold text-magenta">
           {abierto ? 'Cerrar' : '+ Registrar'}
         </button>
       </div>
@@ -761,12 +765,23 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
             <b className="text-navy">Se registrará:</b> {[...tecnicas, ...tecExtras.map((k) => k.split('::')[1])].join(', ') || '—'}
             {areasHoy.length > 0 && ` · áreas: ${areasHoy.length}`}
           </div>
-          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el procedimiento aplicado" />
+
+          {/* Consentimiento informado: se muestra al firmar y queda validado con la firma. */}
+          <div className="mb-0.5 text-[11.5px] font-bold text-navy">Consentimiento informado</div>
+          <div className="max-h-[140px] overflow-y-auto rounded-[9px] border border-line bg-bg px-3 py-2.5 text-[11px] leading-relaxed text-muted">
+            {CONSENTIMIENTO}
+          </div>
+          <label className="flex items-start gap-2 text-[11.5px] font-semibold text-navy">
+            <input type="checkbox" checked={consiente} onChange={(e) => setConsiente(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
+            El paciente leyó y acepta el consentimiento, y autoriza el procedimiento.
+          </label>
+
+          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el consentimiento y el procedimiento" />
           <div className="flex gap-2">
             <button type="button" onClick={() => setPaso(1)} className="rounded-[9px] border border-line bg-card px-4 py-2.5 text-[12.5px] font-bold text-muted">← Atrás</button>
-            <button type="button" onClick={registrar} disabled={busy || !firma}
+            <button type="button" onClick={registrar} disabled={busy || !firma || !consiente}
               className="flex-1 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
-              {busy ? 'Guardando…' : firma ? 'Firmar y guardar el plan' : 'Falta la firma del paciente'}
+              {busy ? 'Guardando…' : !consiente ? 'Marca el consentimiento' : firma ? 'Firmar y guardar el plan' : 'Falta la firma del paciente'}
             </button>
           </div>
           </>}
