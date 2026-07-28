@@ -82,6 +82,8 @@ export interface PatientDetail extends PatientRow {
   skin: string;
   motivo: string[];
   therapistName: string | null;
+  sector?: string | null;
+  province?: string | null;
   clinical: {
     antecedentes: string[];
     medicamentos: string[];

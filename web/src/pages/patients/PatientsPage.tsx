@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
@@ -53,6 +54,7 @@ export default function PatientsPage() {
   }, [q, branchQuery]);
 
   useEffect(() => { load(); }, [load, reloadKey]);
+  useAutoRefresh(load);
 
   const canCreate = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
   const refresh = () => setReloadKey((k) => k + 1);

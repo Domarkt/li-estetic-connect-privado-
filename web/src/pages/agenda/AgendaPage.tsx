@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
@@ -60,6 +61,7 @@ export default function AgendaPage() {
   }
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   // Volver del OAuth de Google con ?calendar=connected
   useEffect(() => {

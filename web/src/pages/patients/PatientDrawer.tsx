@@ -143,6 +143,8 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                 <Info label="Paciente desde" value={d.since} />
                 <Info label="Fototipo de piel" value={d.skin} />
                 <Info label="Esteticista" value={d.therapistName ?? '—'} />
+                <Info label="Provincia" value={d.province || '—'} />
+                <Info label="Sector" value={d.sector || '—'} />
               </div>
 
               {d.motivo.length > 0 && (

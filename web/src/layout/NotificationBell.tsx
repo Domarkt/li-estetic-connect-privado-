@@ -21,14 +21,42 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
 
+  // Cantidad de no leídos en el sondeo anterior: si sube, suena.
+  const prevUnread = useRef<number | null>(null);
+
+  /** Pitido corto con Web Audio (sin archivo de sonido, evita cargar la app). */
+  function beep() {
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+      osc.start(); osc.stop(ctx.currentTime + 0.36);
+      osc.onended = () => ctx.close();
+    } catch { /* el navegador puede bloquear audio sin interacción: no pasa nada */ }
+  }
+
   const load = useCallback(() => {
-    api.get<NotificationsResponse>('/notifications').then(setData).catch(() => {});
+    api.get<NotificationsResponse>('/notifications').then((d) => {
+      // Suena solo cuando LLEGAN nuevas (el conteo sube), no en la primera carga.
+      if (prevUnread.current !== null && d.unread > prevUnread.current) beep();
+      prevUnread.current = d.unread;
+      setData(d);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
     load();
     const t = setInterval(load, 30000); // sondeo cada 30s
-    return () => clearInterval(t);
+    // También al volver a la pestaña: refresca notificaciones al instante.
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(t); window.removeEventListener('focus', onFocus); };
   }, [load]);
 
   useEffect(() => {

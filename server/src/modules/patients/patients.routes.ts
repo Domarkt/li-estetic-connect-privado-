@@ -54,6 +54,8 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
     skin: cr?.fototipo ?? '—',
     motivo: cr?.motivos ?? [],
     therapistName: cr?.therapist?.name ?? null,
+    // De dónde nos visita (segmentado): se ve en el expediente.
+    sector: patient.sector, province: patient.province,
     // Historial clínico (antecedentes) para ver en el drawer
     clinical: {
       antecedentes: truthyKeys(cr?.antecedentes),

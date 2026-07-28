@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
@@ -40,6 +41,7 @@ export default function BillingPage() {
       .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   }, [date, branchQ]);
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   function shiftDate(days: number) {
     const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
