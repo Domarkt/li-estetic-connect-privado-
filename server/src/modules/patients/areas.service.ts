@@ -219,6 +219,58 @@ export async function registrarSesionAplicada(
   return { sesion, done, restantes, total: t.totalSessions };
 }
 
+/**
+ * Rectificar una sesión ya registrada: AGREGAR un área o técnica que se trabajó
+ * pero no se marcó (el caso "faltó un área y no se podía editar"). No re-firma:
+ * es una corrección de la misma visita. Cada área agregada que aún tenga cupo
+ * consume su sesión del plan, igual que si se hubiera marcado al registrar.
+ * No se quitan las que ya estaban: solo se añaden las nuevas.
+ */
+export async function rectificarSesion(
+  sessionId: string,
+  datos: { areas: string[]; techniques: string[] },
+) {
+  const s = await prisma.treatmentSession.findUnique({ where: { id: sessionId } });
+  if (!s) return null;
+  const t = await prisma.treatment.findUnique({
+    where: { id: s.treatmentId }, include: { areas: true, techniques: true },
+  });
+  if (!t) return null;
+
+  // Solo lo que aún no estaba en la sesión y todavía tiene cupo disponible.
+  const areasNuevas = t.areas.filter(
+    (a) => datos.areas.includes(a.area) && !s.areas.includes(a.area) && a.doneSessions < a.totalSessions,
+  );
+  const tecNuevas = t.techniques.filter(
+    (x) => datos.techniques.includes(x.name) && !s.techniques.includes(x.name) && x.done < x.total,
+  );
+
+  for (const a of areasNuevas) {
+    await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: { increment: 1 } } });
+  }
+  for (const x of tecNuevas) {
+    await prisma.treatmentTechnique.update({ where: { id: x.id }, data: { done: { increment: 1 } } });
+  }
+
+  // Cada área añadida gasta una sesión del plan (se reparten por área).
+  const done = Math.min(t.totalSessions, t.doneSessions + areasNuevas.length);
+  const restantes = Math.max(0, t.totalSessions - done);
+  await prisma.treatment.update({
+    where: { id: t.id },
+    data: { doneSessions: done, active: restantes > 0 },
+  });
+
+  const sesion = await prisma.treatmentSession.update({
+    where: { id: s.id },
+    data: {
+      areas: [...s.areas, ...areasNuevas.map((a) => a.area)],
+      techniques: [...s.techniques, ...tecNuevas.map((x) => x.name)],
+    },
+  });
+
+  return { sesion, done, restantes, total: t.totalSessions, agregadas: areasNuevas.length + tecNuevas.length };
+}
+
 /** Resuelve nombres de esteticistas en una sola consulta. */
 async function nombresTerapeutas(ids: (string | null)[]): Promise<Map<string, string>> {
   const unicos = [...new Set(ids.filter((x): x is string => !!x))];

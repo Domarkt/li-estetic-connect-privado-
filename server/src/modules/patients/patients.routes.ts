@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, listarSesiones, bitacoraPaciente } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, listarSesiones, bitacoraPaciente } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
@@ -224,6 +224,30 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
     done: r.done, restantes: r.restantes, total: r.total,
     sesiones: await listarSesiones(t.id, labels),
     message: `Sesión ${r.done} de ${r.total} registrada y firmada`,
+  });
+});
+
+/**
+ * Rectificar una sesión ya registrada: agregar un área o técnica que se trabajó
+ * pero no se marcó ("faltó un área y no se podía editar"). No re-firma; es una
+ * corrección de la misma visita. No quita lo ya registrado, solo añade.
+ */
+patientsRouter.patch('/treatments/:treatmentId/session/:sessionId', requireStaff, requireRole(...areasRoles), async (req, res) => {
+  const b = z.object({ areas: z.array(z.string()).optional(), techniques: z.array(z.string()).optional() }).parse(req.body ?? {});
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  const r = await rectificarSesion(req.params.sessionId, { areas: b.areas ?? [], techniques: b.techniques ?? [] });
+  if (!r) return res.status(404).json({ error: 'Sesión no encontrada' });
+  const labels = await getAreaLabelMap();
+  await audit(req, {
+    action: 'TREATMENT_SESSION', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
+    summary: `Rectificó sesión de ${t.name} (${t.patient.name}): +${r.agregadas} · ahora ${r.done}/${r.total}`,
+  });
+  res.json({
+    ok: true, done: r.done, restantes: r.restantes, total: r.total, agregadas: r.agregadas,
+    sesiones: await listarSesiones(t.id, labels),
+    message: r.agregadas ? `Se agregó lo que faltaba · sesión ${r.done} de ${r.total}` : 'No había nada nuevo que agregar',
   });
 });
 

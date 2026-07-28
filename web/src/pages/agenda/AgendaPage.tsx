@@ -454,14 +454,36 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
   // ¿Ya se registró (y firmó) la sesión de hoy? Si no, la sesión NO se descuenta
   // y el paquete se queda igual aunque el paciente haya venido.
   const [registradaHoy, setRegistradaHoy] = useState<boolean | null>(null);
+  // Sesión de HOY (si ya se registró): permite revisar y rectificar antes de cerrar.
+  const [hoySesion, setHoySesion] = useState<{ id: string; areas: string[]; techniques: string[] } | null>(null);
+  const [rectOpen, setRectOpen] = useState(false);
+  const [rectAreas, setRectAreas] = useState<Set<string>>(new Set());
+  const [rectTec, setRectTec] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
+  const cargarSesionHoy = useCallback(() => {
     if (!appt.treatmentId) { setRegistradaHoy(null); return; }
     const hoy = new Date().toISOString().slice(0, 10);
-    api.get<{ sesiones: { at: string }[] }>(`/patients/treatments/${appt.treatmentId}/sessions`)
-      .then((r) => setRegistradaHoy(r.sesiones.some((s) => s.at.slice(0, 10) === hoy)))
+    api.get<{ sesiones: { id: string; at: string; areas: string[]; techniques: string[] }[] }>(`/patients/treatments/${appt.treatmentId}/sessions`)
+      .then((r) => {
+        const dela = r.sesiones.find((s) => s.at.slice(0, 10) === hoy) ?? null;
+        setRegistradaHoy(!!dela);
+        setHoySesion(dela ? { id: dela.id, areas: dela.areas, techniques: dela.techniques } : null);
+      })
       .catch(() => setRegistradaHoy(false));
   }, [appt.treatmentId]);
+  useEffect(() => { cargarSesionHoy(); }, [cargarSesionHoy]);
+
+  async function rectificar() {
+    if (!hoySesion || (!rectAreas.size && !rectTec.size)) { toast('Marca lo que faltó agregar'); return; }
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string }>(`/patients/treatments/${appt.treatmentId}/session/${hoySesion.id}`, { areas: [...rectAreas], techniques: [...rectTec] });
+      toast(r.message);
+      setRectAreas(new Set()); setRectTec(new Set()); setRectOpen(false);
+      cargarSesionHoy(); onDone();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+    finally { setBusy(false); }
+  }
 
   useEffect(() => {
     api.get<{ packages?: PatientPackage[] }>(`/patients/${appt.patientId}`)
@@ -519,9 +541,62 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
                 </button>
               </div>
             ) : registradaHoy === true ? (
-              <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
-                ✓ La sesión de hoy ya está registrada y firmada. Puedes cerrar el turno.
-              </div>
+              <>
+                <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
+                  ✓ La sesión de hoy ya está registrada y firmada. Revisa que esté completo antes de cerrar.
+                </div>
+                {/* Resumen de lo que quedó registrado HOY (validación antes de cerrar). */}
+                {hoySesion && (
+                  <div className="rounded-[10px] border border-line-2 px-3.5 py-3 text-[12px]">
+                    <div className="mb-1 font-bold text-navy">Se registró hoy:</div>
+                    <div className="text-muted">
+                      <b>Áreas:</b> {hoySesion.areas.length ? hoySesion.areas.join(', ') : '—'}<br />
+                      <b>Técnicas:</b> {hoySesion.techniques.length ? hoySesion.techniques.join(', ') : '—'}
+                    </div>
+                    {!rectOpen ? (
+                      <button onClick={() => setRectOpen(true)} className="mt-2 text-[12px] font-bold text-magenta">
+                        ¿Faltó un área o técnica? Agregar →
+                      </button>
+                    ) : (
+                      <div className="mt-2.5 border-t border-line-2 pt-2.5">
+                        <div className="mb-1.5 text-[11.5px] font-bold text-muted">Marca lo que faltó (se suma a la sesión de hoy, sin volver a firmar):</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {areas.filter((a) => !hoySesion.areas.includes(a.label) && a.remaining > 0).map((a) => {
+                            const on = rectAreas.has(a.area);
+                            return (
+                              <button key={a.id} onClick={() => { const n = new Set(rectAreas); n.has(a.area) ? n.delete(a.area) : n.add(a.area); setRectAreas(n); }}
+                                className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                                style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                                {on ? '✓ ' : ''}{a.label}
+                              </button>
+                            );
+                          })}
+                          {tecnicas.filter((t) => !hoySesion.techniques.includes(t.name) && (t.remaining == null || t.remaining > 0)).map((t) => {
+                            const on = rectTec.has(t.name);
+                            return (
+                              <button key={t.id} onClick={() => { const n = new Set(rectTec); n.has(t.name) ? n.delete(t.name) : n.add(t.name); setRectTec(n); }}
+                                className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                                style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                                {on ? '✓ ' : ''}{t.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {areas.filter((a) => !hoySesion.areas.includes(a.label) && a.remaining > 0).length === 0 &&
+                         tecnicas.filter((t) => !hoySesion.techniques.includes(t.name) && (t.remaining == null || t.remaining > 0)).length === 0 && (
+                          <div className="text-[11.5px] text-muted">No queda nada por agregar de este plan.</div>
+                        )}
+                        <div className="mt-2.5 flex gap-2">
+                          <button onClick={() => { setRectOpen(false); setRectAreas(new Set()); setRectTec(new Set()); }} className="rounded-[9px] border border-line px-3 py-2 text-[12px] font-bold text-muted">Cancelar</button>
+                          <button onClick={rectificar} disabled={busy || (!rectAreas.size && !rectTec.size)} className="rounded-[9px] px-3 py-2 text-[12px] font-bold text-white disabled:opacity-50" style={{ background: 'var(--magenta)' }}>
+                            {busy ? 'Guardando…' : 'Agregar lo que faltó'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             ) : (
               <div className="rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>
                 ℹ️ Cerrar turno no descuenta sesiones. El descuento se hace en la <b>ficha</b>, al registrar el procedimiento aplicado con la <b>firma del paciente</b>.
