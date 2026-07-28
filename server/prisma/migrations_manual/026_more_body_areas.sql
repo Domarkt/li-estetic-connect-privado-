@@ -9,4 +9,4 @@ INSERT INTO "BodyArea" ("id","key","label","grupo","sortOrder") VALUES
   (substr(md5(random()::text),1,25), 'MUSLO_DELANTERO',  'Muslo delantero',  'CORPORAL', 8),
   (substr(md5(random()::text),1,25), 'MUSLO_COMPLETO',   'Muslo completo',   'CORPORAL', 9),
   (substr(md5(random()::text),1,25), 'PIERNA_PANTORRILLA','Pierna / pantorrilla','CORPORAL', 10)
-ON CONFLICT ("key") DO UPDATE SET "active" = true;
+ON CONFLICT ("key") DO NOTHING;
