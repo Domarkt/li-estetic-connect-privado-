@@ -422,6 +422,47 @@ function GoalsTab() {
 }
 
 // ── Reglas de puntos ──
+/**
+ * Interruptor de visibilidad del plan de puntos para el personal. Mientras se
+ * afina, "Mis Puntos" queda oculto para esteticistas/recepción y solo la
+ * Administradora lo ve. Al activarlo, el personal empieza a verlo en su menú.
+ */
+function PuntosVisibility() {
+  const toast = useToast();
+  const [visible, setVisible] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get<{ visible: boolean }>('/config/points-visibility').then((r) => setVisible(r.visible)).catch(() => setVisible(false));
+  }, []);
+
+  async function cambiar(v: boolean) {
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string; visible: boolean }>('/config/points-visibility', { visible: v });
+      setVisible(r.visible); toast(r.message);
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mb-4 flex items-center gap-3 rounded-base border border-line bg-card p-4 shadow-card">
+      <div className="flex-1">
+        <div className="text-[13px] font-extrabold text-navy">Mostrar “Mis Puntos” al personal</div>
+        <div className="text-[12px] text-muted">
+          {visible === null ? 'Cargando…' : visible
+            ? 'Las esteticistas ven su plan de puntos en el menú.'
+            : 'Oculto mientras se afina. Solo tú (Administradora) lo ves. Actívalo cuando esté listo.'}
+        </div>
+      </div>
+      <button onClick={() => cambiar(!visible)} disabled={busy || visible === null}
+        className="relative h-7 w-12 flex-none rounded-full transition disabled:opacity-50"
+        style={{ background: visible ? 'var(--ok)' : 'var(--line)' }} aria-pressed={!!visible}>
+        <span className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all" style={{ left: visible ? 26 : 4 }} />
+      </button>
+    </div>
+  );
+}
+
 function RulesTab() {
   const toast = useToast();
   const [rules, setRules] = useState<PointsRule[]>([]);
@@ -441,6 +482,7 @@ function RulesTab() {
 
   return (
     <div>
+      <PuntosVisibility />
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded-base border border-line bg-card p-4 shadow-card">
         <label className="flex-1"><span className="mb-1 block text-[11.5px] font-bold text-muted">Nueva regla</span><input className={inp} value={nl} onChange={(e) => setNl(e.target.value)} placeholder="Ej. Venta antes de 11 AM" /></label>
         <label><span className="mb-1 block text-[11.5px] font-bold text-muted">Puntos</span><input type="number" className="w-24 rounded-lg border border-line px-3 py-2 text-[13px]" value={np} onChange={(e) => setNp(e.target.value)} placeholder="50" /></label>

@@ -221,7 +221,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
         <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-[26px] py-6">
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
-          {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
+          {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
           {stepNum === 4 && <Step4 patientId={patientId} treatmentIdCita={treatmentId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} />}
         </div>
 
@@ -362,10 +362,10 @@ function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir }: {
 }
 
 type Medidas = { cintura: string; abdomen: string; pierna: string; brazo: string };
-function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setPeso, altura, setAltura, medidas, setMedidas }: {
+function Step3({ med, setMed, fototipo, setFototipo, peso, setPeso, altura, setAltura, medidas, setMedidas }: {
   med: Record<string, boolean>; setMed: (v: Record<string, boolean>) => void;
   fototipo: string; setFototipo: (v: string) => void;
-  talla: string; setTalla: (v: string) => void; peso: string; setPeso: (v: string) => void;
+  peso: string; setPeso: (v: string) => void;
   altura: string; setAltura: (v: string) => void; medidas: Medidas; setMedidas: (v: Medidas) => void;
 }) {
   return (
@@ -392,9 +392,8 @@ function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setP
           </div>
         </div>
         <div className="flex flex-col justify-end gap-2.5">
-          <div className="grid grid-cols-3 gap-2 min-w-0">
+          <div className="grid grid-cols-2 gap-2 min-w-0">
             <label className="flex flex-col gap-1 min-w-0"><span className="text-[11px] font-bold text-muted">Altura (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={altura} onChange={(e) => setAltura(e.target.value)} /></label>
-            <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Talla (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={talla} onChange={(e) => setTalla(e.target.value)} /></label>
             <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Peso (lb)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
           </div>
           <div className="text-[11px] font-extrabold uppercase text-navy">Medidas corporales (cm)</div>

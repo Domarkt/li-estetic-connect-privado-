@@ -12,7 +12,7 @@ import NotificationBell from './NotificationBell';
 // mensajes que no existían.
 interface NavItem { key: string; label: string }
 /** Contadores reales por sección (0 = no se muestra globito). */
-interface Badges { mensajes: number; agenda: number; notificaciones: number }
+interface Badges { mensajes: number; agenda: number; notificaciones: number; puntosVisible?: boolean }
 
 const NAV: Record<Role, NavItem[]> = {
   ADMIN: [
@@ -48,7 +48,8 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'pacientes', label: 'Pacientes' },
     { key: 'equipos', label: 'Equipos' },
     { key: 'chat', label: 'Chat equipo' },
-    { key: 'puntos', label: 'Mis Puntos' },
+    // "Mis Puntos" queda oculto mientras se afina; se muestra con el interruptor
+    // de Configuración (bandera puntosVisible). Ver AppShell.items.
   ],
 };
 
@@ -96,9 +97,14 @@ export default function AppShell() {
   if (!staff) return null;
   // Con el permiso de catálogo, el colaborador ve "Catálogo" aunque no sea admin.
   const base = NAV[staff.role];
-  const items = staff.canManageCatalog && !base.some((i) => i.key === 'catalogo')
+  let items = staff.canManageCatalog && !base.some((i) => i.key === 'catalogo')
     ? [...base, { key: 'catalogo', label: 'Catálogo' }]
     : base;
+  // El plan "Mis Puntos" se muestra al personal solo si la Administradora lo activó
+  // (mientras se afina, queda oculto). El admin siempre lo ve en su propio menú.
+  if (staff.role === 'ESTETICISTA' && badgeData.puntosVisible && !items.some((i) => i.key === 'puntos')) {
+    items = [...items, { key: 'puntos', label: 'Mis Puntos' }];
+  }
   // Qué contador le toca a cada sección del menú. Lo que no esté aquí no lleva
   // globito (antes "Mensajes" mostraba un 6 fijo aunque la bandeja estuviera vacía).
   const badges: Record<string, number> = {

@@ -223,6 +223,7 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
   const [pierna, setPierna] = useState('');
   const [brazo, setBrazo] = useState('');
   const [busy, setBusy] = useState(false);
+  const [paso, setPaso] = useState(1); // 1 antecedentes · 2 medicamentos · 3 piel y medidas
 
   const load = useCallback(() => {
     api.get<PortalFichaState>('/portal/ficha', 'patient').then((r) => {
@@ -261,7 +262,7 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
     <div className="rounded-[16px] border px-4 py-3.5" style={{ background: 'var(--magenta-soft)', borderColor: '#F0CDE4' }}>
       <div className="flex items-center justify-between">
         <div className="text-[13.5px] font-extrabold text-magenta-d">📋 Completa tu ficha clínica</div>
-        <button onClick={() => setOpen(!open)} className="rounded-[9px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">{open ? 'Cerrar' : d.filled ? 'Editar' : 'Completar'}</button>
+        <button onClick={() => { setOpen(!open); setPaso(1); }} className="rounded-[9px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">{open ? 'Cerrar' : d.filled ? 'Editar' : 'Completar'}</button>
       </div>
       <div className="mt-1 text-[11.5px]" style={{ color: 'var(--magenta-d)' }}>
         {d.filled ? 'Ya la enviaste · la esteticista la validará contigo. Puedes editarla.' : 'Ayúdanos con tu historial de salud antes de tu cita.'}
@@ -269,32 +270,53 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
 
       {open && (
         <div className="mt-3 flex flex-col gap-3">
-          <FichaGroup title="¿Tienes alguno de estos antecedentes?" items={ANTECEDENTES} state={ant} setState={setAnt} />
-          <FichaGroup title="¿Tomas alguno de estos medicamentos?" items={MEDICAMENTOS} state={med} setState={setMed} />
-          <div className="rounded-[12px] bg-card p-3">
-            <div className="mb-2 text-[12px] font-bold text-navy">Fototipo de piel <span className="font-semibold text-muted">(tipo de piel)</span></div>
-            <div className="flex gap-1.5">
-              {FOTOTIPOS.map((k) => (
-                <button key={k} onClick={() => setFototipo(k)} title={FOTOTIPO_DESC[k]} className="flex-1 rounded-lg border py-2 text-[13px] font-extrabold" style={{ borderColor: fototipo === k ? 'var(--magenta)' : 'var(--line)', background: fototipo === k ? 'var(--magenta-soft)' : '#fff', color: fototipo === k ? 'var(--magenta)' : 'var(--ink)' }}>{k}</button>
-              ))}
-            </div>
-            <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] leading-snug" style={{ background: 'var(--bg)', color: fototipo ? 'var(--ink)' : 'var(--muted)' }}>
-              {fototipo ? <><b>Tipo {fototipo}:</b> {FOTOTIPO_DESC[fototipo]}</> : 'Toca cada número para ver la descripción y elegir tu tipo de piel.'}
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Altura (cm)</span><input inputMode="numeric" value={altura} onChange={(e) => setAltura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Talla (cm)</span><input inputMode="numeric" value={talla} onChange={(e) => setTalla(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Peso (lb)</span><input inputMode="numeric" value={peso} onChange={(e) => setPeso(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-            </div>
-            <div className="mt-2.5 text-[11px] font-bold text-navy">Medidas corporales (cm)</div>
-            <div className="mt-1 grid grid-cols-2 gap-2">
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Cintura</span><input inputMode="numeric" value={cintura} onChange={(e) => setCintura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Abdomen</span><input inputMode="numeric" value={abdomen} onChange={(e) => setAbdomen(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Piernas</span><input inputMode="numeric" value={pierna} onChange={(e) => setPierna(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-              <label><span className="mb-1 block text-[11px] font-bold text-muted">Brazos</span><input inputMode="numeric" value={brazo} onChange={(e) => setBrazo(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-            </div>
+          {/* Ficha guiada en 3 pasos: se llena de a poco, no todo de golpe. */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+            {['Salud', 'Medicinas', 'Piel y medidas'].map((lbl, i) => {
+              const n = i + 1; const done = n < paso; const cur = n === paso;
+              return (
+                <button key={lbl} type="button" onClick={() => n < paso && setPaso(n)} disabled={n > paso}
+                  className="flex items-center gap-1 rounded-full px-2.5 py-1"
+                  style={{ background: cur ? 'var(--magenta)' : done ? 'var(--ok-soft)' : 'var(--card)', color: cur ? '#fff' : done ? 'var(--ok)' : 'var(--muted)' }}>
+                  <span>{done ? '✓' : n}</span><span>{lbl}</span>
+                </button>
+              );
+            })}
           </div>
-          <button onClick={save} disabled={busy} className="rounded-[11px] bg-magenta py-3 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Enviar a mi esteticista'}</button>
+
+          {paso === 1 && <FichaGroup title="¿Tienes alguno de estos antecedentes?" items={ANTECEDENTES} state={ant} setState={setAnt} />}
+          {paso === 2 && <FichaGroup title="¿Tomas alguno de estos medicamentos?" items={MEDICAMENTOS} state={med} setState={setMed} />}
+          {paso === 3 && (
+            <div className="rounded-[12px] bg-card p-3">
+              <div className="mb-2 text-[12px] font-bold text-navy">Fototipo de piel <span className="font-semibold text-muted">(tipo de piel)</span></div>
+              <div className="flex gap-1.5">
+                {FOTOTIPOS.map((k) => (
+                  <button key={k} onClick={() => setFototipo(k)} title={FOTOTIPO_DESC[k]} className="flex-1 rounded-lg border py-2 text-[13px] font-extrabold" style={{ borderColor: fototipo === k ? 'var(--magenta)' : 'var(--line)', background: fototipo === k ? 'var(--magenta-soft)' : '#fff', color: fototipo === k ? 'var(--magenta)' : 'var(--ink)' }}>{k}</button>
+                ))}
+              </div>
+              <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] leading-snug" style={{ background: 'var(--bg)', color: fototipo ? 'var(--ink)' : 'var(--muted)' }}>
+                {fototipo ? <><b>Tipo {fototipo}:</b> {FOTOTIPO_DESC[fototipo]}</> : 'Toca cada número para ver la descripción y elegir tu tipo de piel.'}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label><span className="mb-1 block text-[11px] font-bold text-muted">Altura (cm)</span><input inputMode="numeric" value={altura} onChange={(e) => setAltura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+                <label><span className="mb-1 block text-[11px] font-bold text-muted">Peso (lb)</span><input inputMode="numeric" value={peso} onChange={(e) => setPeso(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              </div>
+              <div className="mt-2.5 text-[11px] font-bold text-navy">Medidas corporales (cm)</div>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <label><span className="mb-1 block text-[11px] font-bold text-muted">Cintura</span><input inputMode="numeric" value={cintura} onChange={(e) => setCintura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+                <label><span className="mb-1 block text-[11px] font-bold text-muted">Abdomen</span><input inputMode="numeric" value={abdomen} onChange={(e) => setAbdomen(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+                <label><span className="mb-1 block text-[11px] font-bold text-muted">Piernas</span><input inputMode="numeric" value={pierna} onChange={(e) => setPierna(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+                <label><span className="mb-1 block text-[11px] font-bold text-muted">Brazos</span><input inputMode="numeric" value={brazo} onChange={(e) => setBrazo(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            {paso > 1 && <button onClick={() => setPaso(paso - 1)} className="rounded-[11px] border border-line bg-card px-4 py-3 text-sm font-bold text-muted">← Atrás</button>}
+            {paso < 3
+              ? <button onClick={() => setPaso(paso + 1)} className="flex-1 rounded-[11px] bg-magenta py-3 text-sm font-bold text-white">Continuar →</button>
+              : <button onClick={save} disabled={busy} className="flex-1 rounded-[11px] bg-magenta py-3 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Enviar a mi esteticista'}</button>}
+          </div>
         </div>
       )}
 

@@ -49,6 +49,23 @@ configRouter.patch('/branch-goals/:id', async (req, res) => {
   res.json({ ok: true, id: b.id, message: 'Metas actualizadas' });
 });
 
+// ── Visibilidad del plan de puntos para el personal ──
+// Mientras se afina, "Mis Puntos" queda oculto para esteticistas/recepción y solo
+// la Administradora lo ve. Con este interruptor se muestra a todo el personal.
+configRouter.get('/points-visibility', async (_req, res) => {
+  const flag = await prisma.integration.findUnique({ where: { kind_scopeId: { kind: 'flag', scopeId: 'points_staff' } } });
+  res.json({ visible: flag?.status === 'CONNECTED' });
+});
+configRouter.patch('/points-visibility', async (req, res) => {
+  const { visible } = z.object({ visible: z.boolean() }).parse(req.body);
+  await prisma.integration.upsert({
+    where: { kind_scopeId: { kind: 'flag', scopeId: 'points_staff' } },
+    create: { kind: 'flag', scopeId: 'points_staff', status: visible ? 'CONNECTED' : 'DISCONNECTED', mode: 'flag', meta: {} },
+    update: { status: visible ? 'CONNECTED' : 'DISCONNECTED' },
+  });
+  res.json({ ok: true, visible, message: visible ? 'El plan de puntos ahora es visible para el personal' : 'El plan de puntos quedó oculto para el personal' });
+});
+
 // ── Reglas de puntos (ganar / deducir) ──
 configRouter.get('/points-rules', async (_req, res) => {
   const rules = await prisma.pointsRule.findMany({ orderBy: [{ isEarn: 'desc' }, { sortOrder: 'asc' }] });

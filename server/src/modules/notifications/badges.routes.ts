@@ -19,7 +19,7 @@ badgesRouter.get('/', requireStaff, branchScope, async (req, res) => {
   const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
   const fin = new Date(inicio); fin.setDate(fin.getDate() + 1);
 
-  const [mensajes, agenda, notificaciones] = await Promise.all([
+  const [mensajes, agenda, notificaciones, puntosFlag] = await Promise.all([
     // Conversaciones con mensajes sin leer del cliente.
     prisma.conversation.aggregate({
       where: { ...scope, unread: { gt: 0 } },
@@ -36,6 +36,8 @@ badgesRouter.get('/', requireStaff, branchScope, async (req, res) => {
       },
     }),
     prisma.notification.count({ where: { userId: req.staff!.sub, read: false } }),
+    // Bandera para mostrar "Mis Puntos" al personal (mientras se afina, queda oculto).
+    prisma.integration.findUnique({ where: { kind_scopeId: { kind: 'flag', scopeId: 'points_staff' } } }).catch(() => null),
   ]);
 
   res.json({
@@ -43,5 +45,7 @@ badgesRouter.get('/', requireStaff, branchScope, async (req, res) => {
     mensajes: mensajes._sum.unread ?? 0,
     agenda,
     notificaciones,
+    // ¿El plan de puntos es visible para esteticistas/recepción? Por defecto NO.
+    puntosVisible: puntosFlag?.status === 'CONNECTED',
   });
 });
