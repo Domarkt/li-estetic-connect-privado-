@@ -379,6 +379,25 @@ model BodyArea {
   createdAt DateTime @default(now())
 }
 
+// Compras del negocio: facturas de proveedores, insumos, equipos, servicios.
+// Permite anexar la imagen de la factura para llevar el control de gastos.
+model Purchase {
+  id           String   @id @default(cuid())
+  branchId     String
+  supplier     String // proveedor
+  concept      String // descripción de la compra
+  category     String? // insumos | equipos | servicios | alquiler | otros
+  amount       Int // monto total RD$
+  ncf          String? // NCF de la factura del proveedor (para 606/ITBIS)
+  purchasedAt  DateTime // fecha de la factura
+  invoiceImage String? // imagen de la factura (base64), opcional
+  notes        String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([branchId, purchasedAt])
+}
+
 // Área del cuerpo dentro de un combo. Un combo cubre 2 áreas y sus sesiones se
 // reparten entre ellas (12 sesiones = 6 por área). Una 3ra área es adicional y
 // se cobra aparte (RD$1,500): entra marcada como isExtra.

@@ -29,6 +29,7 @@ const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'));
 const SucursalesPage = lazy(() => import('./pages/SucursalesPage'));
 const InventarioPage = lazy(() => import('./pages/inventory/InventarioPage'));
 const EquiposPage = lazy(() => import('./pages/inventory/EquiposPage'));
+const ComprasPage = lazy(() => import('./pages/purchases/ComprasPage'));
 const ChatPage = lazy(() => import('./pages/team/ChatPage'));
 
 /** Se muestra el instante que tarda en llegar el trozo de código de la pantalla. */
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="portal" element={<PortalAdminPage />} />
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="equipos" element={<EquiposPage />} />
+            <Route path="compras" element={<ComprasPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="puntos" element={<PointsPage />} />
             <Route path="equipo" element={<EquipoPage />} />
