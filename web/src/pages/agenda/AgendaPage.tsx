@@ -30,7 +30,9 @@ export default function AgendaPage() {
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
-  const canSchedule = true;
+  // Solo recepción y admin agendan: la esteticista no, para no descuadrar el
+  // calendario (recepción tiene la vista completa de horarios y sucursal).
+  const canSchedule = staff?.role !== 'ESTETICISTA';
   const isMasa = staff?.role === 'ESTETICISTA';
   const isAdmin = staff?.role === 'ADMIN';
   // Abrir/cerrar turno es exclusivo de la esteticista (y admin). Recepción cancela citas.

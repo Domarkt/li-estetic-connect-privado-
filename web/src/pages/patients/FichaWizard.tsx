@@ -588,6 +588,8 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
   const [tecnicas, setTecnicas] = useState<string[]>([]);
   // Técnicas marcadas de los planes ADICIONALES de hoy: clave "planId::técnica".
   const [tecExtras, setTecExtras] = useState<string[]>([]);
+  // Paso a paso: 1 = marcar lo aplicado · 2 = firma del paciente y guardar.
+  const [paso, setPaso] = useState(1);
   // Vienen marcadas las áreas disponibles del plan: es lo normal (se trabajan
   // las áreas del combo). Antes quedaban sin marcar y sus contadores no avanzaban.
   const [areasHoy, setAreasHoy] = useState<string[]>(
@@ -605,6 +607,7 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg.id]);
 
+  const marcadoAlgo = tecnicas.length > 0 || areasHoy.length > 0 || tecExtras.length > 0;
   const disponibles = (pkg.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
   const areasPlan = (pkg.areas ?? []).filter((a) => a.remaining > 0);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
@@ -632,7 +635,7 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
           { techniques: tecs, areas: areasEx, signature: firma, notes: notas || undefined });
       }
       toast(msg);
-      setTecnicas([]); setTecExtras([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false);
+      setTecnicas([]); setTecExtras([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false); setPaso(1);
       onRegistrada();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
@@ -641,7 +644,7 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
     <div className="mt-3 border-t border-magenta/25 pt-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[12px] font-extrabold text-navy">Procedimiento aplicado hoy</span>
-        <button type="button" onClick={() => setAbierto((v) => !v)} className="text-[11.5px] font-bold text-magenta">
+        <button type="button" onClick={() => { setAbierto((v) => !v); setPaso(1); }} className="text-[11.5px] font-bold text-magenta">
           {abierto ? 'Cerrar' : '+ Registrar'}
         </button>
       </div>
@@ -664,6 +667,15 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
 
       {abierto && (
         <div className="flex flex-col gap-2.5 rounded-[10px] bg-card p-3">
+          {/* Guía en 2 pasos: primero se marca lo aplicado, luego se firma. Evita
+              llegar a cerrar el turno con la sesión a medio registrar. */}
+          <div className="flex items-center gap-1.5 text-[11px] font-bold">
+            <span style={{ color: paso === 1 ? 'var(--magenta)' : 'var(--ok)' }}>{paso > 1 ? '✓' : '1'} Marca lo aplicado</span>
+            <span className="text-faint">→</span>
+            <span style={{ color: paso === 2 ? 'var(--magenta)' : 'var(--faint)' }}>2 Firma y guarda</span>
+          </div>
+
+          {paso === 1 && <>
           <div>
             <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Qué se le aplicó? <span className="font-semibold text-faint">(marca una o varias)</span></div>
             {disponibles.length === 0 ? (
@@ -737,12 +749,27 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
           <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Observaciones de la sesión (opcional)"
             className="rounded-[9px] border border-line px-3 py-2.5 text-[12.5px] outline-none focus:border-magenta" />
 
-          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el procedimiento aplicado" />
-
-          <button type="button" onClick={registrar} disabled={busy || !firma}
-            className="rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
-            {busy ? 'Registrando…' : firma ? 'Registrar sesión firmada' : 'Falta la firma del paciente'}
+          <button type="button" onClick={() => setPaso(2)} disabled={!marcadoAlgo}
+            className="rounded-[9px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+            {marcadoAlgo ? 'Continuar a la firma →' : 'Marca al menos un procedimiento'}
           </button>
+          </>}
+
+          {paso === 2 && <>
+          {/* Resumen de lo que se va a firmar, para que el paciente sepa qué valida. */}
+          <div className="rounded-[9px] bg-bg px-3 py-2.5 text-[11.5px] text-muted">
+            <b className="text-navy">Se registrará:</b> {[...tecnicas, ...tecExtras.map((k) => k.split('::')[1])].join(', ') || '—'}
+            {areasHoy.length > 0 && ` · áreas: ${areasHoy.length}`}
+          </div>
+          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el procedimiento aplicado" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setPaso(1)} className="rounded-[9px] border border-line bg-card px-4 py-2.5 text-[12.5px] font-bold text-muted">← Atrás</button>
+            <button type="button" onClick={registrar} disabled={busy || !firma}
+              className="flex-1 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+              {busy ? 'Guardando…' : firma ? 'Firmar y guardar el plan' : 'Falta la firma del paciente'}
+            </button>
+          </div>
+          </>}
         </div>
       )}
     </div>

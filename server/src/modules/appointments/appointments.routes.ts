@@ -118,7 +118,7 @@ const createSchema = z.object({
 const AVATAR_COLORS = ['#B31C86', '#8E1268', '#2C7FB8', '#1F9D6B', '#245E85', '#C9880E'];
 
 /** Agendar cita (Recepción / Esteticista / Admin). Confirma y sincroniza a Google Calendar. */
-appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'), async (req, res) => {
+appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), async (req, res) => {
   const b = createSchema.parse(req.body);
 
   let patient;
@@ -300,10 +300,17 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
   });
   if (!appt) return res.status(404).json({ error: 'Código inválido · no corresponde a ninguna cita' });
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'La cita es de otra sucursal' });
-  if (appt.codeUsedAt) {
-    return res.status(409).json({ error: `Este código ya fue usado (turno abierto ${appt.codeUsedAt.toLocaleString('es-DO', { hour: '2-digit', minute: '2-digit' })})` });
-  }
   if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita está cancelada' });
+  // Idempotente: si el turno YA está abierto y aún no se cerró, revalidar el mismo
+  // código simplemente lo reabre (lleva a la ficha) en vez de bloquear. Antes, si
+  // se validaba por error antes de pagar, el código quedaba "usado" y no se podía
+  // cargar el servicio. Solo se bloquea si el turno ya se cerró (fin real).
+  if (appt.serviceEndedAt) {
+    return res.status(409).json({ error: 'Este turno ya se cerró. Agenda una nueva cita.' });
+  }
+  if (appt.codeUsedAt) {
+    return res.json({ ok: true, message: `Turno ya abierto: ${appt.patient.name} · ${appt.serviceName}`, appointment: serializeAppt(appt) });
+  }
 
   const updated = await prisma.appointment.update({
     where: { id: appt.id },
