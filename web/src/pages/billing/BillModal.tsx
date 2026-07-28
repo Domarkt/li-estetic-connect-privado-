@@ -44,7 +44,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   // ── Datos fiscales del comprobante ──
   // No todos los servicios estéticos llevan ITBIS: se decide al cobrar.
-  const [conItbis, setConItbis] = useState(true);
+  // La mayoría de los servicios se facturan SIN ITBIS: el interruptor arranca
+  // apagado y solo se enciende cuando el cobro lo requiere.
+  const [conItbis, setConItbis] = useState(false);
   // B02 consumo final (lo normal) | B01 crédito fiscal (exige RNC del cliente).
   const [ncfType, setNcfType] = useState<'B02' | 'B01'>('B02');
   const [rnc, setRnc] = useState('');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
+import { useAuth } from '../../auth/AuthContext';
 import { fmtRD, type Receipt } from '../../lib/types';
 import { buildReceiptImage } from './receiptImage';
 
@@ -11,9 +12,24 @@ const SIZES: { key: string; label: string; width: string }[] = [
   { key: 't58', label: 'Ticket 58mm', width: '219px' },
 ];
 
-export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; onClose: () => void }) {
+export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: Receipt; onClose: () => void; onVoided?: () => void }) {
   const toast = useToast();
+  const { staff } = useAuth();
   const [size, setSize] = useState('carta');
+  const [anulando, setAnulando] = useState(false);
+
+  // Anular el recibo (solo Administradora): corrige un cobro hecho por error.
+  async function anular() {
+    if (!receipt.invoiceId) { toast('Este recibo no se puede anular'); return; }
+    const motivo = window.prompt('¿Por qué anulas este recibo? (queda registrado en auditoría)');
+    if (!motivo || motivo.trim().length < 3) { if (motivo !== null) toast('Escribe el motivo de la anulación'); return; }
+    setAnulando(true);
+    try {
+      const r = await api.post<{ message: string }>(`/invoices/${receipt.invoiceId}/void`, { reason: motivo.trim() });
+      toast(r.message); onVoided?.(); onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo anular'); }
+    finally { setAnulando(false); }
+  }
   const width = SIZES.find((s) => s.key === size)!.width;
 
   // Envío del recibo al paciente (sustituye a imprimirlo).
@@ -223,6 +239,14 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
 
         <div className="flex gap-2.5 border-t border-line bg-card px-[22px] py-3.5">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
+          {/* Solo la Administradora puede anular un cobro hecho por error. */}
+          {staff?.role === 'ADMIN' && receipt.invoiceId && (
+            <button onClick={anular} disabled={anulando}
+              className="flex-1 rounded-[10px] border py-3 text-[13.5px] font-bold disabled:opacity-60"
+              style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-soft)' }}>
+              {anulando ? 'Anulando…' : '✕ Anular'}
+            </button>
+          )}
           <button onClick={print} className="flex flex-[2] items-center justify-center gap-2 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-navy">🖨 Imprimir</button>
         </div>
       </div>

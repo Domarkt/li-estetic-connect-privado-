@@ -107,7 +107,7 @@ export default function BillingPage() {
               <div className="text-[13px]">{i.concept}</div>
               <div><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: chip.bg, color: chip.fg }}>{i.method}</span></div>
               {showMoney && <div className="text-[13.5px] font-extrabold">{fmtRD(i.total)}</div>}
-              <div><span className="rounded-full bg-ok-soft px-2.5 py-1 text-[11px] font-bold text-ok">{i.status}</span></div>
+              <div><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={i.status === 'Anulada' ? { background: 'var(--danger-soft)', color: 'var(--danger)' } : { background: 'var(--ok-soft)', color: 'var(--ok)' }}>{i.status}</span></div>
             </button>
           );
         })}
@@ -116,7 +116,7 @@ export default function BillingPage() {
       )}
 
       {billOpen && <BillModal onClose={() => setBillOpen(false)} onEmitted={(r) => { setReceipt(r); load(); }} />}
-      {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />}
+      {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} onVoided={load} />}
     </div>
   );
 }

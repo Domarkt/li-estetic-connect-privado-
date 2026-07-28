@@ -28,6 +28,7 @@ export default function AgendaPage() {
   const [checkinFor, setCheckinFor] = useState<Appointment | null>(null);
   const [cancelFor, setCancelFor] = useState<Appointment | null>(null);
   const [assignFor, setAssignFor] = useState<Appointment | null>(null);
+  const [reagendarFor, setReagendarFor] = useState<Appointment | null>(null);
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
@@ -219,11 +220,17 @@ export default function AgendaPage() {
               </button>
             )}
             {canCancel && a.status !== 'CANCELADA' && a.status !== 'COMPLETADA' && !a.finished && !a.inService && (
-              <button onClick={() => setCancelFor(a)}
-                className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
-                style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-soft)' }}>
-                ✕ Cancelar cita
-              </button>
+              <>
+                <button onClick={() => setReagendarFor(a)}
+                  className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-navy hover:border-magenta hover:text-magenta">
+                  🗓 Reagendar
+                </button>
+                <button onClick={() => setCancelFor(a)}
+                  className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
+                  style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-soft)' }}>
+                  ✕ Cancelar cita
+                </button>
+              </>
             )}
             {a.finished && a.durationLabel && (
               <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }} title="Tiempo de atención (solo visible para administración)">⏱ {a.durationLabel}</span>
@@ -266,7 +273,50 @@ export default function AgendaPage() {
       )}
       {cancelFor && <CancelModal appt={cancelFor} onClose={() => setCancelFor(null)} onDone={load} />}
       {assignFor && <AssignTherapistModal appt={assignFor} onClose={() => setAssignFor(null)} onDone={load} />}
+      {reagendarFor && <ReagendarModal appt={reagendarFor} onClose={() => setReagendarFor(null)} onDone={load} />}
     </div>
+  );
+}
+
+/** Reagendar una cita: cambia fecha y hora (recepción/admin). Reusa PATCH /:id. */
+function ReagendarModal({ appt, onClose, onDone }: { appt: Appointment; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [fecha, setFecha] = useState(appt.startsAt.slice(0, 10));
+  const [hora, setHora] = useState(appt.startsAt.slice(11, 16));
+  const [busy, setBusy] = useState(false);
+
+  async function guardar() {
+    if (!fecha || !hora) { toast('Elige la nueva fecha y hora'); return; }
+    setBusy(true);
+    try {
+      await api.patch(`/appointments/${appt.id}`, { date: fecha, time: hora, status: 'CONFIRMADA' });
+      toast('Cita reagendada');
+      onDone(); onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <Portal>
+      <div onClick={onClose} className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto p-4 sm:p-7" style={{ background: 'rgba(28,37,64,.5)' }}>
+        <div onClick={(e) => e.stopPropagation()} className="my-auto w-[400px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+          <div className="flex items-center border-b border-line px-6 py-5">
+            <div className="flex-1"><div className="text-base font-extrabold">Reagendar cita</div><div className="text-[12.5px] text-muted">{appt.patient} · {appt.service}</div></div>
+            <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+          </div>
+          <div className="flex flex-col gap-3 px-6 py-5">
+            <label className="flex flex-col gap-1"><span className="text-xs font-bold text-muted">Nueva fecha</span>
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="rounded-[9px] border border-line px-3.5 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
+            <label className="flex flex-col gap-1"><span className="text-xs font-bold text-muted">Nueva hora</span>
+              <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className="rounded-[9px] border border-line px-3.5 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
+            <div className="rounded-[9px] bg-bg px-3 py-2 text-[11.5px] text-muted">Avisa al paciente del cambio con el botón <b>Recordar</b> después de reagendar.</div>
+          </div>
+          <div className="flex gap-2.5 border-t border-line px-6 py-4">
+            <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+            <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--magenta)' }}>{busy ? 'Guardando…' : 'Reagendar'}</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   );
 }
 

@@ -364,6 +364,37 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg, citaWhatsappUrl });
 });
 
+/**
+ * Anular un recibo (solo Administradora): para corregir un cobro hecho por error.
+ * Queda como ANULADA (no se borra: rastro para auditoría) y deja de contar en los
+ * totales del día. Si el cobro había creado un plan aún SIN usar, se desactiva para
+ * no dejar un tratamiento "fantasma"; si ya tenía sesiones aplicadas, no se toca.
+ */
+invoicesRouter.post('/:id/void', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+  const { reason } = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo de la anulación') }).parse(req.body ?? {});
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: { patient: true } });
+  if (!invoice) return res.status(404).json({ error: 'Recibo no encontrado' });
+  if (!assertBranchAccess(req, invoice.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
+  if (invoice.status === 'ANULADA') return res.status(409).json({ error: 'El recibo ya está anulado' });
+
+  await prisma.invoice.update({ where: { id: invoice.id }, data: { status: 'ANULADA' } });
+
+  // Plan ligado a este cobro y aún sin usar → se retira. Con sesiones aplicadas se
+  // conserva (el paciente ya recibió el servicio): el descuadre lo revisa la admin.
+  if (invoice.treatmentId) {
+    const t = await prisma.treatment.findUnique({ where: { id: invoice.treatmentId } });
+    if (t && t.active && t.doneSessions === 0) {
+      await prisma.treatment.update({ where: { id: t.id }, data: { active: false } });
+    }
+  }
+
+  await audit(req, {
+    action: 'INVOICE_VOID', entity: 'Invoice', entityId: invoice.id, branchId: invoice.branchId,
+    summary: `Anuló recibo ${invoice.number} (${invoice.patient?.name ?? 'sin paciente'}): ${reason}`,
+  });
+  res.json({ ok: true, message: `Recibo ${invoice.number} anulado` });
+});
+
 /** Datos del recibo para reimprimir. */
 invoicesRouter.get('/:id/receipt', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
   const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: invoiceInclude });
