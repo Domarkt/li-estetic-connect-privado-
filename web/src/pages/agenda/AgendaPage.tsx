@@ -519,13 +519,13 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
             {/* Si la sesión de hoy YA se registró y firmó, no se vuelve a preguntar
                 qué se aplicó: solo se cierra el turno. Antes salía la pregunta igual
                 debajo del aviso verde, y confundía. */}
-            {registradaHoy !== true && cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
-            {registradaHoy !== true && !cargando && areas.length === 0 && (
+            {registradaHoy === null && cargando && <div className="py-4 text-center text-[13px] text-muted">Cargando el paquete…</div>}
+            {registradaHoy === null && !cargando && areas.length === 0 && (
               <div className="rounded-[10px] bg-bg px-3.5 py-3 text-[12.5px] text-muted">
                 Este paquete no tiene áreas definidas.
               </div>
             )}
-            {registradaHoy !== true && !cargando && areas.length > 0 && (
+            {registradaHoy === null && !cargando && areas.length > 0 && (
               <>
                 <div className="text-xs font-bold text-muted">¿Qué áreas trabajaste? <span className="font-semibold text-faint">(queda como referencia de la visita)</span></div>
                 {areas.map((a) => {
@@ -550,8 +550,11 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
               </>
             )}
 
-            {/* Checklist de lo aplicado hoy: queda en el historial de la sesión. */}
-            {!cargando && tecnicas.length > 0 && (
+            {/* Checklist de referencia: solo cuando NO hay plan que registrar/firmar
+                en la ficha (p. ej. una atención suelta sin paquete). Cuando sí hay
+                plan, lo aplicado se registra en la ficha con firma, paso a paso, y
+                aquí no se vuelve a preguntar. */}
+            {registradaHoy === null && !cargando && tecnicas.length > 0 && (
               <div className="mt-1 border-t border-line-2 pt-3">
                 <div className="mb-2 text-xs font-bold text-muted">¿Qué le aplicaste hoy?</div>
                 <div className="flex flex-wrap gap-1.5">
