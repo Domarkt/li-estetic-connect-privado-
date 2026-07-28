@@ -186,7 +186,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   async function emit() {
     setBusy(true);
     try {
-      const r = await api.post<{ receipt: Receipt; message: string }>('/invoices', {
+      const r = await api.post<{ receipt: Receipt; message: string; citaWhatsappUrl: string | null }>('/invoices', {
         patientId: selected ?? undefined, concept: finalConcept.trim(),
         payments: paymentsList, treatmentId: treatmentId ?? undefined,
         paymentKind: (treatmentId || chargeIds.length || freeAbono) ? payKind : 'TOTAL',
@@ -197,7 +197,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
         ncfType,
         ...(ncfType === 'B01' ? { clientRnc: rnc.trim(), clientName: razonSocial.trim() } : {}),
       });
-      toast(r.message); onEmitted(r.receipt); onClose();
+      toast(r.message); onEmitted({ ...r.receipt, citaWhatsappUrl: r.citaWhatsappUrl }); onClose();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error al emitir');
     } finally { setBusy(false); }

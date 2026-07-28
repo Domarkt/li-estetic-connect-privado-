@@ -145,6 +145,9 @@ export interface Appointment {
   googleSynced: boolean;
   fichaComplete: boolean;
   balance: number;
+  /** ¿El paciente ya pagó (tiene un plan/servicio activo)? El turno con código
+   *  no se abre para un paciente nuevo hasta que paga. */
+  paid: boolean;
   code: string | null;
   treatmentId?: string | null; // paquete cuya sesión consume esta cita
   checkedIn: boolean;
@@ -200,6 +203,9 @@ export interface Receipt {
   clientRnc?: string | null; clientName?: string | null;
   payments?: { method: string; amount: number }[];
   paymentKind?: string;
+  /** Tras cobrar: enlace de WhatsApp con la CITA del paciente y su código
+   *  (ya pagó, así que ahora sí se le puede entregar el código). */
+  citaWhatsappUrl?: string | null;
 }
 
 export type Channel = 'INSTAGRAM' | 'WHATSAPP' | 'MESSENGER' | 'TIKTOK';

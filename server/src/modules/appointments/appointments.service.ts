@@ -67,6 +67,10 @@ export function serializeAppt(
     fichaComplete,
     // Saldo pendiente: si > 0, el paciente debe pagar antes de ser atendido.
     balance,
+    // ¿El paciente ya pagó algo? Tiene al menos un plan/servicio activo. Un
+    // paciente nuevo recién agendado no tiene ninguno hasta que paga en recepción:
+    // hasta entonces no se le abre el turno con código (el código se entrega al pagar).
+    paid: a.patient.treatments.some((t) => t.active),
     // Código de turno + si ya fue validado en cabina.
     code: a.code,
     treatmentId: a.treatmentId,

@@ -333,13 +333,35 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     if (leadPat) await upsertLead({ branchId: leadPat.branchId, patientId: b.patientId, name: leadPat.name, stage: 'VENDIDO', summary: 'Compra registrada' });
   }
 
+  // Tras cobrar se ofrece enviar por WhatsApp la CITA del paciente CON su código:
+  // ahora sí, porque ya pagó (al nuevo no se le entrega el código hasta este momento).
+  // Se toma su próxima cita no cancelada y con el turno aún sin abrir.
+  let citaWhatsappUrl: string | null = null;
+  if (b.patientId) {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const [pat, cita] = await Promise.all([
+      prisma.patient.findUnique({ where: { id: b.patientId }, select: { name: true, phone: true } }),
+      prisma.appointment.findFirst({
+        where: { patientId: b.patientId, status: { not: 'CANCELADA' }, codeUsedAt: null, startsAt: { gte: hoy } },
+        orderBy: { startsAt: 'asc' },
+        include: { branch: { select: { name: true } } },
+      }),
+    ]);
+    if (pat?.phone && cita) {
+      const cuando = cita.startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
+      const codigo = cita.code ? ` Tu código de cita es ${cita.code}.` : '';
+      const texto = `Hola ${pat.name.split(' ')[0]} 💜 Confirmamos tu cita en ${cita.branch.name}: ${cita.serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. — Li Estetic Center`;
+      citaWhatsappUrl = `https://wa.me/${normalizePhone(pat.phone)}?text=${encodeURIComponent(texto)}`;
+    }
+  }
+
   const pendiente = saldoServicios || saldoPlan;
   const msg = pendiente > 0
     ? `Abono registrado · saldo pendiente RD$${pendiente.toLocaleString('en-US')}`
     : (b.paymentKind === 'ABONO' || b.paymentKind === 'SALDO') && treatmentAfter
     ? `${b.paymentKind === 'SALDO' ? 'Saldo pagado' : 'Abono registrado'} · saldo restante ${'RD$' + treatmentAfter.balance.toLocaleString('en-US')}${treatmentAfter.balance > 0 ? ` (${'RD$' + treatmentAfter.perSession.toLocaleString('en-US')}/sesión en ${treatmentAfter.remaining} sesiones)` : ''}`
     : 'Recibo emitido · pago registrado en caja';
-  res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg });
+  res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg, citaWhatsappUrl });
 });
 
 /** Datos del recibo para reimprimir. */

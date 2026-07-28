@@ -164,6 +164,19 @@ export default function ReceiptModal({ receipt, onClose }: { receipt: Receipt; o
 
         {/* Enviar al paciente: reemplaza la impresión cuando no hay impresora.
             Al imprimir no aparece: el CSS de impresión solo deja visible #li-receipt. */}
+        {/* Recién cobrado: enviar la CITA con su código por WhatsApp (ya pagó). */}
+        {receipt.citaWhatsappUrl && (
+          <div className="border-t border-line px-[22px] py-4" style={{ background: 'var(--magenta-soft)' }}>
+            <div className="mb-2 text-[13px] font-extrabold text-magenta">Enviar la cita al paciente</div>
+            <div className="mb-2.5 text-[11.5px] text-muted">Ya pagó, así que su cita lleva el <b>código de turno</b>. Envíasela por WhatsApp con un toque.</div>
+            <a href={receipt.citaWhatsappUrl} target="_blank" rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-[10px] py-3 text-[13.5px] font-bold text-white"
+              style={{ background: '#25D366' }}>
+              <span className="text-[15px]">📅</span> Enviar cita por WhatsApp
+            </a>
+          </div>
+        )}
+
         <div className="border-t border-line bg-card px-[22px] py-4">
           <div className="mb-2.5 flex items-center gap-2">
             <span className="text-[13px] font-extrabold">Enviar el recibo al paciente</span>

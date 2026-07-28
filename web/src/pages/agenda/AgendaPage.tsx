@@ -195,11 +195,22 @@ export default function AgendaPage() {
             </div>
             <div className="flex flex-wrap gap-2 sm:flex-none sm:justify-end">
             {canOpenTurno && !a.checkedIn && a.status !== 'CANCELADA' && (
-              <button onClick={() => setCheckinFor(a)}
-                className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
-                style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
-                🔓 Abrir turno
-              </button>
+              // El turno con código se abre DESPUÉS de que el paciente paga. Un
+              // cliente nuevo sin pagar todavía no tiene servicio activo: se le
+              // pide cobrar primero (el código se le entrega al pagar en recepción).
+              a.patientType === 'NUEVO' && !a.paid ? (
+                <span title="El turno con código se abre cuando el paciente paga en recepción."
+                  className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
+                  style={{ borderColor: 'var(--warn)', color: 'var(--warn)', background: 'var(--warn-soft)' }}>
+                  🔒 Cobra primero
+                </span>
+              ) : (
+                <button onClick={() => setCheckinFor(a)}
+                  className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
+                  style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
+                  🔓 Abrir turno
+                </button>
+              )
             )}
             {canOpenTurno && a.inService && (
               <button onClick={() => finishService(a)}
