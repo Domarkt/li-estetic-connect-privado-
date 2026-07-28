@@ -74,7 +74,6 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
   const [controlCitas, setControlCitas] = useState<{ fecha: string; obs: string }[]>(
     Array.from({ length: 10 }, () => ({ fecha: '', obs: '' })),
   );
-  const [policyAck, setPolicyAck] = useState(false);
 
   // Precarga la ficha existente para NO perder/ sobrescribir datos ya guardados
   // (antecedentes, medicamentos, etc.) al editar y volver a guardar.
@@ -117,7 +116,6 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
             const rows = Array.from({ length: 10 }, (_, i) => ficha.controlCitas![i] ?? { fecha: '', obs: '' });
             setControlCitas(rows as { fecha: string; obs: string }[]);
           }
-          if (ficha.cancelPolicyAck) setPolicyAck(true);
         }
       })
       .catch(() => { /* ficha nueva: se queda vacía */ });
@@ -159,7 +157,6 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
       brazoCm: medidas.brazo ? Number(medidas.brazo) : undefined,
       tratamiento: tratamiento || undefined,
       controlCitas,
-      cancelPolicyAck: policyAck,
       complete,
     });
   }
@@ -225,7 +222,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
           {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
-          {stepNum === 4 && <Step4 patientId={patientId} treatmentIdCita={treatmentId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} policyAck={policyAck} setPolicyAck={setPolicyAck} />}
+          {stepNum === 4 && <Step4 patientId={patientId} treatmentIdCita={treatmentId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} />}
         </div>
 
         {/* Footer */}
@@ -419,21 +416,37 @@ type AreaOptFicha = { key: string; label: string; grupo: string };
  * que el paciente compró (con sus sesiones reales) y le deja elegir las ÁREAS a trabajar.
  * Las sesiones se reparten entre las áreas elegidas. Reutiliza el mismo endpoint del drawer.
  */
-function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientId: string; treatmentIdCita?: string | null; onPlan: (p: { name: string; sessions: number } | null) => void; onSesion: () => void }) {
+// Pasos guiados para la esteticista al atender: uno a la vez, en orden.
+const PASOS_PLAN = ['Servicio', 'Áreas', 'Procesos', 'Observaciones', 'Consentimiento', 'Firma', 'Revisar'];
+
+/**
+ * Registro del procedimiento aplicado, guiado PASO A PASO para la esteticista:
+ * 1) qué servicio(s) trabaja hoy · 2) áreas · 3) procesos (técnicas) ·
+ * 4) observaciones · 5) consentimiento y política · 6) firma · 7) revisar y guardar.
+ *
+ * Sustituye al esquema anterior (elegir plan + "Guardar áreas" + "+ Registrar"),
+ * que mezclaba todo en una sola pantalla. Reusa los mismos endpoints:
+ * PATCH /areas (define el reparto la 1ª vez) y POST /session (descuenta y firma).
+ */
+function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientId: string; treatmentIdCita?: string | null; onPlan: (p: { name: string; sessions: number } | null) => void; onSesion: () => void }) {
   const toast = useToast();
-  // TODOS los combos comprados, no solo uno: el paciente puede tener varios y la
-  // esteticista debe poder elegir cuál está trabajando hoy.
   const [paquetes, setPaquetes] = useState<PatientPackage[]>([]);
   const [pkgId, setPkgId] = useState<string>('');
-  // Otros planes que se trabajan EN LA MISMA visita (procesos combinables en cabina).
   const [extraIds, setExtraIds] = useState<string[]>([]);
   const [opciones, setOpciones] = useState<AreaOptFicha[]>([]);
-  const [sel, setSel] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Cambia al registrar una sesión, para releer los contadores ya descontados.
   const [recarga, setRecarga] = useState(0);
-  const recargar = () => setRecarga((r) => r + 1);
+
+  const [paso, setPaso] = useState(1);
+  const [areasHoy, setAreasHoy] = useState<string[]>([]);
+  const [tecnicas, setTecnicas] = useState<string[]>([]);
+  const [tecExtras, setTecExtras] = useState<string[]>([]); // "planId::técnica"
+  const [notas, setNotas] = useState('');
+  const [consiente, setConsiente] = useState(false);
+  const [policyAck, setPolicyAck] = useState(false);
+  const [firma, setFirma] = useState<string | null>(null);
+  const [sesiones, setSesiones] = useState<SesionAplicada[]>([]);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -446,21 +459,27 @@ function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
       const todos = detail.packages ?? [];
       setPaquetes(todos);
       setOpciones(opts);
-      // Prioridad: el plan que ya se eligió a mano > EL DE LA CITA > el primero
-      // con sesiones. Así se descuenta del paquete por el que vino la paciente.
       const elegido = todos.find((p) => p.id === pkgId)
         ?? todos.find((p) => p.id === treatmentIdCita)
         ?? todos.find((p) => p.remaining > 0) ?? todos[0] ?? null;
       setPkgId(elegido?.id ?? '');
-      setSel((elegido?.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
+      // Áreas del plan ya definidas → vienen marcadas como "trabajadas hoy".
+      setAreasHoy((elegido?.areas ?? []).filter((a) => !a.isExtra && a.remaining > 0).map((a) => a.area));
       onPlan(elegido ? { name: elegido.name, sessions: elegido.total } : null);
       setLoading(false);
-    }).catch(() => { if (vivo) { setLoading(false); } });
+    }).catch(() => { if (vivo) setLoading(false); });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId, recarga]);
 
   const pkg = paquetes.find((p) => p.id === pkgId) ?? null;
+
+  useEffect(() => {
+    if (!pkg) return;
+    api.get<{ sesiones: SesionAplicada[] }>(`/patients/treatments/${pkg.id}/sessions`)
+      .then((r) => setSesiones(r.sesiones)).catch(() => setSesiones([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pkgId]);
 
   if (loading) return <div className="mb-4 rounded-[11px] border border-line bg-bg px-4 py-3 text-[12.5px] text-muted">Cargando servicio pagado…</div>;
   if (!pkg) return (
@@ -469,219 +488,163 @@ function PlanPagado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
     </div>
   );
 
+  const extras = paquetes.filter((x) => x.id !== pkg.id && extraIds.includes(x.id));
+  const areasExtras = (pkg.areas ?? []).filter((a) => a.isExtra).map((a) => a.area);
+  const planTieneAreas = (pkg.areas ?? []).some((a) => !a.isExtra);
   const grupos = [
     { label: 'Corporal', grupo: 'CORPORAL', areas: opciones.filter((o) => o.grupo === 'CORPORAL') },
     { label: 'Láser', grupo: 'LASER', areas: opciones.filter((o) => o.grupo === 'LASER') },
   ].filter((g) => (pkg.areaGroup ? g.grupo === pkg.areaGroup : true) && g.areas.length > 0);
-  const extras = (pkg.areas ?? []).filter((a) => a.isExtra).map((a) => a.area);
-  const toggle = (k: string) => { if (extras.includes(k)) return; setSel((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k])); };
-  const porArea = sel.length ? Math.floor(pkg.total / sel.length) : 0;
+  const disponibles = (pkg.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
+  const marcadoAlgo = tecnicas.length > 0 || areasHoy.length > 0 || tecExtras.length > 0;
+  const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const porArea = areasHoy.length ? Math.floor(pkg.total / areasHoy.length) : 0;
 
-  async function guardarAreas() {
-    if (!sel.length) { toast('Elige al menos un área a trabajar'); return; }
-    setBusy(true);
-    try {
-      const r = await api.patch<{ message: string }>(`/patients/treatments/${pkg!.id}/areas`, { areas: sel });
-      toast(r.message);
-    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
-  }
-
-  /** Cambia el combo que se está trabajando hoy. */
   const cambiarPlan = (id: string) => {
     const p = paquetes.find((x) => x.id === id);
     if (!p) return;
     setPkgId(id);
-    setSel((p.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area));
+    setAreasHoy((p.areas ?? []).filter((a) => !a.isExtra && a.remaining > 0).map((a) => a.area));
+    setTecnicas([]);
     onPlan({ name: p.name, sessions: p.total });
   };
 
-  return (
-    <div className="mb-4 rounded-[11px] border border-magenta/40 bg-magenta-soft p-4">
-      {/* Con varios combos comprados hay que decir cuál se trabaja hoy. */}
-      {paquetes.length > 1 && (
-        <div className="mb-3">
-          <div className="mb-1.5 text-[11.5px] font-bold text-muted">
-            Tiene {paquetes.length} servicios comprados · ¿cuál trabajas hoy?
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {paquetes.map((p) => {
-              const on = p.id === pkgId;
-              const agotado = p.remaining === 0;
-              return (
-                <button key={p.id} type="button" onClick={() => cambiarPlan(p.id)}
-                  className="flex items-center gap-2 rounded-[9px] border px-3 py-2 text-left"
-                  style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--card)' : 'transparent', opacity: agotado ? 0.6 : 1 }}>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-bold" style={{ color: on ? 'var(--magenta)' : 'var(--text)' }}>{p.name}</span>
-                    <span className="block text-[11px] text-muted">
-                      {agotado ? 'Sin sesiones disponibles' : `${p.done}/${p.total} · quedan ${p.remaining}`}
-                    </span>
-                  </span>
-                  {on ? <span className="flex-none text-[12px] font-bold text-magenta">✓</span> : !agotado && (
-                    <span role="button" tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); setExtraIds((x) => x.includes(p.id) ? x.filter((i) => i !== p.id) : [...x, p.id]); }}
-                      className="flex-none rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
-                      style={extraIds.includes(p.id) ? { borderColor: 'var(--magenta)', color: 'var(--magenta)', background: 'var(--magenta-soft)' } : { borderColor: 'var(--line)', color: 'var(--muted)' }}>
-                      {extraIds.includes(p.id) ? '✓ hoy también' : '+ hoy también'}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+  // ¿Se puede avanzar del paso actual?
+  const puedeAvanzar =
+    paso === 1 ? !!pkgId :
+    paso === 3 ? marcadoAlgo :
+    paso === 5 ? (consiente && policyAck) :
+    paso === 6 ? !!firma : true;
 
-      <div className="mb-2 flex items-center gap-2">
-        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-magenta text-[13px] text-white">✦</span>
-        <div className="flex-1">
-          <div className="text-[13.5px] font-extrabold text-magenta">{pkg.name}</div>
-          <div className="text-[11.5px] text-muted">{pkg.total} sesiones · {pkg.done} hechas · {pkg.remaining} restantes</div>
-        </div>
-      </div>
-      {(pkg.services ?? []).length > 0 && (
-        <div className="mb-2.5 flex flex-wrap gap-1.5">
-          {pkg.services!.map((s) => (
-            <span key={s.id} className="rounded-full bg-card px-2 py-0.5 text-[11px] font-bold text-navy">
-              {s.name}{s.total ? ` · ${s.done ?? 0}/${s.total}` : s.qty ? ` ×${s.qty}` : ''}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="mb-1.5 text-[11.5px] font-bold text-muted">Áreas a trabajar <span className="font-semibold text-faint">({sel.length} · {porArea} sesiones c/u)</span></div>
-      {grupos.map((g) => (
-        <div key={g.label} className="mb-2 flex flex-col gap-1.5">
-          {grupos.length > 1 && <div className="text-[10.5px] font-bold uppercase tracking-wide text-faint">{g.label}</div>}
-          <div className="flex flex-wrap gap-1.5">
-            {g.areas.map((a) => {
-              const on = sel.includes(a.key); const isExtra = extras.includes(a.key);
-              return (
-                <button key={a.key} type="button" onClick={() => toggle(a.key)} disabled={isExtra}
-                  className="rounded-full border px-3 py-1.5 text-[12px] font-bold disabled:opacity-60"
-                  style={{ borderColor: on || isExtra ? 'var(--magenta)' : 'var(--line)', background: on || isExtra ? 'var(--card)' : 'transparent', color: on || isExtra ? 'var(--magenta)' : 'var(--muted)' }}>
-                  {on ? '✓ ' : ''}{a.label}{isExtra ? ' (adicional)' : ''}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-      <button type="button" onClick={guardarAreas} disabled={busy}
-        className="mt-1 w-full rounded-[9px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
-        {busy ? 'Guardando…' : 'Guardar áreas del plan'}
-      </button>
-
-      <AplicadoHoy pkg={pkg}
-        extras={paquetes.filter((x) => x.id !== pkg.id && extraIds.includes(x.id))}
-        onRegistrada={() => { setExtraIds([]); recargar(); onSesion(); }} />
-    </div>
-  );
-}
-
-/**
- * Registro de lo que se le APLICÓ al paciente hoy: cuál de las técnicas del combo
- * se usó, sobre qué áreas, y la firma con la que el paciente lo valida.
- *
- * Antes el combo solo mostraba el contador (0/5) y no había forma de decir cuál de
- * los procedimientos se aplicó ese día.
- */
-function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; extras?: PatientPackage[]; onRegistrada: () => void }) {
-  const toast = useToast();
-  const [abierto, setAbierto] = useState(false);
-  const [tecnicas, setTecnicas] = useState<string[]>([]);
-  // Técnicas marcadas de los planes ADICIONALES de hoy: clave "planId::técnica".
-  const [tecExtras, setTecExtras] = useState<string[]>([]);
-  // Paso a paso: 1 = marcar lo aplicado · 2 = firma del paciente y guardar.
-  const [paso, setPaso] = useState(1);
-  const [consiente, setConsiente] = useState(false); // aceptó el consentimiento
-  // Vienen marcadas las áreas disponibles del plan: es lo normal (se trabajan
-  // las áreas del combo). Antes quedaban sin marcar y sus contadores no avanzaban.
-  const [areasHoy, setAreasHoy] = useState<string[]>(
-    () => (pkg.areas ?? []).filter((a) => a.remaining > 0 && !a.isExtra).map((a) => a.area),
-  );
-  const [firma, setFirma] = useState<string | null>(null);
-  const [notas, setNotas] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [sesiones, setSesiones] = useState<SesionAplicada[]>([]);
-
-  useEffect(() => {
-    api.get<{ sesiones: SesionAplicada[] }>(`/patients/treatments/${pkg.id}/sessions`)
-      .then((r) => setSesiones(r.sesiones)).catch(() => setSesiones([]));
-    setAreasHoy((pkg.areas ?? []).filter((a) => a.remaining > 0 && !a.isExtra).map((a) => a.area));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pkg.id]);
-
-  const marcadoAlgo = tecnicas.length > 0 || areasHoy.length > 0 || tecExtras.length > 0;
-  const disponibles = (pkg.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
-  const areasPlan = (pkg.areas ?? []).filter((a) => a.remaining > 0);
-  const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
-    set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
-
-  async function registrar() {
-    if (!tecnicas.length && !areasHoy.length && !tecExtras.length) { toast('Marca qué procedimiento se aplicó'); return; }
-    if (!firma) { toast('Falta la firma del paciente para validar'); return; }
+  async function guardar() {
+    if (!marcadoAlgo) { toast('Marca al menos un proceso o área'); return; }
+    if (!firma) { toast('Falta la firma del paciente'); return; }
     setBusy(true);
     try {
-      let msg = 'Sesiones registradas y firmadas';
+      // 1ª vez: si el plan aún no tiene áreas definidas, la selección de hoy define el reparto.
+      if (!planTieneAreas && areasHoy.length) {
+        await api.patch(`/patients/treatments/${pkg!.id}/areas`, { areas: areasHoy }).catch(() => {});
+      }
+      let msg = 'Sesión registrada y firmada';
       if (tecnicas.length || areasHoy.length) {
         const r = await api.post<{ message: string; sesiones: SesionAplicada[] }>(
-          `/patients/treatments/${pkg.id}/session`,
+          `/patients/treatments/${pkg!.id}/session`,
           { techniques: tecnicas, areas: areasHoy, signature: firma, notes: notas || undefined },
         );
         msg = r.message; setSesiones(r.sesiones);
       }
-      // Planes combinados en la misma visita: una sesión cada uno, con la misma firma.
       for (const ex of extras) {
         const tecs = tecExtras.filter((k) => k.startsWith(ex.id + '::')).map((k) => k.slice(ex.id.length + 2));
         if (!tecs.length) continue;
         const areasEx = (ex.areas ?? []).filter((a) => a.remaining > 0 && !a.isExtra).map((a) => a.area);
-        await api.post(`/patients/treatments/${ex.id}/session`,
-          { techniques: tecs, areas: areasEx, signature: firma, notes: notas || undefined });
+        await api.post(`/patients/treatments/${ex.id}/session`, { techniques: tecs, areas: areasEx, signature: firma, notes: notas || undefined });
       }
       toast(msg);
-      setTecnicas([]); setTecExtras([]); setAreasHoy([]); setFirma(null); setNotas(''); setAbierto(false); setPaso(1); setConsiente(false);
-      onRegistrada();
+      setPaso(1); setTecnicas([]); setTecExtras([]); setExtraIds([]); setNotas(''); setConsiente(false); setPolicyAck(false); setFirma(null);
+      setRecarga((r) => r + 1); onSesion();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
 
+  const chip = (on: boolean) => ({ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' });
+
   return (
-    <div className="mt-3 border-t border-magenta/25 pt-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-[12px] font-extrabold text-navy">Procedimiento aplicado hoy</span>
-        <button type="button" onClick={() => { setAbierto((v) => !v); setPaso(1); setConsiente(false); }} className="text-[11.5px] font-bold text-magenta">
-          {abierto ? 'Cerrar' : '+ Registrar'}
-        </button>
+    <div className="mb-4 rounded-[11px] border border-magenta/40 bg-magenta-soft p-4">
+      {/* Encabezado del plan + progreso de pasos */}
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-magenta text-[13px] text-white">✦</span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13.5px] font-extrabold text-magenta">{pkg.name}</div>
+          <div className="text-[11.5px] text-muted">{pkg.total} sesiones · {pkg.done} hechas · {pkg.remaining} restantes</div>
+        </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+        {PASOS_PLAN.map((lbl, i) => {
+          const n = i + 1; const done = n < paso; const cur = n === paso;
+          return (
+            <button key={lbl} type="button" onClick={() => n < paso && setPaso(n)} disabled={n > paso}
+              className="flex items-center gap-1 rounded-full px-2 py-0.5"
+              style={{ background: cur ? 'var(--magenta)' : done ? 'var(--ok-soft)' : 'transparent', color: cur ? '#fff' : done ? 'var(--ok)' : 'var(--faint)' }}>
+              <span>{done ? '✓' : n}</span><span className="hidden sm:inline">{lbl}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Historial: qué se le ha venido aplicando. */}
-      {sesiones.length > 0 && (
-        <div className="mb-2 flex flex-col gap-1">
-          {sesiones.slice(0, 4).map((s) => (
-            <div key={s.id} className="flex items-start gap-2 rounded-[8px] bg-card px-2.5 py-1.5 text-[11.5px]">
-              <span className="flex-none font-bold text-muted">{s.fecha}</span>
-              <span className="min-w-0 flex-1 text-muted">
-                {s.techniques.join(', ') || '—'}{s.areas.length ? ` · ${s.areas.join(', ')}` : ''}
-              </span>
-              {s.firmada && <span className="flex-none font-bold text-ok" title="Validado por el paciente">✓ firmada</span>}
+      <div className="rounded-[10px] bg-card p-3">
+        {/* PASO 1 — Servicio(s) que se trabajan hoy */}
+        {paso === 1 && (
+          <>
+            <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Qué servicio trabajas hoy?{paquetes.length > 1 ? ' Puedes marcar otro con “+ hoy también”.' : ''}</div>
+            <div className="flex flex-col gap-1.5">
+              {paquetes.map((p) => {
+                const on = p.id === pkgId; const agotado = p.remaining === 0;
+                return (
+                  <button key={p.id} type="button" onClick={() => cambiarPlan(p.id)}
+                    className="flex items-center gap-2 rounded-[9px] border px-3 py-2 text-left"
+                    style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', opacity: agotado && !on ? 0.6 : 1 }}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] font-bold" style={{ color: on ? 'var(--magenta)' : 'var(--ink)' }}>{p.name}</span>
+                      <span className="block text-[11px] text-muted">{agotado ? 'Sin sesiones disponibles' : `${p.done}/${p.total} · quedan ${p.remaining}`}</span>
+                    </span>
+                    {on ? <span className="flex-none text-[12px] font-bold text-magenta">✓ hoy</span> : !agotado && (
+                      <span role="button" tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); setExtraIds((x) => x.includes(p.id) ? x.filter((i) => i !== p.id) : [...x, p.id]); }}
+                        className="flex-none rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
+                        style={chip(extraIds.includes(p.id))}>
+                        {extraIds.includes(p.id) ? '✓ hoy también' : '+ hoy también'}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          ))}
-          {sesiones.length > 4 && <div className="text-[11px] text-faint">y {sesiones.length - 4} sesión(es) más…</div>}
-        </div>
-      )}
+          </>
+        )}
 
-      {abierto && (
-        <div className="flex flex-col gap-2.5 rounded-[10px] bg-card p-3">
-          {/* Guía en 2 pasos: primero se marca lo aplicado, luego se firma. Evita
-              llegar a cerrar el turno con la sesión a medio registrar. */}
-          <div className="flex items-center gap-1.5 text-[11px] font-bold">
-            <span style={{ color: paso === 1 ? 'var(--magenta)' : 'var(--ok)' }}>{paso > 1 ? '✓' : '1'} Marca lo aplicado</span>
-            <span className="text-faint">→</span>
-            <span style={{ color: paso === 2 ? 'var(--magenta)' : 'var(--faint)' }}>2 Firma y guarda</span>
-          </div>
+        {/* PASO 2 — Áreas */}
+        {paso === 2 && (
+          <>
+            <div className="mb-1.5 text-[11.5px] font-bold text-muted">
+              Áreas que trabajas <span className="font-semibold text-faint">({areasHoy.length} · {porArea || '—'} sesiones c/u)</span>
+            </div>
+            {planTieneAreas ? (
+              <div className="flex flex-wrap gap-1.5">
+                {(pkg.areas ?? []).filter((a) => !a.isExtra).map((a) => {
+                  const on = areasHoy.includes(a.area); const agotada = a.remaining === 0;
+                  return (
+                    <button key={a.id} type="button" disabled={agotada} onClick={() => toggle(areasHoy, setAreasHoy, a.area)}
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold disabled:opacity-45" style={chip(on)}>
+                      {on ? '✓ ' : ''}{a.label} <span className="font-semibold text-faint">{a.done}/{a.total}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              grupos.map((g) => (
+                <div key={g.label} className="mb-2 flex flex-col gap-1.5">
+                  {grupos.length > 1 && <div className="text-[10.5px] font-bold uppercase tracking-wide text-faint">{g.label}</div>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.areas.map((a) => {
+                      const on = areasHoy.includes(a.key); const isExtra = areasExtras.includes(a.key);
+                      return (
+                        <button key={a.key} type="button" disabled={isExtra} onClick={() => toggle(areasHoy, setAreasHoy, a.key)}
+                          className="rounded-full border px-3 py-1.5 text-[12px] font-bold disabled:opacity-60" style={chip(on || isExtra)}>
+                          {on ? '✓ ' : ''}{a.label}{isExtra ? ' (adicional)' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+            <div className="mt-2 text-[11px] text-faint">Las áreas marcadas se descuentan del plan al firmar.</div>
+          </>
+        )}
 
-          {paso === 1 && <>
-          <div>
-            <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Qué se le aplicó? <span className="font-semibold text-faint">(marca una o varias)</span></div>
+        {/* PASO 3 — Procesos (técnicas) */}
+        {paso === 3 && (
+          <>
+            <div className="mb-1.5 text-[11.5px] font-bold text-muted">¿Qué procesos le aplicaste? <span className="font-semibold text-faint">(marca uno o varios)</span></div>
             {disponibles.length === 0 ? (
               <div className="rounded-[8px] bg-bg px-2.5 py-2 text-[11.5px] text-muted">Ya se consumieron todas las técnicas de este combo.</div>
             ) : (
@@ -690,101 +653,120 @@ function AplicadoHoy({ pkg, extras = [], onRegistrada }: { pkg: PatientPackage; 
                   const on = tecnicas.includes(s.name);
                   return (
                     <button key={s.id} type="button" onClick={() => toggle(tecnicas, setTecnicas, s.name)}
-                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
-                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold" style={chip(on)}>
                       {on ? '✓ ' : ''}{s.name} <span className="font-semibold text-faint">{s.done ?? 0}/{s.total ?? s.qty}</span>
                     </button>
                   );
                 })}
               </div>
             )}
-          </div>
-
-          {areasPlan.length > 0 && (
-            <div>
-              <div className="mb-1.5 text-[11.5px] font-bold text-muted">
-                ¿Sobre qué áreas?{' '}
-                <span className="font-semibold text-faint">
-                  {areasHoy.length > 0
-                    ? `descuenta ${areasHoy.length} sesión${areasHoy.length === 1 ? '' : 'es'} del plan`
-                    : 'sin áreas se descuenta 1 sesión'}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {areasPlan.map((a) => {
-                  const on = areasHoy.includes(a.area);
-                  return (
-                    <button key={a.id} type="button" onClick={() => toggle(areasHoy, setAreasHoy, a.area)}
-                      className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
-                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
-                      {on ? '✓ ' : ''}{a.label} <span className="font-semibold text-faint">{a.done}/{a.total}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Planes combinados en la misma cabina: se marca qué se aplicó de cada
-              uno y se descuentan todos con la misma firma. */}
-          {extras.map((ex) => {
-            const disp = (ex.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
-            if (!disp.length) return null;
-            return (
-              <div key={ex.id} className="rounded-[9px] border border-magenta/30 bg-magenta-soft/40 p-2.5">
-                <div className="mb-1.5 text-[11.5px] font-bold text-magenta">También hoy · {ex.name}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {disp.map((s) => {
-                    const k = `${ex.id}::${s.name}`;
-                    const on = tecExtras.includes(k);
-                    return (
-                      <button key={s.id} type="button" onClick={() => setTecExtras((x) => x.includes(k) ? x.filter((i) => i !== k) : [...x, k])}
-                        className="rounded-full border px-3 py-1.5 text-[12px] font-bold"
-                        style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
-                        {on ? '✓ ' : ''}{s.name}
-                      </button>
-                    );
-                  })}
+            {extras.map((ex) => {
+              const disp = (ex.services ?? []).filter((s) => (s.remaining ?? s.qty ?? 0) > 0);
+              if (!disp.length) return null;
+              return (
+                <div key={ex.id} className="mt-2.5 rounded-[9px] border border-magenta/30 bg-magenta-soft/40 p-2.5">
+                  <div className="mb-1.5 text-[11.5px] font-bold text-magenta">También hoy · {ex.name}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {disp.map((s) => {
+                      const k = `${ex.id}::${s.name}`; const on = tecExtras.includes(k);
+                      return (
+                        <button key={s.id} type="button" onClick={() => setTecExtras((x) => x.includes(k) ? x.filter((i) => i !== k) : [...x, k])}
+                          className="rounded-full border px-3 py-1.5 text-[12px] font-bold" style={chip(on)}>{on ? '✓ ' : ''}{s.name}</button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </>
+        )}
 
-          <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Observaciones de la sesión (opcional)"
-            className="rounded-[9px] border border-line px-3 py-2.5 text-[12.5px] outline-none focus:border-magenta" />
+        {/* PASO 4 — Observaciones */}
+        {paso === 4 && (
+          <>
+            <div className="mb-1.5 text-[11.5px] font-bold text-muted">Observaciones de la sesión <span className="font-semibold text-faint">(opcional)</span></div>
+            <textarea rows={4} value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Reacción de la piel, parámetros del equipo, indicaciones…"
+              className="w-full resize-none rounded-[9px] border border-line px-3 py-2.5 text-[12.5px] outline-none focus:border-magenta" />
+          </>
+        )}
 
-          <button type="button" onClick={() => setPaso(2)} disabled={!marcadoAlgo}
-            className="rounded-[9px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
-            {marcadoAlgo ? 'Continuar a la firma →' : 'Marca al menos un procedimiento'}
-          </button>
-          </>}
+        {/* PASO 5 — Consentimiento + política de cancelación */}
+        {paso === 5 && (
+          <>
+            <div className="mb-1 text-[11.5px] font-bold text-navy">Consentimiento informado</div>
+            <div className="max-h-[130px] overflow-y-auto rounded-[9px] border border-line bg-bg px-3 py-2.5 text-[11px] leading-relaxed text-muted">{CONSENTIMIENTO}</div>
+            <div className="mt-3 rounded-[9px] border p-3" style={{ background: 'var(--warn-soft)', borderColor: '#F0D9A8' }}>
+              <div className="mb-1 text-[11.5px] font-extrabold" style={{ color: 'var(--warn)' }}>⚠ Política de cancelación</div>
+              <ul className="m-0 list-disc pl-4 text-[11px] leading-relaxed" style={{ color: '#7A5A12' }}>
+                <li>Cancelar con 24h de anticipación.</li>
+                <li>Después de 5 citas canceladas se pierde el tratamiento.</li>
+                <li>El servicio es intransferible. No se aceptan reembolsos.</li>
+                <li>Suspensión: 45 días para reembolso.</li>
+              </ul>
+            </div>
+            <label className="mt-2.5 flex items-start gap-2 text-[11.5px] font-semibold text-navy">
+              <input type="checkbox" checked={consiente} onChange={(e) => setConsiente(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
+              El paciente leyó y acepta el <b>consentimiento informado</b>.
+            </label>
+            <label className="mt-1.5 flex items-start gap-2 text-[11.5px] font-semibold text-navy">
+              <input type="checkbox" checked={policyAck} onChange={(e) => setPolicyAck(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
+              El paciente acepta la <b>política de cancelación</b>.
+            </label>
+          </>
+        )}
 
-          {paso === 2 && <>
-          {/* Resumen de lo que se va a firmar, para que el paciente sepa qué valida. */}
-          <div className="rounded-[9px] bg-bg px-3 py-2.5 text-[11.5px] text-muted">
-            <b className="text-navy">Se registrará:</b> {[...tecnicas, ...tecExtras.map((k) => k.split('::')[1])].join(', ') || '—'}
-            {areasHoy.length > 0 && ` · áreas: ${areasHoy.length}`}
-          </div>
+        {/* PASO 6 — Firma */}
+        {paso === 6 && (
+          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el consentimiento, la política y el procedimiento" />
+        )}
 
-          {/* Consentimiento informado: se muestra al firmar y queda validado con la firma. */}
-          <div className="mb-0.5 text-[11.5px] font-bold text-navy">Consentimiento informado</div>
-          <div className="max-h-[140px] overflow-y-auto rounded-[9px] border border-line bg-bg px-3 py-2.5 text-[11px] leading-relaxed text-muted">
-            {CONSENTIMIENTO}
-          </div>
-          <label className="flex items-start gap-2 text-[11.5px] font-semibold text-navy">
-            <input type="checkbox" checked={consiente} onChange={(e) => setConsiente(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
-            El paciente leyó y acepta el consentimiento, y autoriza el procedimiento.
-          </label>
+        {/* PASO 7 — Revisar y guardar */}
+        {paso === 7 && (
+          <>
+            <div className="mb-1.5 text-[11.5px] font-extrabold text-navy">Revisa antes de guardar</div>
+            <div className="flex flex-col gap-1 rounded-[9px] bg-bg px-3 py-2.5 text-[11.5px] text-muted">
+              <div><b className="text-navy">Servicio:</b> {pkg.name}{extras.length ? ` (+${extras.length} también hoy)` : ''}</div>
+              <div><b className="text-navy">Áreas:</b> {areasHoy.length ? areasHoy.length + ' marcada(s)' : '—'}</div>
+              <div><b className="text-navy">Procesos:</b> {[...tecnicas, ...tecExtras.map((k) => k.split('::')[1])].join(', ') || '—'}</div>
+              <div><b className="text-navy">Observaciones:</b> {notas || '—'}</div>
+              <div><b className="text-navy">Consentimiento y política:</b> {consiente && policyAck ? 'aceptados' : 'pendientes'}</div>
+              <div><b className="text-navy">Firma:</b> {firma ? '✓ firmado' : '— falta'}</div>
+            </div>
+          </>
+        )}
 
-          <FirmaDigital onChange={setFirma} etiqueta="Firma del paciente — valida el consentimiento y el procedimiento" />
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setPaso(1)} className="rounded-[9px] border border-line bg-card px-4 py-2.5 text-[12.5px] font-bold text-muted">← Atrás</button>
-            <button type="button" onClick={registrar} disabled={busy || !firma || !consiente}
-              className="flex-1 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
-              {busy ? 'Guardando…' : !consiente ? 'Marca el consentimiento' : firma ? 'Firmar y guardar el plan' : 'Falta la firma del paciente'}
+        {/* Navegación del paso a paso */}
+        <div className="mt-3 flex gap-2">
+          {paso > 1 && (
+            <button type="button" onClick={() => setPaso(paso - 1)} className="rounded-[9px] border border-line bg-card px-4 py-2.5 text-[12.5px] font-bold text-muted">← Atrás</button>
+          )}
+          {paso < 7 ? (
+            <button type="button" onClick={() => puedeAvanzar && setPaso(paso + 1)} disabled={!puedeAvanzar}
+              className="flex-1 rounded-[9px] bg-magenta py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+              {paso === 3 && !marcadoAlgo ? 'Marca al menos un proceso o área'
+                : paso === 5 && !(consiente && policyAck) ? 'Marca ambas casillas'
+                : paso === 6 && !firma ? 'Falta la firma del paciente'
+                : 'Continuar →'}
             </button>
-          </div>
-          </>}
+          ) : (
+            <button type="button" onClick={guardar} disabled={busy || !firma}
+              className="flex-1 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+              {busy ? 'Guardando…' : '✓ Guardar el plan'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Historial breve de lo ya aplicado en este plan */}
+      {sesiones.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1">
+          {sesiones.slice(0, 3).map((s) => (
+            <div key={s.id} className="flex items-start gap-2 rounded-[8px] bg-card px-2.5 py-1.5 text-[11.5px]">
+              <span className="flex-none font-bold text-muted">{s.fecha}</span>
+              <span className="min-w-0 flex-1 text-muted">{s.techniques.join(', ') || '—'}{s.areas.length ? ` · ${s.areas.join(', ')}` : ''}</span>
+              {s.firmada && <span className="flex-none font-bold text-ok" title="Validado por el paciente">✓</span>}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -871,12 +853,11 @@ function Bitacora({ patientId, recarga = 0 }: { patientId: string; recarga?: num
   );
 }
 
-function Step4({ patientId, treatmentIdCita, tratamiento, setTratamiento, rows, setRows, policyAck, setPolicyAck }: {
+function Step4({ patientId, treatmentIdCita, tratamiento, setTratamiento, rows, setRows }: {
   patientId: string;
   treatmentIdCita?: string | null;
   tratamiento: string; setTratamiento: (v: string) => void;
   rows: { fecha: string; obs: string }[]; setRows: (v: { fecha: string; obs: string }[]) => void;
-  policyAck: boolean; setPolicyAck: (v: boolean) => void;
 }) {
   // Al registrar una sesión, la bitácora se vuelve a leer para incluirla.
   const [recargaBitacora, setRecargaBitacora] = useState(0);
@@ -896,7 +877,7 @@ function Step4({ patientId, treatmentIdCita, tratamiento, setTratamiento, rows, 
   };
   return (
     <div className="animate-fade">
-      <PlanPagado patientId={patientId} treatmentIdCita={treatmentIdCita} onPlan={onPlan} onSesion={() => setRecargaBitacora((r) => r + 1)} />
+      <PlanGuiado patientId={patientId} treatmentIdCita={treatmentIdCita} onPlan={onPlan} onSesion={() => setRecargaBitacora((r) => r + 1)} />
       <Bitacora patientId={patientId} recarga={recargaBitacora} />
       {/* Filas antiguas escritas a mano: se conservan visibles para no perder lo
           que ya se había anotado antes de la bitácora automática. */}
@@ -914,25 +895,6 @@ function Step4({ patientId, treatmentIdCita, tratamiento, setTratamiento, rows, 
           </div>
         </div>
       )}
-      <div className="grid grid-cols-[1.4fr_1fr] gap-[18px]">
-        <div className="rounded-[11px] border p-4" style={{ background: 'var(--warn-soft)', borderColor: '#F0D9A8' }}>
-          <div className="mb-1.5 text-xs font-extrabold" style={{ color: 'var(--warn)' }}>⚠ Política de cancelación</div>
-          <ul className="m-0 list-disc pl-4 text-xs leading-relaxed" style={{ color: '#7A5A12' }}>
-            <li>Cancelar con 24h de anticipación.</li>
-            <li>Después de 5 citas canceladas se pierde el tratamiento.</li>
-            <li>El servicio es intransferible. No se aceptan reembolsos.</li>
-            <li>Suspensión: 45 días para reembolso.</li>
-          </ul>
-          <label className="mt-3 flex items-center gap-2 text-xs font-semibold" style={{ color: '#7A5A12' }}>
-            <input type="checkbox" checked={policyAck} onChange={(e) => setPolicyAck(e.target.checked)} style={{ accentColor: 'var(--warn)' }} />
-            El paciente acepta la política
-          </label>
-        </div>
-        <div className="flex flex-col justify-end">
-          <div className="flex h-[72px] items-center justify-center rounded-[11px] border-2 border-dashed border-line text-[12.5px] font-semibold text-faint">✎ Firma de autorización</div>
-          <div className="mt-1.5 text-center text-[11.5px] text-muted">Firma de autorización del paciente</div>
-        </div>
-      </div>
     </div>
   );
 }
