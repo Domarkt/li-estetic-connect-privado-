@@ -277,7 +277,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   if (patient.phone) {
     const cuando = startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
     const codigo = appt.code && patient.type !== 'NUEVO' ? ` Tu código de cita es ${appt.code}.` : '';
-    const confirmText = `Hola ${patient.name.split(' ')[0]} 💜 Confirmamos tu cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. — Li Estetic Center`;
+    const confirmText = `Hola ${patient.name.split(' ')[0]} 💜 Confirmamos tu cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. Si estás de acuerdo, responde este mensaje para confirmar tu cita. — Li Estetic Center`;
     whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(confirmText)}`;
   }
 

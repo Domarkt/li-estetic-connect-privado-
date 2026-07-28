@@ -195,7 +195,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
       <div className="flex max-h-[94vh] w-[820px] max-w-full flex-col overflow-hidden rounded-[18px] bg-card animate-pop"
         style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         {/* Header */}
-        <div className="flex items-center gap-3.5 border-b border-line px-[26px] py-5">
+        <div className="flex items-center gap-3.5 border-b border-line px-4 sm:px-[26px] py-5">
           <img src="/li-logo.png" alt="Li Estetic Center" className="h-[30px]" />
           <div className="flex-1">
             <div className="text-base font-extrabold">Ficha Clínica Médica y Estética</div>
@@ -205,12 +205,12 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
         </div>
 
         {/* Stepper */}
-        <div className="flex gap-[22px] border-b border-line-2 px-[26px] py-4">
+        <div className="flex gap-4 sm:gap-[22px] overflow-x-auto border-b border-line-2 px-4 sm:px-[26px] py-4">
           {[1, 2, 3, 4].map((n) => {
             const active = n === stepNum;
             const inSeq = seq.includes(n);
             return (
-              <div key={n} className="flex items-center gap-2 text-[12.5px] font-bold"
+              <div key={n} className="flex flex-none items-center gap-2 whitespace-nowrap text-[12.5px] font-bold"
                 style={{ color: active ? 'var(--magenta)' : inSeq ? 'var(--ink)' : 'var(--faint)' }}>
                 <span className="flex h-6 w-6 items-center justify-center rounded-full text-[11px]"
                   style={{ background: active ? 'var(--magenta)' : 'var(--navy-soft)', color: active ? '#fff' : 'var(--muted)' }}>{n}</span>
@@ -221,7 +221,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-[26px] py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-[26px] py-6">
           {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
           {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} talla={talla} setTalla={setTalla} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
@@ -229,7 +229,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-line px-[26px] py-4">
+        <div className="flex items-center justify-between border-t border-line px-4 sm:px-[26px] py-4">
           <button onClick={() => setIdx(Math.max(0, idx - 1))} disabled={idx === 0}
             className="rounded-[10px] border border-line bg-card px-4 py-2.5 text-[13.5px] font-bold text-muted disabled:opacity-40">← Atrás</button>
           <div className="text-[12.5px] font-semibold text-faint">Paso {stepNum} de 4</div>
@@ -272,7 +272,7 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
   const toggle = (m: string) => { const n = new Set(motivos); n.has(m) ? n.delete(m) : n.add(m); setMotivos(n); };
   return (
     <div className="animate-fade">
-      <div className="mb-5 grid grid-cols-3 gap-3.5">
+      <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de consulta</span><input type="date" className={inputCls} value={datos.consultDate} onChange={(e) => set('consultDate', e.target.value)} /></label>
         <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Nombre completo</span><input className={inputCls} value={datos.name} onChange={(e) => set('name', e.target.value)} placeholder="Nombre y apellidos" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Edad <span className="font-semibold text-faint">(automática)</span></span><input className={inputCls + ' bg-bg text-muted'} value={datos.age} readOnly placeholder="—" title="Se calcula de la fecha de nacimiento" /></label>
@@ -299,7 +299,7 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
         </label>
       </div>
       <div className={sectionCls}>A · Motivo de la consulta</div>
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
         {MOTIVOS.map((m) => {
           const on = motivos.has(m);
           return (
@@ -338,10 +338,10 @@ function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir }: {
   return (
     <div className="animate-fade">
       <div className={sectionCls}>B · Antecedentes patológicos</div>
-      <div className="mb-6 grid grid-cols-2 gap-x-[22px] gap-y-2">
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-2">
         {ANTECEDENTES.map((r) => <YesNo key={r} label={r} value={ant[r]} onChange={(v) => setAnt({ ...ant, [r]: v })} />)}
       </div>
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
           <div className="mb-2.5 text-[12.5px] font-extrabold uppercase text-navy">Antecedentes gineco-obstétricos</div>
           <div className="mb-2.5 flex gap-2.5">
@@ -374,7 +374,7 @@ function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setP
   return (
     <div className="animate-fade">
       <div className={sectionCls}>E · ¿Ingiere algún tipo de medicamento?</div>
-      <div className="mb-6 grid grid-cols-2 gap-x-[22px] gap-y-2">
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-2">
         {MEDICAMENTOS.map((m) => <YesNo key={m} label={m} value={med[m]} onChange={(v) => setMed({ ...med, [m]: v })} />)}
       </div>
       <div className="grid grid-cols-[1.6fr_1fr] gap-[22px]">
@@ -395,13 +395,13 @@ function Step3({ med, setMed, fototipo, setFototipo, talla, setTalla, peso, setP
           </div>
         </div>
         <div className="flex flex-col justify-end gap-2.5">
-          <div className="grid grid-cols-3 gap-2">
-            <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Altura (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={altura} onChange={(e) => setAltura(e.target.value)} /></label>
+          <div className="grid grid-cols-3 gap-2 min-w-0">
+            <label className="flex flex-col gap-1 min-w-0"><span className="text-[11px] font-bold text-muted">Altura (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={altura} onChange={(e) => setAltura(e.target.value)} /></label>
             <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Talla (cm)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={talla} onChange={(e) => setTalla(e.target.value)} /></label>
             <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Peso (lb)</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={peso} onChange={(e) => setPeso(e.target.value)} /></label>
           </div>
           <div className="text-[11px] font-extrabold uppercase text-navy">Medidas corporales (cm)</div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 min-w-0">
             {([['cintura', 'Cintura'], ['abdomen', 'Abdomen'], ['pierna', 'Piernas'], ['brazo', 'Brazos']] as const).map(([k, lbl]) => (
               <label key={k} className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">{lbl}</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={medidas[k]} onChange={(e) => setMedidas({ ...medidas, [k]: e.target.value })} /></label>
             ))}

@@ -120,6 +120,7 @@ export async function sendAppointmentConfirmation(
           ${opts.code ? `<b>Código de tu turno:</b> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;color:#B31C86">${opts.code}</span>` : '<b>Preséntate en recepción:</b> allí te entregarán tu código de turno al registrarte.'}
         </p>
         <p>Preséntalo al llegar. Cuando visites la estética y realices tu primer servicio, te daremos acceso a tu <b>portal del paciente</b> para ver tu proceso y tu ficha. ¡Te esperamos!</p>
+        <p style="background:#FBEAF4;border-radius:10px;padding:12px 14px;color:#7A1560"><b>Confirma tu cita:</b> si estás de acuerdo con esta cita, responde este mensaje para confirmarla.</p>
       </div>
     </div>`;
   return deliver(to, opts.code ? `Tu cita en Li Estetic Center · código ${opts.code}` : 'Tu cita en Li Estetic Center quedó agendada', html, opts.replyTo);

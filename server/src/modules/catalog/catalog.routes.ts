@@ -211,6 +211,16 @@ catalogRouter.post('/body-areas', requireStaff, requireCatalogManager, async (re
   res.status(201).json({ ok: true, message: `Área "${b.label}" agregada` });
 });
 
+/** Renombrar o cambiar el grupo de una área. La clave se conserva, así el
+ *  historial que ya la usa (por key) no se rompe: solo cambia lo que se muestra. */
+catalogRouter.patch('/body-areas/:key', requireStaff, requireCatalogManager, async (req, res) => {
+  const b = areaSchema.parse(req.body);
+  const a = await prisma.bodyArea.findUnique({ where: { key: req.params.key } });
+  if (!a) return res.status(404).json({ error: 'Área no encontrada' });
+  await prisma.bodyArea.update({ where: { key: a.key }, data: { label: b.label, grupo: b.grupo } });
+  res.json({ ok: true, message: `Área actualizada a "${b.label}"` });
+});
+
 /** Quitar una área (baja lógica; no borra el historial que ya la usa). */
 catalogRouter.delete('/body-areas/:key', requireStaff, requireCatalogManager, async (req, res) => {
   const a = await prisma.bodyArea.findUnique({ where: { key: req.params.key } });

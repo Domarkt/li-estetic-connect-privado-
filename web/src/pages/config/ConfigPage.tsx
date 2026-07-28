@@ -50,9 +50,19 @@ function AreasTab() {
   const [label, setLabel] = useState('');
   const [grupo, setGrupo] = useState<'CORPORAL' | 'LASER'>('CORPORAL');
   const [busy, setBusy] = useState(false);
+  // Edición en línea de un área existente (renombrar / cambiar de grupo).
+  const [edit, setEdit] = useState<{ key: string; label: string; grupo: 'CORPORAL' | 'LASER' } | null>(null);
 
   const load = () => api.get<BodyArea[]>('/catalog/body-areas').then(setAreas).catch(() => {});
   useEffect(() => { load(); }, []);
+
+  async function guardarEdicion() {
+    if (!edit || !edit.label.trim()) { toast('Escribe el nombre del área'); return; }
+    try {
+      const r = await api.patch<{ message: string }>(`/catalog/body-areas/${edit.key}`, { label: edit.label.trim(), grupo: edit.grupo });
+      toast(r.message); setEdit(null); load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+  }
 
   async function agregar() {
     if (!label.trim()) { toast('Escribe el nombre del área'); return; }
@@ -93,10 +103,23 @@ function AreasTab() {
             <div className="mb-2 text-[13px] font-extrabold">{g === 'CORPORAL' ? 'Corporal' : 'Láser'}</div>
             <div className="flex flex-col gap-1.5">
               {grupoLista(g).map((a) => (
-                <div key={a.key} className="flex items-center gap-2 rounded-[9px] border border-line-2 px-3 py-2">
-                  <span className="flex-1 text-[13px] font-semibold">{a.label}</span>
-                  <button onClick={() => quitar(a)} className="rounded-md px-2 py-1 text-[12px] font-bold text-muted hover:text-danger">Quitar</button>
-                </div>
+                edit?.key === a.key ? (
+                  <div key={a.key} className="flex flex-wrap items-center gap-2 rounded-[9px] border border-magenta px-3 py-2">
+                    <input value={edit.label} autoFocus onChange={(e) => setEdit({ ...edit, label: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && guardarEdicion()}
+                      className="min-w-[120px] flex-1 rounded-md border border-line px-2 py-1 text-[13px] outline-none focus:border-magenta" />
+                    <select value={edit.grupo} onChange={(e) => setEdit({ ...edit, grupo: e.target.value as 'CORPORAL' | 'LASER' })} className="rounded-md border border-line bg-card px-2 py-1 text-[12px]">
+                      <option value="CORPORAL">Corporal</option><option value="LASER">Láser</option>
+                    </select>
+                    <button onClick={guardarEdicion} className="rounded-md bg-magenta px-2 py-1 text-[12px] font-bold text-white">Guardar</button>
+                    <button onClick={() => setEdit(null)} className="rounded-md px-2 py-1 text-[12px] font-bold text-muted">Cancelar</button>
+                  </div>
+                ) : (
+                  <div key={a.key} className="flex items-center gap-2 rounded-[9px] border border-line-2 px-3 py-2">
+                    <span className="flex-1 text-[13px] font-semibold">{a.label}</span>
+                    <button onClick={() => setEdit({ key: a.key, label: a.label, grupo: a.grupo })} className="rounded-md px-2 py-1 text-[12px] font-bold text-muted hover:text-magenta">Editar</button>
+                    <button onClick={() => quitar(a)} className="rounded-md px-2 py-1 text-[12px] font-bold text-muted hover:text-danger">Quitar</button>
+                  </div>
+                )
               ))}
               {grupoLista(g).length === 0 && <div className="py-3 text-center text-[12px] text-muted">Sin áreas.</div>}
             </div>
