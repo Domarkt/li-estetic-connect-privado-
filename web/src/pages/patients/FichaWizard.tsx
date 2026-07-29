@@ -35,10 +35,15 @@ interface FichaData {
 }
 
 // Secuencia de pasos (índices 1..4) según rol.
-function sequenceFor(role: string): number[] {
+//
+// El paso 4 (Tratamiento) SOLO existe cuando la ficha se abrió para registrar un
+// procedimiento desde el turno con código (conTratamiento = true). Al "ver ficha"
+// normal se llega hasta Medicamentos & piel: así el plan no queda abierto para
+// navegar y no se puede guardar dos veces ni cambiar algo sin la firma del turno.
+function sequenceFor(role: string, conTratamiento: boolean): number[] {
   if (role === 'RECEPCIONISTA') return [1];
-  if (role === 'ESTETICISTA') return [2, 3, 4];
-  return [1, 2, 3, 4]; // ADMIN
+  if (role === 'ESTETICISTA') return conTratamiento ? [2, 3, 4] : [2, 3];
+  return conTratamiento ? [1, 2, 3, 4] : [1, 2, 3]; // ADMIN
 }
 
 const STEP_LABELS = ['Datos & motivo', 'Antecedentes', 'Medicamentos & piel', 'Tratamiento'];
@@ -49,7 +54,10 @@ const CONSENTIMIENTO = 'Declaro que he recibido información clara, completa y c
 export default function FichaWizard({ patientId, patientName, startStep, treatmentId, onClose, onSaved }: Props) {
   const { staff } = useAuth();
   const toast = useToast();
-  const seq = sequenceFor(staff!.role);
+  // El paso Tratamiento solo se habilita cuando la ficha se abre desde el turno
+  // con código (startStep === 4). Al ver/editar la ficha normal, queda bloqueado.
+  const modoTratamiento = startStep === 4;
+  const seq = sequenceFor(staff!.role, modoTratamiento);
   // Si se pidió empezar en un paso concreto (p. ej. Tratamiento tras abrir el
   // turno), se arranca ahí siempre que ese paso exista para el rol.
   const [idx, setIdx] = useState(() => {
