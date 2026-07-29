@@ -106,6 +106,7 @@ export interface CatalogItem {
   kind: CatalogKind;
   code?: string | null; // código/SKU
   showInPortal?: boolean; // visible en el portal del paciente
+  imageUrl?: string | null; // foto del producto/oferta/combo
   name: string;
   category: string | null;
   price: number;
@@ -113,6 +114,8 @@ export interface CatalogItem {
   stock: number | null;
   unit: string | null;
   tag: string | null;
+  /** Vencimiento de una oferta/paquete/combo (ISO), opcional. */
+  validUntil?: string | null;
   /** Si es combo/paquete: técnicas que incluye, con su cantidad. */
   services?: { id: string; name: string; qty?: number }[];
   /** Combo/paquete: familia de áreas (CORPORAL | LASER). */

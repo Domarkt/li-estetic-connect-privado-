@@ -108,12 +108,18 @@ export default function CatalogPage() {
             </div>
             {shown.map((it) => (
               <div key={it.id} className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line-2 px-4 py-2.5 hover:bg-bg">
-                <div className="min-w-0">
-                  {it.code && <div className="font-mono text-[10.5px] font-bold text-faint">{it.code}</div>}
-                  <div className="truncate text-[13px] font-bold">{it.name}</div>
+                <div className="flex min-w-0 items-center gap-2.5">
+                  {it.imageUrl
+                    ? <img src={it.imageUrl} alt="" className="h-10 w-10 flex-none rounded-[8px] border border-line object-cover" />
+                    : it.kind !== 'INSUMO' && <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[8px] bg-magenta-soft text-magenta">✦</span>}
+                  <div className="min-w-0">
+                    {it.code && <div className="font-mono text-[10.5px] font-bold text-faint">{it.code}</div>}
+                    <div className="truncate text-[13px] font-bold">{it.name}</div>
+                  </div>
                 </div>
                 <div className="truncate text-[12px] text-muted">
                   {STOCKABLE(it.kind) ? (it.unit ? `Por ${it.unit}` : 'Inventariable') : it.sessions > 1 ? `${it.sessions} sesiones` : it.category ?? it.tag ?? '1 sesión'}
+                  {it.validUntil && <VenceChip iso={it.validUntil} inline />}
                 </div>
                 <div className="text-[13px] font-extrabold text-magenta">{!it.price ? <span className="text-[12px] font-bold text-muted">Sin precio</span> : fmtRD(it.price)}</div>
                 <div className="flex w-[130px] justify-end gap-1.5">
@@ -133,15 +139,20 @@ export default function CatalogPage() {
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
         {shown.map((it) => (
           <div key={it.id} className="group relative rounded-base border border-line bg-card p-[18px] shadow-card">
+            {/* Foto grande arriba: hace el catálogo más visual para el personal. */}
+            {it.imageUrl ? (
+              <img src={it.imageUrl} alt={it.name} className="mb-3 h-32 w-full rounded-[11px] border border-line object-cover" />
+            ) : null}
             <div className="mb-3 flex items-start justify-between gap-2.5">
-              <div className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-magenta-soft text-lg text-magenta">✦</div>
-              <span className="rounded-full bg-bg px-2.5 py-1 text-[11px] font-bold text-muted">
+              {!it.imageUrl && <div className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-magenta-soft text-lg text-magenta">✦</div>}
+              <span className="ml-auto rounded-full bg-bg px-2.5 py-1 text-[11px] font-bold text-muted">
                 {STOCKABLE(it.kind) ? (it.unit ? `Por ${it.unit}` : 'Inventariable') : it.category ?? it.tag ?? `${it.sessions} ses`}
               </span>
             </div>
             {it.code && <div className="mb-0.5 font-mono text-[10.5px] font-bold text-faint">{it.code}</div>}
             <div className="mb-1.5 text-sm font-bold leading-tight">{it.name}</div>
             <div className="mb-3 text-xs text-faint">{it.kind === 'INSUMO' ? 'Insumo operativo' : it.sessions > 1 ? `${it.sessions} sesiones` : it.tag || '1 sesión'}</div>
+            {it.validUntil && <VenceChip iso={it.validUntil} />}
             <div className="text-[19px] font-extrabold text-magenta">{!it.price ? <span className="text-[13px] font-bold text-muted">Sin precio</span> : fmtRD(it.price)}</div>
 
             {isAdmin && (
@@ -166,6 +177,19 @@ export default function CatalogPage() {
         />
       )}
     </div>
+  );
+}
+
+/** Etiqueta de vencimiento de una oferta/combo. Rojo si ya venció. */
+function VenceChip({ iso, inline }: { iso: string; inline?: boolean }) {
+  const d = new Date(iso);
+  const vencido = d.getTime() < Date.now();
+  const txt = d.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' });
+  return (
+    <span className={inline ? 'ml-1.5 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold' : 'inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold'}
+      style={vencido ? { background: 'var(--danger-soft)', color: 'var(--danger)' } : { background: 'var(--warn-soft)', color: '#7A5A12' }}>
+      {vencido ? `Vencida ${txt}` : `Vence ${txt}`}
+    </span>
   );
 }
 
@@ -215,7 +239,28 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const [sessions, setSessions] = useState(item?.sessions ? String(item.sessions) : '1');
   const [unit, setUnit] = useState(item?.unit ?? '');
   const [showInPortal, setShowInPortal] = useState(item?.showInPortal ?? true);
+  const [imageUrl, setImageUrl] = useState<string | null>(item?.imageUrl ?? null);
+  const [validUntil, setValidUntil] = useState(item?.validUntil ? item.validUntil.slice(0, 10) : '');
   const [busy, setBusy] = useState(false);
+
+  // Comprime la foto a ~900px JPEG para que se vea bien sin engordar la base.
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const lector = new FileReader();
+    lector.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 900; const escala = Math.min(1, MAX / img.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+        c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+        setImageUrl(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = String(lector.result);
+    };
+    lector.readAsDataURL(file);
+  }
   const stockable = STOCKABLE(kind);
   // Un combo/paquete incluye varias técnicas; la esteticista marca cuáles aplica por sesión.
   const componible = kind === 'COMBO' || kind === 'PAQUETE';
@@ -252,6 +297,9 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
       price: Number(price) || 0,
       sessions: Number(sessions) || 1,
       unit: stockable ? (unit.trim() || undefined) : undefined,
+      // Foto (para catálogo y portal) y vencimiento de la oferta/combo.
+      imageUrl: kind !== 'INSUMO' ? imageUrl : null,
+      validUntil: componible ? (validUntil || null) : null,
       // Solo se envían cuando aplica, para no borrar las técnicas de otros tipos.
       ...(componible ? { services: serviceIds.map((id) => ({ id, qty: serviceQty[id] || 1 })), areaGroup: areaGroup || null, defaultAreas: areaGroup ? areas : [] } : {}),
     };
@@ -307,6 +355,28 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             )}
           </div>
           {stockable && <p className="text-[11.5px] text-faint">El stock se controla por sucursal en la pestaña <b>Inventario</b>.</p>}
+
+          {/* Foto: se ve en el catálogo (más visual para el personal) y en el portal. */}
+          {kind !== 'INSUMO' && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">Foto {kind === 'PRODUCTO' ? 'del producto' : 'de la oferta/combo'} <span className="font-semibold text-faint">(opcional)</span></span>
+              {imageUrl ? (
+                <div className="relative">
+                  <img src={imageUrl} alt="" className="h-36 w-full rounded-[10px] border border-line object-cover" />
+                  <button type="button" onClick={() => setImageUrl(null)} className="absolute right-2 top-2 rounded-md bg-card px-2 py-1 text-[11px] font-bold text-danger shadow">Quitar</button>
+                </div>
+              ) : (
+                <input type="file" accept="image/*" onChange={onFile} className="text-[12px]" />
+              )}
+            </div>
+          )}
+
+          {/* Vencimiento de la oferta/combo (opcional). */}
+          {componible && (
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Vence el <span className="font-semibold text-faint">(opcional · deja vacío si no vence)</span></span>
+              <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" />
+            </label>
+          )}
 
           {/* Curaduría del portal: la admin decide si el paciente ve este combo/paquete. */}
           {componible && (

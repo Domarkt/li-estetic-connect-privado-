@@ -85,6 +85,8 @@ const catalogSchema = z.object({
   category: z.string().optional(),
   unit: z.string().optional(),
   tag: z.string().optional(),
+  // Vencimiento de una oferta/paquete/combo (opcional). Acepta "YYYY-MM-DD".
+  validUntil: z.coerce.date().nullish(),
   // Combos/paquetes: familia de áreas para el selector (o null si no aplica).
   areaGroup: z.enum(['CORPORAL', 'LASER']).nullish(),
   // Áreas que trae el combo por defecto (se cargan al venderlo al paciente).
