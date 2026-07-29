@@ -210,31 +210,34 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const charges = b.chargeItemIds?.length
     ? await prisma.chargeItem.findMany({ where: { id: { in: b.chargeItemIds }, branchId } })
     : [];
-  if (charges.length) {
-    const chargesTotal = charges.reduce((s, c) => s + c.price, 0);
-    // Cada servicio/producto SIEMPRE detallado por separado (a su precio).
-    lineItems = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price }));
-    if (b.paymentKind === 'ABONO' && amount < chargesTotal) {
-      // Abono: se muestran los servicios y una línea de saldo pendiente para conciliar el total pagado.
-      saldoServicios = chargesTotal - amount;
-      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
-    }
-  } else if (b.items?.length) {
-    // Carrito: cada servicio/producto detallado a su precio y cantidad.
-    lineItems = b.items.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty }));
-    // Abono al carrito: el resto (total del carrito − abonado) queda pendiente. Si se
-    // compró un plan, ese saldo vive en el tratamiento; si no, como cargo pendiente.
-    if (b.paymentKind === 'ABONO' && b.patientId && b.fullAmount && b.fullAmount > amount) {
-      const faltante = b.fullAmount - amount;
-      if (carritoTienePlan) saldoPlan = faltante; else saldoServicios = faltante;
-      lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -faltante, total: -faltante });
-    }
-  } else {
+
+  // Carrito unificado: los cargos pendientes (que la esteticista envió) y los
+  // servicios/productos agregados en el cobro van JUNTOS en el mismo recibo, cada
+  // uno detallado por separado. Así un paciente recurrente puede agregar otro
+  // producto o servicio a lo que ya tenía pendiente, en una sola factura.
+  const chargeLines = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price }));
+  const cartLines = (b.items ?? []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty }));
+  const detalle = [...chargeLines, ...cartLines];
+  const brutoDetalle = detalle.reduce((s, l) => s + l.total, 0);
+
+  if (detalle.length === 0) {
+    // Cobro de concepto libre (sin cargos ni carrito): una sola línea.
     lineItems = [{ name: b.concept, qty: 1, unitPrice: amount, total: amount }];
-    // Abono a un combo/compra nuevo (concepto libre): el resto queda como saldo pendiente.
     if (b.paymentKind === 'ABONO' && b.patientId && b.fullAmount && b.fullAmount > amount) {
       saldoServicios = b.fullAmount - amount;
       lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -saldoServicios, total: -saldoServicios });
+    }
+  } else {
+    lineItems = detalle;
+    // Abono: lo que falta del total real de lo comprado queda pendiente. Si el
+    // carrito incluye un plan, ese saldo vive en el tratamiento; si no, como cargo.
+    if (b.paymentKind === 'ABONO' && b.patientId) {
+      const objetivo = b.fullAmount && b.fullAmount > 0 ? b.fullAmount : brutoDetalle;
+      const faltante = Math.max(0, objetivo - amount);
+      if (faltante > 0) {
+        if (carritoTienePlan) saldoPlan = faltante; else saldoServicios = faltante;
+        lineItems.push({ name: 'Saldo pendiente (por cobrar)', qty: 1, unitPrice: -faltante, total: -faltante });
+      }
     }
   }
 
