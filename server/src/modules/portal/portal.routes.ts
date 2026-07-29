@@ -339,8 +339,14 @@ portalRouter.post('/appointments/:id/rate', async (req, res) => {
 });
 
 /** Sucursales con su WhatsApp para solicitar cita (evita agendar directo desde el portal). */
-portalRouter.get('/branches', async (_req, res) => {
-  const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
+portalRouter.get('/branches', async (req, res) => {
+  // Solo la sucursal DONDE el paciente se atiende: al pedir otra cita no debe ver
+  // las demás (evita confusión y que solicite en una sucursal que no es la suya).
+  const patient = await prisma.patient.findUnique({ where: { id: req.patient!.patientId }, select: { branchId: true } });
+  const branches = await prisma.branch.findMany({
+    where: patient?.branchId ? { id: patient.branchId } : {},
+    orderBy: { code: 'asc' },
+  });
   res.json(branches.map((b) => {
     const digits = (b.phone || '').replace(/\D/g, '');
     const wa = digits.length === 10 ? '1' + digits : digits; // RD → +1

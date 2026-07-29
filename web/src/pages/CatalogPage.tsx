@@ -10,7 +10,7 @@ import { fmtRD, type CatalogItem, type CatalogKind } from '../lib/types';
 
 const TABS: { key: CatalogKind; label: string }[] = [
   { key: 'SERVICIO', label: 'Servicios' },
-  { key: 'PAQUETE', label: 'Paquetes' },
+  { key: 'PAQUETE', label: 'Ofertas/Paquetes' },
   { key: 'COMBO', label: 'Combos' },
   { key: 'PRODUCTO', label: 'Productos' },
   { key: 'INSUMO', label: 'Insumos' },
@@ -279,7 +279,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
         <div className="flex flex-col gap-3.5 px-6 py-5">
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Tipo</span>
             <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={kind} onChange={(e) => setKind(e.target.value as CatalogKind)}>
-              <option value="SERVICIO">Servicio</option><option value="PAQUETE">Paquete</option><option value="COMBO">Combo</option><option value="PRODUCTO">Producto</option><option value="INSUMO">Insumo operativo</option>
+              <option value="SERVICIO">Servicio</option><option value="PAQUETE">Oferta/Paquete</option><option value="COMBO">Combo</option><option value="PRODUCTO">Producto</option><option value="INSUMO">Insumo operativo</option>
             </select>
           </label>
           <div className="flex gap-3">

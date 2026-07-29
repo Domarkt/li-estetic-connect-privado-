@@ -29,6 +29,7 @@ export default function AgendaPage() {
   const [cancelFor, setCancelFor] = useState<Appointment | null>(null);
   const [assignFor, setAssignFor] = useState<Appointment | null>(null);
   const [reagendarFor, setReagendarFor] = useState<Appointment | null>(null);
+  const [apptQuery, setApptQuery] = useState(''); // buscar por nombre/teléfono en el día
 
   const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
@@ -157,9 +158,22 @@ export default function AgendaPage() {
         )}
       </div>
 
+      {/* Buscar la cita de un paciente en el día (cuando alguien pregunta por la suya). */}
+      <div className="mb-2.5 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-faint">
+        <span>🔍</span>
+        <input value={apptQuery} onChange={(e) => setApptQuery(e.target.value)} placeholder="Buscar paciente en la agenda del día (nombre o teléfono)…"
+          className="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-faint" />
+        {apptQuery && <button onClick={() => setApptQuery('')} className="text-[13px] font-bold text-muted">×</button>}
+      </div>
+
       <div className="rounded-base border border-line bg-card p-2 shadow-card">
+        {(() => {
+          const q = apptQuery.trim().toLowerCase();
+          const visibles = q ? data.appointments.filter((a) => a.patient.toLowerCase().includes(q)) : data.appointments;
+          return (<>
         {data.appointments.length === 0 && <div className="py-10 text-center text-sm text-muted">No hay citas para este día. Aprovecha para gestionar pacientes.</div>}
-        {data.appointments.map((a) => (
+        {data.appointments.length > 0 && visibles.length === 0 && <div className="py-10 text-center text-sm text-muted">Ninguna cita del día coincide con “{apptQuery}”.</div>}
+        {visibles.map((a) => (
           <div key={a.id} className="flex flex-col gap-2.5 rounded-[11px] px-3.5 py-3.5 hover:bg-bg sm:flex-row sm:items-center sm:gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
             <div className="w-[52px] flex-none pt-0.5 text-right sm:w-[74px] sm:pt-0"><div className="text-sm font-extrabold">{a.time}</div></div>
@@ -250,6 +264,8 @@ export default function AgendaPage() {
             </div>
           </div>
         ))}
+          </>);
+        })()}
       </div>
       </>
       )}
