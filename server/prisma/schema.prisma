@@ -153,6 +153,9 @@ model CashClose {
   countedCard      Int       @default(0)
   countedTransfer  Int       @default(0)
   countedAzul      Int       @default(0)
+  // Egresos del día reportados por recepción: salidas de efectivo (compras
+  // menores, etc.) que explican por qué el efectivo en caja es menor. [{amount, note}]
+  expenses         Json?
   // Snapshot de lo ESPERADO según facturas del día (no visible para recepción)
   expectedCash     Int       @default(0)
   expectedCard     Int       @default(0)

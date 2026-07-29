@@ -219,8 +219,8 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-[26px] py-6">
-          {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} motivos={motivos} setMotivos={setMotivos} />}
-          {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} />}
+          {stepNum === 1 && <Step1 datos={datos} setDatos={setDatos} />}
+          {stepNum === 2 && <Step2 ant={antecedentes} setAnt={setAntecedentes} gineco={gineco} setGineco={setGineco} quir={quirurgicos} setQuir={setQuirurgicos} motivos={motivos} setMotivos={setMotivos} />}
           {stepNum === 3 && <Step3 med={medicamentos} setMed={setMedicamentos} fototipo={fototipo} setFototipo={setFototipo} peso={peso} setPeso={setPeso} altura={altura} setAltura={setAltura} medidas={medidas} setMedidas={setMedidas} />}
           {stepNum === 4 && <Step4 patientId={patientId} treatmentIdCita={treatmentId} tratamiento={tratamiento} setTratamiento={setTratamiento} rows={controlCitas} setRows={setControlCitas} />}
         </div>
@@ -261,12 +261,10 @@ function ageFromISO(iso: string): string {
 
 type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; cedula: string; occupation: string; address: string; sector: string; province: string; consultDate: string };
 
-function Step1({ datos, setDatos, motivos, setMotivos }: {
+function Step1({ datos, setDatos }: {
   datos: Datos; setDatos: React.Dispatch<React.SetStateAction<Datos>>;
-  motivos: Set<string>; setMotivos: (s: Set<string>) => void;
 }) {
   const set = (k: keyof Datos, v: string) => setDatos({ ...datos, [k]: v });
-  const toggle = (m: string) => { const n = new Set(motivos); n.has(m) ? n.delete(m) : n.add(m); setMotivos(n); };
   return (
     <div className="animate-fade">
       <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3.5">
@@ -295,19 +293,6 @@ function Step1({ datos, setDatos, motivos, setMotivos }: {
           <datalist id="prov-do">{['Distrito Nacional','Santo Domingo','Santiago','La Romana','La Altagracia','San Pedro de Macorís','La Vega','Puerto Plata','Duarte','San Cristóbal','Espaillat','Azua','Barahona','Monseñor Nouel','Peravia','Hermanas Mirabal','Monte Plata','Sánchez Ramírez','María Trinidad Sánchez','Samaná','Valverde','Montecristi','Hato Mayor','El Seibo','San Juan','Baoruco','Independencia','Pedernales','Elías Piña','Santiago Rodríguez','Dajabón','San José de Ocoa'].map((pr) => <option key={pr} value={pr} />)}</datalist>
         </label>
       </div>
-      <div className={sectionCls}>A · Motivo de la consulta</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-        {MOTIVOS.map((m) => {
-          const on = motivos.has(m);
-          return (
-            <label key={m} className="flex cursor-pointer items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[13px]"
-              style={{ background: on ? 'var(--magenta-soft)' : 'var(--bg)', borderColor: on ? 'var(--magenta)' : 'var(--line)' }}>
-              <input type="checkbox" checked={on} onChange={() => toggle(m)} style={{ accentColor: 'var(--magenta)', width: 16, height: 16 }} />
-              {m}
-            </label>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -327,13 +312,29 @@ function YesNo({ label, value, onChange }: { label: string; value: boolean | und
   );
 }
 
-function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir }: {
+function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir, motivos, setMotivos }: {
   ant: Record<string, boolean>; setAnt: (v: Record<string, boolean>) => void;
   gineco: { embarazos: string; partos: string; abortos: string; lactancia: boolean }; setGineco: (v: typeof gineco) => void;
   quir: { implantes: boolean; cirugia: boolean; observaciones: string }; setQuir: (v: typeof quir) => void;
+  motivos: Set<string>; setMotivos: (s: Set<string>) => void;
 }) {
+  const toggleMotivo = (m: string) => { const n = new Set(motivos); n.has(m) ? n.delete(m) : n.add(m); setMotivos(n); };
   return (
     <div className="animate-fade">
+      {/* Motivo de la consulta: ahora lo registra la esteticista (antes recepción). */}
+      <div className={sectionCls}>A · Motivo de la consulta</div>
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        {MOTIVOS.map((m) => {
+          const on = motivos.has(m);
+          return (
+            <label key={m} className="flex cursor-pointer items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[13px]"
+              style={{ background: on ? 'var(--magenta-soft)' : 'var(--bg)', borderColor: on ? 'var(--magenta)' : 'var(--line)' }}>
+              <input type="checkbox" checked={on} onChange={() => toggleMotivo(m)} style={{ accentColor: 'var(--magenta)', width: 16, height: 16 }} />
+              {m}
+            </label>
+          );
+        })}
+      </div>
       <div className={sectionCls}>B · Antecedentes patológicos</div>
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-2">
         {ANTECEDENTES.map((r) => <YesNo key={r} label={r} value={ant[r]} onChange={(v) => setAnt({ ...ant, [r]: v })} />)}

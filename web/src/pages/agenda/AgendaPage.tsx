@@ -256,7 +256,8 @@ export default function AgendaPage() {
                 {a.fichaComplete ? 'Abrir ficha' : 'Llenar ficha'}
               </button>
             )}
-            {a.status !== 'CANCELADA' && (
+            {/* Recordar la cita es control de recepción/admin: la esteticista no lo ve. */}
+            {!isMasa && a.status !== 'CANCELADA' && (
               <button onClick={() => setRemindFor(a)} className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-muted hover:border-magenta hover:text-magenta">
                 {a.reminderSent ? 'Recordado ✓' : 'Recordar'}
               </button>

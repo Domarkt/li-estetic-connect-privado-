@@ -77,7 +77,9 @@ export default function CashCloseAdmin() {
           const st = STATUS_META[b.status];
           const locked = b.status === 'CUADRADO';
           const totalExpectedEdit = b.methods.reduce((s, m) => s + expOf(b.branchId, m.method), 0);
-          const totalDiff = b.totalCounted == null ? null : b.totalCounted - totalExpectedEdit;
+          const egresos = b.expensesTotal ?? 0;
+          // Los egresos (efectivo que salió con nota) cuentan como cubierto.
+          const totalDiff = b.totalCounted == null ? null : (b.totalCounted + egresos) - totalExpectedEdit;
           return (
             <div key={b.branchId} className="rounded-base border border-line bg-card p-5 shadow-card">
               <div className="mb-4 flex items-center gap-2.5">
@@ -116,6 +118,16 @@ export default function CashCloseAdmin() {
 
               {b.cardVouchers && b.cardVouchers.length > 0 && (
                 <div className="mt-2 text-[11.5px] text-muted">Vouchers recibidos: {b.cardVouchers.map((v) => fmtRD(v)).join(' · ')}</div>
+              )}
+              {/* Egresos reportados por recepción (salidas de efectivo con nota). */}
+              {b.expenses && b.expenses.length > 0 && (
+                <div className="mt-2 rounded-[10px] border border-line-2 px-3 py-2">
+                  <div className="mb-1 text-[11.5px] font-bold text-navy">Egresos reportados <span className="font-extrabold text-danger">− {fmtRD(egresos)}</span></div>
+                  {b.expenses.map((e, i) => (
+                    <div key={i} className="flex justify-between text-[11.5px] text-muted"><span>{e.note}</span><span className="font-bold">{fmtRD(e.amount)}</span></div>
+                  ))}
+                  <div className="mt-1 text-[10.5px] text-faint">Ya incluidos en la diferencia (contado + egresos vs sistema).</div>
+                </div>
               )}
               {b.notes && <div className="mt-1 text-[11.5px] text-muted">Nota de recepción: {b.notes}</div>}
 

@@ -36,13 +36,24 @@ function cashFromDenoms(denoms: Record<string, number>): number {
 
 // ─────────── RECEPCIÓN: conteo ciego ───────────
 
+// Egreso reportado en el cierre: una salida de efectivo con su nota.
+const expenseSchema = z.object({ amount: z.number().int().positive(), note: z.string().trim().min(1) });
+
 const submitSchema = z.object({
   denominations: z.record(z.number().int().nonnegative()).default({}),
   cardVouchers: z.array(z.number().int().nonnegative()).default([]),
   countedTransfer: z.number().int().nonnegative().default(0),
   countedAzul: z.number().int().nonnegative().default(0),
+  // Egresos/compras menores del día (salidas de efectivo), cada uno con su nota.
+  expenses: z.array(expenseSchema).default([]),
   notes: z.string().optional(),
 });
+
+/** Total de egresos guardados en un cierre. */
+function expensesTotal(expenses: unknown): number {
+  if (!Array.isArray(expenses)) return 0;
+  return expenses.reduce((s, e) => s + (Number((e as { amount?: number })?.amount) || 0), 0);
+}
 
 /**
  * Estado del cierre de HOY para la recepción (sin exponer lo esperado).
@@ -61,6 +72,7 @@ cashCloseRouter.get('/today', requireStaff, requireRole('RECEPCIONISTA', 'ADMIN'
       denominations: close.denominations, cardVouchers: close.cardVouchers,
       countedCash: close.countedCash, countedCard: close.countedCard,
       countedTransfer: close.countedTransfer, countedAzul: close.countedAzul,
+      expenses: close.expenses ?? [],
     } : null,
     // Nota: NO se envía lo esperado ni la diferencia a recepción (conteo ciego).
   });
@@ -84,6 +96,7 @@ cashCloseRouter.post('/', requireStaff, requireRole('RECEPCIONISTA', 'ADMIN'), b
   const data = {
     denominations: b.denominations, cardVouchers: b.cardVouchers,
     countedCash, countedCard, countedTransfer: b.countedTransfer, countedAzul: b.countedAzul,
+    expenses: b.expenses,
     expectedCash: expected.EFECTIVO, expectedCard: expected.TARJETA,
     expectedTransfer: expected.TRANSFERENCIA, expectedAzul: expected.AZUL,
     notes: b.notes ?? null, submittedById: req.staff!.sub, status: 'ENVIADO',
@@ -128,9 +141,11 @@ cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, re
       counted: counted ? counted[m] : null,
       diff: counted ? counted[m] - expected[m] : null,
     }));
+    const egresos = expensesTotal(close?.expenses);
     const totalExpected = methods.reduce((s, m) => s + m.expected, 0);
     const totalCounted = counted ? methods.reduce((s, m) => s + (m.counted ?? 0), 0) : null;
-    const totalDiff = totalCounted != null ? totalCounted - totalExpected : null;
+    // Los egresos (efectivo que salió) cuentan para cubrir lo esperado: contado + egresos vs esperado.
+    const totalDiff = totalCounted != null ? (totalCounted + egresos) - totalExpected : null;
 
     const submitter = close?.submittedById
       ? await prisma.user.findUnique({ where: { id: close.submittedById }, select: { id: true, name: true } })
@@ -141,6 +156,8 @@ cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, re
       branchId: br.id, branchName: br.name, dotColor: br.dotColor,
       status: close?.status ?? 'PENDIENTE', // PENDIENTE (no enviado) | ENVIADO | CUADRADO
       methods, totalExpected, totalCounted, totalDiff,
+      expenses: (close?.expenses as { amount: number; note: string }[] | null) ?? [],
+      expensesTotal: egresos,
       denominations: close?.denominations ?? null,
       cardVouchers: close?.cardVouchers ?? null,
       notes: close?.notes ?? null,
@@ -181,7 +198,9 @@ cashCloseRouter.patch('/:id/reconcile', requireStaff, requireRole('ADMIN'), asyn
     expectedTransfer: b.expectedTransfer ?? close.expectedTransfer,
     expectedAzul: b.expectedAzul ?? close.expectedAzul,
   };
-  const diff = (close.countedCash + close.countedCard + close.countedTransfer + close.countedAzul)
+  // Los egresos (efectivo que salió con nota) cuentan como cubierto: contado + egresos vs esperado.
+  const egresos = expensesTotal(close.expenses);
+  const diff = (close.countedCash + close.countedCard + close.countedTransfer + close.countedAzul + egresos)
     - (expected.expectedCash + expected.expectedCard + expected.expectedTransfer + expected.expectedAzul);
 
   // Faltante real: se descuenta al usuario y se registra en su expediente.

@@ -750,22 +750,7 @@ function Paquetes() {
         <div className="mx-0.5 mb-2.5 text-sm font-extrabold">Explora nuevos paquetes</div>
         <div className="flex flex-col gap-2.5">
           {d.shop.map((p) => (
-            <div key={p.id} className="overflow-hidden rounded-[16px] bg-card shadow-card">
-              {/* Con foto la oferta entra por los ojos; sin ella se ve la tarjeta simple. */}
-              {p.imageUrl && (
-                <img src={p.imageUrl} alt={p.name} className="block h-[150px] w-full object-cover" />
-              )}
-              <div className="flex items-center gap-3.5 p-4">
-                {!p.imageUrl && (
-                  <div className="flex h-[50px] w-[50px] flex-none items-center justify-center rounded-[13px] bg-magenta-soft text-xl text-magenta">✦</div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold">{p.name}</div>
-                  <div className="text-xs text-muted">{p.sessions} sesiones · {fmtRD(p.price)}</div>
-                </div>
-                <button onClick={() => setConfirm({ id: p.id, name: p.name, price: p.price })} className="flex-none rounded-[9px] bg-magenta px-3.5 py-2.5 text-[12.5px] font-bold text-white">Comprar</button>
-              </div>
-            </div>
+            <OfertaShop key={p.id} p={p} onComprar={() => setConfirm({ id: p.id, name: p.name, price: p.price })} />
           ))}
         </div>
       </div>
@@ -782,6 +767,48 @@ function Paquetes() {
               <button onClick={doBuy} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-2.5 text-[13px] font-bold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Sí, enviar solicitud'}</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Tarjeta de una oferta de la tienda: foto completa + desplegar qué incluye. */
+function OfertaShop({ p, onComprar }: { p: PortalPackages['shop'][number]; onComprar: () => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const incluye = p.includes ?? [];
+  return (
+    <div className="overflow-hidden rounded-[16px] bg-card shadow-card">
+      {/* Foto COMPLETA (sin recortar) para que se vea toda la promo. */}
+      {p.imageUrl && (
+        <img src={p.imageUrl} alt={p.name} className="block max-h-[300px] w-full bg-bg object-contain" />
+      )}
+      <div className="flex items-center gap-3.5 p-4">
+        {!p.imageUrl && (
+          <div className="flex h-[50px] w-[50px] flex-none items-center justify-center rounded-[13px] bg-magenta-soft text-xl text-magenta">✦</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold">{p.name}</div>
+          <div className="text-xs text-muted">{p.sessions} sesiones · {fmtRD(p.price)}{p.validUntil ? ` · vence ${p.validUntil}` : ''}</div>
+        </div>
+        <button onClick={onComprar} className="flex-none rounded-[9px] bg-magenta px-3.5 py-2.5 text-[12.5px] font-bold text-white">Comprar</button>
+      </div>
+      {incluye.length > 0 && (
+        <div className="border-t border-line px-4 pb-3">
+          <button onClick={() => setAbierto((v) => !v)} className="py-2.5 text-[12.5px] font-bold text-magenta">
+            {abierto ? 'Ocultar detalle' : 'Ver qué incluye →'}
+          </button>
+          {abierto && (
+            <div className="flex flex-col gap-1.5 pb-1">
+              {incluye.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-[9px] bg-bg px-3 py-2 text-[12.5px]">
+                  <span className="text-magenta">✦</span>
+                  <span className="flex-1 font-semibold">{s.name}</span>
+                  {s.qty > 1 && <span className="text-[11.5px] font-bold text-muted">×{s.qty}</span>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

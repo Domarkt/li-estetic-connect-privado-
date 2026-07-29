@@ -10,6 +10,7 @@ export default function CashCloseRecepcion() {
   const [vouchers, setVouchers] = useState<string[]>(['']);
   const [transfer, setTransfer] = useState('');
   const [azul, setAzul] = useState('');
+  const [expenses, setExpenses] = useState<{ amount: string; note: string }[]>([]); // egresos del día
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,6 +26,7 @@ export default function CashCloseRecepcion() {
         setVouchers((d.counted.cardVouchers || []).map(String).concat(''));
         setTransfer(d.counted.countedTransfer ? String(d.counted.countedTransfer) : '');
         setAzul(d.counted.countedAzul ? String(d.counted.countedAzul) : '');
+        setExpenses((d.counted.expenses ?? []).map((e) => ({ amount: String(e.amount), note: e.note })));
       }
     }).catch(() => {});
   }, []);
@@ -32,12 +34,16 @@ export default function CashCloseRecepcion() {
   const n = (s: string) => parseInt((s || '').replace(/[^0-9]/g, ''), 10) || 0;
   const cashTotal = denoms.reduce((s, d) => s + d * n(qty[String(d)] || ''), 0);
   const cardTotal = vouchers.reduce((s, v) => s + n(v), 0);
+  const egresosTotal = expenses.reduce((s, e) => s + n(e.amount), 0);
   const grandTotal = cashTotal + cardTotal + n(transfer) + n(azul);
   const locked = status === 'CUADRADO';
 
   function nuevoCuadre() {
-    setQty({}); setVouchers(['']); setTransfer(''); setAzul(''); setNotes('');
+    setQty({}); setVouchers(['']); setTransfer(''); setAzul(''); setNotes(''); setExpenses([]);
   }
+  const addEgreso = () => setExpenses((x) => [...x, { amount: '', note: '' }]);
+  const setEgreso = (i: number, patch: Partial<{ amount: string; note: string }>) => setExpenses((x) => x.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+  const delEgreso = (i: number) => setExpenses((x) => x.filter((_, j) => j !== i));
 
   async function submit() {
     setBusy(true);
@@ -45,8 +51,9 @@ export default function CashCloseRecepcion() {
       const denominations: Record<string, number> = {};
       denoms.forEach((d) => { const q = n(qty[String(d)] || ''); if (q > 0) denominations[String(d)] = q; });
       const cardVouchers = vouchers.map(n).filter((v) => v > 0);
+      const egresos = expenses.map((e) => ({ amount: n(e.amount), note: e.note.trim() })).filter((e) => e.amount > 0 && e.note);
       const r = await api.post<{ message: string }>('/cashclose', {
-        denominations, cardVouchers, countedTransfer: n(transfer), countedAzul: n(azul), notes: notes || undefined,
+        denominations, cardVouchers, countedTransfer: n(transfer), countedAzul: n(azul), expenses: egresos, notes: notes || undefined,
       });
       toast(r.message);
       setStatus('ENVIADO');
@@ -113,6 +120,29 @@ export default function CashCloseRecepcion() {
             <label className="block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Azul (total)</span><input disabled={locked} value={azul} onChange={(e) => setAzul(e.target.value)} placeholder="0" className="w-full rounded-[9px] border border-line px-3 py-2 text-[13px] disabled:opacity-60" /></label>
           </div>
         </div>
+      </div>
+
+      {/* Egresos / compras menores del día: salidas de efectivo, cada una con su nota. */}
+      <div className="mt-4 rounded-base border border-line bg-card p-5 shadow-card">
+        <div className="mb-1 flex items-center justify-between">
+          <div className="text-[15px] font-extrabold">Egresos / compras menores</div>
+          <button onClick={addEgreso} disabled={locked} className="rounded-[9px] border border-line bg-bg px-3 py-1.5 text-[12px] font-bold text-magenta disabled:opacity-50">+ Agregar egreso</button>
+        </div>
+        <div className="mb-3 text-[11.5px] text-muted">Salidas de efectivo de la caja (compras menores, mandados, etc.). Cada una con su nota; se descuentan del efectivo esperado.</div>
+        <div className="flex flex-col gap-2">
+          {expenses.map((e, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="flex items-center rounded-[9px] border border-line bg-card px-2">
+                <span className="text-[11px] font-bold text-faint">RD$</span>
+                <input disabled={locked} value={e.amount} onChange={(ev) => setEgreso(i, { amount: ev.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="0" className="w-20 bg-transparent px-1 py-2 text-right text-[13px] font-bold outline-none disabled:opacity-60" />
+              </div>
+              <input disabled={locked} value={e.note} onChange={(ev) => setEgreso(i, { note: ev.target.value })} placeholder="¿En qué se usó? (ej. papel de baño, taxi de insumos)" className="flex-1 rounded-[9px] border border-line px-3 py-2 text-[13px] outline-none focus:border-magenta disabled:opacity-60" />
+              <button onClick={() => delEgreso(i)} disabled={locked} className="flex-none rounded-md px-2 text-[15px] font-bold text-muted hover:text-danger disabled:opacity-50">×</button>
+            </div>
+          ))}
+          {expenses.length === 0 && <div className="rounded-[9px] bg-bg px-3 py-2.5 text-[12.5px] text-muted">Sin egresos. Si sacaste efectivo para una compra menor, agrégalo aquí con su nota.</div>}
+        </div>
+        {egresosTotal > 0 && <div className="mt-3 flex justify-between border-t border-line-2 pt-3 text-[14px] font-extrabold"><span>Total egresos</span><span className="text-danger">− {fmtRD(egresosTotal)}</span></div>}
       </div>
 
       <div className="mt-4 flex items-center gap-4 rounded-base border border-line bg-card p-5 shadow-card">

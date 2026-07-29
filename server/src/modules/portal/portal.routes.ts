@@ -456,6 +456,7 @@ portalRouter.get('/packages', async (req, res) => {
     // directora arma al momento (sin precio fijo) se venden en recepción, no aquí.
     prisma.catalogItem.findMany({
       where: { active: true, showInPortal: true, price: { gt: 0 }, kind: { in: ['PAQUETE', 'COMBO'] } },
+      include: { incluye: { include: { service: true } } },
       orderBy: { price: 'asc' },
     }),
     getAreaLabelMap(),
@@ -500,7 +501,12 @@ portalRouter.get('/packages', async (req, res) => {
     active: activos[0] ? serializar(activos[0]) : null,
     misPaquetes: activos.map(serializar),
     historial: terminados.map(serializar),
-    shop: shop.map((p) => ({ id: p.id, name: p.name, sessions: p.sessions, price: p.price, imageUrl: p.imageUrl })),
+    shop: shop.map((p) => ({
+      id: p.id, name: p.name, sessions: p.sessions, price: p.price, imageUrl: p.imageUrl,
+      // Lo que trae la oferta, para que la paciente lo despliegue y lo vea.
+      includes: (p.incluye ?? []).map((x) => ({ name: x.service.name, qty: x.qty })),
+      validUntil: p.validUntil ? p.validUntil.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }) : null,
+    })),
   });
 });
 

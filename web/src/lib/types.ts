@@ -297,7 +297,8 @@ export interface PortalPackages {
   misPaquetes?: PortalPaquete[];
   /** Los que ya terminó (quedan en su historial). */
   historial?: PortalPaquete[];
-  shop: { id: string; name: string; sessions: number; price: number; imageUrl?: string | null }[];
+  shop: { id: string; name: string; sessions: number; price: number; imageUrl?: string | null;
+    includes?: { name: string; qty: number }[]; validUntil?: string | null }[];
 }
 
 // ── Equipo ──
@@ -314,7 +315,7 @@ export interface CashCloseToday {
   denominations: number[]; // denominaciones disponibles (RD$)
   status: string | null;
   submitted: boolean;
-  counted: { denominations: Record<string, number>; cardVouchers: number[]; countedCash: number; countedCard: number; countedTransfer: number; countedAzul: number } | null;
+  counted: { denominations: Record<string, number>; cardVouchers: number[]; countedCash: number; countedCard: number; countedTransfer: number; countedAzul: number; expenses?: { amount: number; note: string }[] } | null;
 }
 export interface CashCloseAdminRow {
   closeId: string | null;
@@ -322,6 +323,7 @@ export interface CashCloseAdminRow {
   status: 'PENDIENTE' | 'ENVIADO' | 'CUADRADO';
   methods: { method: string; expected: number; counted: number | null; diff: number | null }[];
   totalExpected: number; totalCounted: number | null; totalDiff: number | null;
+  expenses?: { amount: number; note: string }[]; expensesTotal?: number;
   cardVouchers: number[] | null; notes: string | null;
   adminNote: string | null;
   resolution: string | null;

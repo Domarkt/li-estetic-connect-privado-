@@ -139,9 +139,10 @@ export default function CatalogPage() {
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
         {shown.map((it) => (
           <div key={it.id} className="group relative rounded-base border border-line bg-card p-[18px] shadow-card">
-            {/* Foto grande arriba: hace el catálogo más visual para el personal. */}
+            {/* Foto arriba: se muestra COMPLETA (sin recortar) para que el personal
+                vea toda la promo. object-contain + fondo para el espacio sobrante. */}
             {it.imageUrl ? (
-              <img src={it.imageUrl} alt={it.name} className="mb-3 h-32 w-full rounded-[11px] border border-line object-cover" />
+              <img src={it.imageUrl} alt={it.name} className="mb-3 max-h-56 w-full rounded-[11px] border border-line bg-bg object-contain" />
             ) : null}
             <div className="mb-3 flex items-start justify-between gap-2.5">
               {!it.imageUrl && <div className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-magenta-soft text-lg text-magenta">✦</div>}
