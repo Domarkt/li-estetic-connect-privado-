@@ -40,6 +40,10 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [pQuery, setPQuery] = useState('');
   const [treatmentId, setTreatmentId] = useState(''); // paquete cuya sesión consume la cita
   const [durationMin, setDurationMin] = useState(60); // un proceso puede pasar de una hora
+  // Agendar varias citas de una vez (paquete recién comprado).
+  const [serie, setSerie] = useState(false);
+  const [serieCount, setSerieCount] = useState('4');
+  const [serieEvery, setSerieEvery] = useState(7); // 7 semanal · 14 quincenal · 30 mensual
   // Tras agendar: pantalla de confirmación con el botón de WhatsApp precargado.
   const [done, setDone] = useState<{ whatsappUrl: string | null; patientName: string; emailSent: boolean } | null>(null);
 
@@ -107,6 +111,21 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
         treatmentId: treatmentId || null,
         durationMin,
       };
+      // Serie de citas para un paciente ya registrado (paquete recién comprado).
+      if (!isNew && serie) {
+        if (!patientId) { toast('Selecciona un paciente'); setBusy(false); return; }
+        const r = await api.post<{ message: string; count: number }>('/appointments/serie', {
+          patientId,
+          serviceName: payload.serviceName,
+          catalogItemId: payload.catalogItemId ?? undefined,
+          treatmentId: treatmentId || undefined,
+          therapistId: therapistId || undefined,
+          date, time, durationMin,
+          count: Math.max(1, Math.min(30, Number(serieCount) || 1)),
+          everyDays: serieEvery,
+        });
+        toast(r.message); onSaved(); onClose(); return;
+      }
       if (isNew) {
         if (!newName.trim() || !newPhone.trim()) { toast('Nombre y celular del paciente nuevo requeridos'); setBusy(false); return; }
         if (!newSex) { toast('Selecciona el sexo del paciente'); setBusy(false); return; }
@@ -351,6 +370,36 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
             </select>
             <span className="text-[11px] text-faint">La esteticista queda reservada todo ese tiempo. Entre pacientes se dejan 30 minutos.</span>
           </label>
+
+          {/* Serie de citas: cuando compra un paquete se agendan todas de una vez. */}
+          {!isNew && (
+            <div className="rounded-[10px] border border-line bg-bg p-3">
+              <button type="button" onClick={() => setSerie((v) => !v)} className="flex w-full items-center justify-between text-left">
+                <span className="flex flex-col">
+                  <span className="text-[13px] font-bold">Agendar varias citas (paquete)</span>
+                  <span className="text-[11px] text-faint">Fija la 1ª y el sistema crea las demás al mismo horario.</span>
+                </span>
+                <span className="relative flex h-6 w-11 flex-none items-center rounded-full transition" style={{ background: serie ? 'var(--magenta)' : 'var(--line)' }}>
+                  <span className="absolute h-5 w-5 rounded-full bg-white transition-all" style={{ left: serie ? 22 : 2 }} />
+                </span>
+              </button>
+              {serie && (
+                <div className="mt-2.5 flex gap-2.5">
+                  <label className="flex flex-1 flex-col gap-1"><span className="text-[11px] font-bold text-muted">¿Cuántas citas?</span>
+                    <input inputMode="numeric" value={serieCount} onChange={(e) => setSerieCount(e.target.value.replace(/\D/g, ''))} placeholder="4"
+                      className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
+                  <label className="flex flex-1 flex-col gap-1"><span className="text-[11px] font-bold text-muted">¿Cada cuánto?</span>
+                    <select value={serieEvery} onChange={(e) => setSerieEvery(Number(e.target.value))} className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px]">
+                      <option value={7}>Semanal</option>
+                      <option value={14}>Cada 15 días</option>
+                      <option value={30}>Mensual</option>
+                    </select></label>
+                </div>
+              )}
+              {serie && <div className="mt-1.5 text-[11px] text-faint">Todas quedan a las <b>{time}</b> con la misma esteticista. Puedes reagendar cualquiera después.</div>}
+            </div>
+          )}
+
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Esteticista asignada</span>
             <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={therapistId} onChange={(e) => setTherapistId(e.target.value)}>
               <option value="">Sin asignar</option>

@@ -287,6 +287,51 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   res.status(201).json({ ...serializeAppt(appt), emailSent, message, whatsappUrl, patientName: patient.name });
 });
 
+const serieSchema = z.object({
+  patientId: z.string(),
+  serviceName: z.string().min(1),
+  catalogItemId: z.string().nullish(),
+  treatmentId: z.string().nullish(),
+  therapistId: z.string().nullish(),
+  date: z.string(),                 // primera cita YYYY-MM-DD
+  time: z.string(),                 // hora HH:MM
+  durationMin: z.number().int().positive().default(60),
+  count: z.number().int().min(1).max(30),   // cuántas citas
+  everyDays: z.number().int().min(1).max(60).default(7), // cada cuántos días (7 = semanal)
+});
+
+/**
+ * Agendar una SERIE de citas de una vez (paquete recién comprado). Recepción fija
+ * la 1ª cita y el sistema crea las demás al intervalo indicado (semanal, quincenal…).
+ * Es un agendamiento deliberado: no se valida choque cita por cita (recepción ve la
+ * agenda) ni se manda un correo por cada una — el calendario se entrega aparte.
+ */
+appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+  const b = serieSchema.parse(req.body);
+  const patient = await prisma.patient.findUnique({ where: { id: b.patientId } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const base = new Date(`${b.date}T${b.time}:00`);
+  const fechas: Date[] = [];
+  for (let i = 0; i < b.count; i++) {
+    const d = new Date(base); d.setDate(d.getDate() + i * b.everyDays);
+    fechas.push(d);
+  }
+  await prisma.appointment.createMany({
+    data: fechas.map((startsAt) => ({
+      patientId: patient.id, branchId: patient.branchId,
+      therapistId: b.therapistId || null,
+      serviceName: b.serviceName, catalogItemId: b.catalogItemId || null,
+      treatmentId: b.treatmentId || null, code: genApptCode(),
+      startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
+    })),
+  });
+  const desde = fechas[0].toLocaleDateString('es-DO', { day: '2-digit', month: 'short' });
+  const hasta = fechas[fechas.length - 1].toLocaleDateString('es-DO', { day: '2-digit', month: 'short' });
+  res.status(201).json({ ok: true, count: fechas.length, message: `${fechas.length} citas agendadas (${desde} → ${hasta})` });
+});
+
 const checkinSchema = z.object({ code: z.string().min(4) });
 
 /**
