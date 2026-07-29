@@ -43,7 +43,9 @@ interface FichaData {
 function sequenceFor(role: string, conTratamiento: boolean): number[] {
   if (role === 'RECEPCIONISTA') return [1];
   if (role === 'ESTETICISTA') return conTratamiento ? [2, 3, 4] : [2, 3];
-  return conTratamiento ? [1, 2, 3, 4] : [1, 2, 3]; // ADMIN
+  // ADMIN ve SIEMPRE el proceso completo (incluye Tratamiento/bitácora) para poder
+  // revisar el expediente de un paciente sin depender del turno con código.
+  return [1, 2, 3, 4];
 }
 
 const STEP_LABELS = ['Datos & motivo', 'Antecedentes', 'Medicamentos & piel', 'Tratamiento'];
