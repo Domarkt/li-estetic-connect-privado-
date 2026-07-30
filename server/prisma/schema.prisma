@@ -309,10 +309,18 @@ model ClinicalRecord {
   tallaCm      Int?
   pesoLb       Int?
   alturaCm     Int? // estatura
-  cinturaCm    Int? // medidas corporales (cm)
+  cinturaCm    Int? // (histórico) medidas anteriores; se conservan por referencia
   abdomenCm    Int?
   piernaCm     Int?
   brazoCm      Int?
+  // Medidas corporales actuales (cm): por zona alta/baja + glúteos.
+  abdomenAltoCm  Int?
+  abdomenBajoCm  Int?
+  piernaAltaCm   Int?
+  piernaBajaCm   Int?
+  brazoAltoCm    Int?
+  brazoBajoCm    Int?
+  gluteosCm      Int?
 
   // Paso 4 — Tratamiento (Esteticista)
   tratamiento     String?

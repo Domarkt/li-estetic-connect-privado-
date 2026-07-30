@@ -31,6 +31,7 @@ interface FichaData {
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
   fototipo?: string | null; tallaCm?: number | null; pesoLb?: number | null;
   alturaCm?: number | null; cinturaCm?: number | null; abdomenCm?: number | null; piernaCm?: number | null; brazoCm?: number | null;
+  abdomenAltoCm?: number | null; abdomenBajoCm?: number | null; piernaAltaCm?: number | null; piernaBajaCm?: number | null; brazoAltoCm?: number | null; brazoBajoCm?: number | null; gluteosCm?: number | null;
   tratamiento?: string | null; controlCitas?: { fecha: string; obs: string }[] | null; cancelPolicyAck?: boolean;
 }
 
@@ -79,7 +80,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
   const [talla, setTalla] = useState('');
   const [peso, setPeso] = useState('');
   const [altura, setAltura] = useState('');
-  const [medidas, setMedidas] = useState({ cintura: '', abdomen: '', pierna: '', brazo: '' });
+  const [medidas, setMedidas] = useState({ abdomenAlto: '', abdomenBajo: '', piernaAlta: '', piernaBaja: '', brazoAlto: '', brazoBajo: '', gluteos: '' });
   const [tratamiento, setTratamiento] = useState('');
   const [controlCitas, setControlCitas] = useState<{ fecha: string; obs: string }[]>(
     Array.from({ length: 10 }, () => ({ fecha: '', obs: '' })),
@@ -116,10 +117,13 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
           if (ficha.pesoLb != null) setPeso(String(ficha.pesoLb));
           if (ficha.alturaCm != null) setAltura(String(ficha.alturaCm));
           setMedidas((m) => ({
-            cintura: ficha.cinturaCm != null ? String(ficha.cinturaCm) : m.cintura,
-            abdomen: ficha.abdomenCm != null ? String(ficha.abdomenCm) : m.abdomen,
-            pierna: ficha.piernaCm != null ? String(ficha.piernaCm) : m.pierna,
-            brazo: ficha.brazoCm != null ? String(ficha.brazoCm) : m.brazo,
+            abdomenAlto: ficha.abdomenAltoCm != null ? String(ficha.abdomenAltoCm) : m.abdomenAlto,
+            abdomenBajo: ficha.abdomenBajoCm != null ? String(ficha.abdomenBajoCm) : m.abdomenBajo,
+            piernaAlta: ficha.piernaAltaCm != null ? String(ficha.piernaAltaCm) : m.piernaAlta,
+            piernaBaja: ficha.piernaBajaCm != null ? String(ficha.piernaBajaCm) : m.piernaBaja,
+            brazoAlto: ficha.brazoAltoCm != null ? String(ficha.brazoAltoCm) : m.brazoAlto,
+            brazoBajo: ficha.brazoBajoCm != null ? String(ficha.brazoBajoCm) : m.brazoBajo,
+            gluteos: ficha.gluteosCm != null ? String(ficha.gluteosCm) : m.gluteos,
           }));
           if (ficha.tratamiento) setTratamiento(ficha.tratamiento);
           if (Array.isArray(ficha.controlCitas) && ficha.controlCitas.length) {
@@ -161,10 +165,13 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
       tallaCm: talla ? Number(talla) : undefined,
       pesoLb: peso ? Number(peso) : undefined,
       alturaCm: altura ? Number(altura) : undefined,
-      cinturaCm: medidas.cintura ? Number(medidas.cintura) : undefined,
-      abdomenCm: medidas.abdomen ? Number(medidas.abdomen) : undefined,
-      piernaCm: medidas.pierna ? Number(medidas.pierna) : undefined,
-      brazoCm: medidas.brazo ? Number(medidas.brazo) : undefined,
+      abdomenAltoCm: medidas.abdomenAlto ? Number(medidas.abdomenAlto) : undefined,
+      abdomenBajoCm: medidas.abdomenBajo ? Number(medidas.abdomenBajo) : undefined,
+      piernaAltaCm: medidas.piernaAlta ? Number(medidas.piernaAlta) : undefined,
+      piernaBajaCm: medidas.piernaBaja ? Number(medidas.piernaBaja) : undefined,
+      brazoAltoCm: medidas.brazoAlto ? Number(medidas.brazoAlto) : undefined,
+      brazoBajoCm: medidas.brazoBajo ? Number(medidas.brazoBajo) : undefined,
+      gluteosCm: medidas.gluteos ? Number(medidas.gluteos) : undefined,
       tratamiento: tratamiento || undefined,
       controlCitas,
       complete,
@@ -374,7 +381,7 @@ function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir, motivos, setMoti
   );
 }
 
-type Medidas = { cintura: string; abdomen: string; pierna: string; brazo: string };
+type Medidas = { abdomenAlto: string; abdomenBajo: string; piernaAlta: string; piernaBaja: string; brazoAlto: string; brazoBajo: string; gluteos: string };
 function Step3({ med, setMed, fototipo, setFototipo, peso, setPeso, altura, setAltura, medidas, setMedidas }: {
   med: Record<string, boolean>; setMed: (v: Record<string, boolean>) => void;
   fototipo: string; setFototipo: (v: string) => void;
@@ -411,8 +418,8 @@ function Step3({ med, setMed, fototipo, setFototipo, peso, setPeso, altura, setA
           </div>
           <div className="text-[11px] font-extrabold uppercase text-navy">Medidas corporales (cm)</div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 min-w-0">
-            {([['cintura', 'Cintura'], ['abdomen', 'Abdomen'], ['pierna', 'Piernas'], ['brazo', 'Brazos']] as const).map(([k, lbl]) => (
-              <label key={k} className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">{lbl}</span><input className="rounded-lg border border-line p-2.5 text-[13px]" value={medidas[k]} onChange={(e) => setMedidas({ ...medidas, [k]: e.target.value })} /></label>
+            {([['abdomenAlto', 'Abdomen alto'], ['abdomenBajo', 'Abdomen bajo'], ['piernaAlta', 'Pierna alta'], ['piernaBaja', 'Pierna baja'], ['brazoAlto', 'Brazo alto'], ['brazoBajo', 'Brazo bajo'], ['gluteos', 'Glúteos']] as const).map(([k, lbl]) => (
+              <label key={k} className="flex flex-col gap-1 min-w-0"><span className="text-[11px] font-bold text-muted">{lbl}</span><input className="w-full rounded-lg border border-line p-2.5 text-[13px]" value={medidas[k]} onChange={(e) => setMedidas({ ...medidas, [k]: e.target.value })} /></label>
             ))}
           </div>
         </div>

@@ -189,10 +189,13 @@ portalRouter.get('/ficha', async (req, res) => {
       tallaCm: record.tallaCm ?? null,
       pesoLb: record.pesoLb ?? null,
       alturaCm: record.alturaCm ?? null,
-      cinturaCm: record.cinturaCm ?? null,
-      abdomenCm: record.abdomenCm ?? null,
-      piernaCm: record.piernaCm ?? null,
-      brazoCm: record.brazoCm ?? null,
+      abdomenAltoCm: record.abdomenAltoCm ?? null,
+      abdomenBajoCm: record.abdomenBajoCm ?? null,
+      piernaAltaCm: record.piernaAltaCm ?? null,
+      piernaBajaCm: record.piernaBajaCm ?? null,
+      brazoAltoCm: record.brazoAltoCm ?? null,
+      brazoBajoCm: record.brazoBajoCm ?? null,
+      gluteosCm: record.gluteosCm ?? null,
     } : null,
   });
 });
@@ -206,10 +209,13 @@ const portalFichaSchema = z.object({
   tallaCm: z.number().int().optional(),
   pesoLb: z.number().int().optional(),
   alturaCm: z.number().int().optional(),
-  cinturaCm: z.number().int().optional(),
-  abdomenCm: z.number().int().optional(),
-  piernaCm: z.number().int().optional(),
-  brazoCm: z.number().int().optional(),
+  abdomenAltoCm: z.number().int().optional(),
+  abdomenBajoCm: z.number().int().optional(),
+  piernaAltaCm: z.number().int().optional(),
+  piernaBajaCm: z.number().int().optional(),
+  brazoAltoCm: z.number().int().optional(),
+  brazoBajoCm: z.number().int().optional(),
+  gluteosCm: z.number().int().optional(),
 });
 
 /** El paciente guarda/actualiza su parte clínica. La esteticista la validará y finalizará. */
@@ -227,7 +233,7 @@ portalRouter.patch('/ficha', async (req, res) => {
   if (b.quirurgicos !== undefined) data.quirurgicos = encryptJson(b.quirurgicos) ?? undefined;
   if (b.medicamentos !== undefined) data.medicamentos = encryptJson(b.medicamentos) ?? undefined;
   if (b.fototipo !== undefined) data.fototipo = b.fototipo;
-  for (const k of ['tallaCm', 'pesoLb', 'alturaCm', 'cinturaCm', 'abdomenCm', 'piernaCm', 'brazoCm'] as const) {
+  for (const k of ['tallaCm', 'pesoLb', 'alturaCm', 'abdomenAltoCm', 'abdomenBajoCm', 'piernaAltaCm', 'piernaBajaCm', 'brazoAltoCm', 'brazoBajoCm', 'gluteosCm'] as const) {
     if (b[k] !== undefined) data[k] = b[k];
   }
   await prisma.clinicalRecord.update({ where: { patientId: req.patient!.patientId }, data });
@@ -273,10 +279,13 @@ portalRouter.get('/profile', async (req, res) => {
       pesoLb: cr?.pesoLb ?? null,
       fototipo: cr?.fototipo ?? null,
       alturaCm: cr?.alturaCm ?? null,
-      cinturaCm: cr?.cinturaCm ?? null,
-      abdomenCm: cr?.abdomenCm ?? null,
-      piernaCm: cr?.piernaCm ?? null,
-      brazoCm: cr?.brazoCm ?? null,
+      abdomenAltoCm: cr?.abdomenAltoCm ?? null,
+      abdomenBajoCm: cr?.abdomenBajoCm ?? null,
+      piernaAltaCm: cr?.piernaAltaCm ?? null,
+      piernaBajaCm: cr?.piernaBajaCm ?? null,
+      brazoAltoCm: cr?.brazoAltoCm ?? null,
+      brazoBajoCm: cr?.brazoBajoCm ?? null,
+      gluteosCm: cr?.gluteosCm ?? null,
       motivos: cr?.motivos ?? [],
     },
     treatment: t ? { name: t.name, total: t.totalSessions, done: t.doneSessions, pct: t.totalSessions ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0 } : null,

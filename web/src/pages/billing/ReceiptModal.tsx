@@ -183,12 +183,12 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
         {/* Recién cobrado: enviar la CITA con su código por WhatsApp (ya pagó). */}
         {receipt.citaWhatsappUrl && (
           <div className="border-t border-line px-[22px] py-4" style={{ background: 'var(--magenta-soft)' }}>
-            <div className="mb-2 text-[13px] font-extrabold text-magenta">Enviar la cita al paciente</div>
-            <div className="mb-2.5 text-[11.5px] text-muted">Ya pagó, así que su cita lleva el <b>código de turno</b>. Envíasela por WhatsApp con un toque.</div>
+            <div className="mb-2 text-[13px] font-extrabold text-magenta">Enviar el código al paciente</div>
+            <div className="mb-2.5 text-[11.5px] text-muted">Ya pagó: envíale por WhatsApp su <b>código de turno</b> (la confirmación de la cita ya se le mandó al agendar).</div>
             <a href={receipt.citaWhatsappUrl} target="_blank" rel="noopener noreferrer"
               className="flex w-full items-center justify-center gap-2 rounded-[10px] py-3 text-[13.5px] font-bold text-white"
               style={{ background: '#25D366' }}>
-              <span className="text-[15px]">📅</span> Enviar cita por WhatsApp
+              <span className="text-[15px]">🔑</span> Enviar código por WhatsApp
             </a>
           </div>
         )}

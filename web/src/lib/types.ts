@@ -274,7 +274,8 @@ export interface PortalProfile {
   age?: number | null;
   baseline: {
     tallaCm: number | null; pesoLb: number | null; fototipo: string | null; motivos: string[];
-    alturaCm?: number | null; cinturaCm?: number | null; abdomenCm?: number | null; piernaCm?: number | null; brazoCm?: number | null;
+    alturaCm?: number | null;
+    abdomenAltoCm?: number | null; abdomenBajoCm?: number | null; piernaAltaCm?: number | null; piernaBajaCm?: number | null; brazoAltoCm?: number | null; brazoBajoCm?: number | null; gluteosCm?: number | null;
   };
   treatment: { name: string; total: number; done: number; pct: number } | null;
 }

@@ -12,7 +12,8 @@ interface PortalFichaState {
   ficha: {
     antecedentes: Record<string, boolean>; medicamentos: Record<string, boolean>; fototipo: string;
     tallaCm: number | null; pesoLb: number | null;
-    alturaCm: number | null; cinturaCm: number | null; abdomenCm: number | null; piernaCm: number | null; brazoCm: number | null;
+    alturaCm: number | null;
+    abdomenAltoCm: number | null; abdomenBajoCm: number | null; piernaAltaCm: number | null; piernaBajaCm: number | null; brazoAltoCm: number | null; brazoBajoCm: number | null; gluteosCm: number | null;
   } | null;
 }
 
@@ -218,10 +219,8 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
   const [talla, setTalla] = useState('');
   const [peso, setPeso] = useState('');
   const [altura, setAltura] = useState('');
-  const [cintura, setCintura] = useState('');
-  const [abdomen, setAbdomen] = useState('');
-  const [pierna, setPierna] = useState('');
-  const [brazo, setBrazo] = useState('');
+  const [medidas, setMedidas] = useState({ abdomenAlto: '', abdomenBajo: '', piernaAlta: '', piernaBaja: '', brazoAlto: '', brazoBajo: '', gluteos: '' });
+  const setMed2 = (k: keyof typeof medidas, v: string) => setMedidas((m) => ({ ...m, [k]: v }));
   const [busy, setBusy] = useState(false);
   const [paso, setPaso] = useState(1); // 1 antecedentes · 2 medicamentos · 3 piel y medidas
 
@@ -232,7 +231,8 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
         const f = r.ficha; const s = (v: number | null) => (v ? String(v) : '');
         setAnt(f.antecedentes || {}); setMed(f.medicamentos || {});
         setFototipo(f.fototipo || ''); setTalla(s(f.tallaCm)); setPeso(s(f.pesoLb));
-        setAltura(s(f.alturaCm)); setCintura(s(f.cinturaCm)); setAbdomen(s(f.abdomenCm)); setPierna(s(f.piernaCm)); setBrazo(s(f.brazoCm));
+        setAltura(s(f.alturaCm));
+        setMedidas({ abdomenAlto: s(f.abdomenAltoCm), abdomenBajo: s(f.abdomenBajoCm), piernaAlta: s(f.piernaAltaCm), piernaBaja: s(f.piernaBajaCm), brazoAlto: s(f.brazoAltoCm), brazoBajo: s(f.brazoBajoCm), gluteos: s(f.gluteosCm) });
       }
     }).catch(() => {});
   }, []);
@@ -251,7 +251,10 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
         antecedentes: ant, medicamentos: med,
         fototipo: fototipo || undefined,
         tallaCm: num(talla), pesoLb: num(peso),
-        alturaCm: num(altura), cinturaCm: num(cintura), abdomenCm: num(abdomen), piernaCm: num(pierna), brazoCm: num(brazo),
+        alturaCm: num(altura),
+        abdomenAltoCm: num(medidas.abdomenAlto), abdomenBajoCm: num(medidas.abdomenBajo),
+        piernaAltaCm: num(medidas.piernaAlta), piernaBajaCm: num(medidas.piernaBaja),
+        brazoAltoCm: num(medidas.brazoAlto), brazoBajoCm: num(medidas.brazoBajo), gluteosCm: num(medidas.gluteos),
       }, 'patient');
       toast(r.message); setOpen(false); load(); onSaved?.();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
@@ -303,10 +306,9 @@ function MiFicha({ onSaved }: { onSaved?: () => void }) {
               </div>
               <div className="mt-2.5 text-[11px] font-bold text-navy">Medidas corporales (cm)</div>
               <div className="mt-1 grid grid-cols-2 gap-2">
-                <label><span className="mb-1 block text-[11px] font-bold text-muted">Cintura</span><input inputMode="numeric" value={cintura} onChange={(e) => setCintura(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-                <label><span className="mb-1 block text-[11px] font-bold text-muted">Abdomen</span><input inputMode="numeric" value={abdomen} onChange={(e) => setAbdomen(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-                <label><span className="mb-1 block text-[11px] font-bold text-muted">Piernas</span><input inputMode="numeric" value={pierna} onChange={(e) => setPierna(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
-                <label><span className="mb-1 block text-[11px] font-bold text-muted">Brazos</span><input inputMode="numeric" value={brazo} onChange={(e) => setBrazo(e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+                {([['abdomenAlto', 'Abdomen alto'], ['abdomenBajo', 'Abdomen bajo'], ['piernaAlta', 'Pierna alta'], ['piernaBaja', 'Pierna baja'], ['brazoAlto', 'Brazo alto'], ['brazoBajo', 'Brazo bajo'], ['gluteos', 'Glúteos']] as const).map(([k, lbl]) => (
+                  <label key={k}><span className="mb-1 block text-[11px] font-bold text-muted">{lbl}</span><input inputMode="numeric" value={medidas[k]} onChange={(e) => setMed2(k, e.target.value)} className="w-full rounded-lg border border-line p-2 text-[13px]" /></label>
+                ))}
               </div>
             </div>
           )}
@@ -454,12 +456,15 @@ function Perfil() {
           <Info label="Peso" value={p.baseline.pesoLb ? `${p.baseline.pesoLb} lb` : '—'} />
           <Info label="Paciente desde" value={p.since} />
         </div>
-        {(p.baseline.cinturaCm || p.baseline.abdomenCm || p.baseline.piernaCm || p.baseline.brazoCm) && (
+        {(p.baseline.abdomenAltoCm || p.baseline.abdomenBajoCm || p.baseline.piernaAltaCm || p.baseline.piernaBajaCm || p.baseline.brazoAltoCm || p.baseline.brazoBajoCm || p.baseline.gluteosCm) && (
           <div className="mt-2 grid grid-cols-4 gap-2">
-            <Info label="Cintura" value={p.baseline.cinturaCm ? `${p.baseline.cinturaCm}` : '—'} />
-            <Info label="Abdomen" value={p.baseline.abdomenCm ? `${p.baseline.abdomenCm}` : '—'} />
-            <Info label="Piernas" value={p.baseline.piernaCm ? `${p.baseline.piernaCm}` : '—'} />
-            <Info label="Brazos" value={p.baseline.brazoCm ? `${p.baseline.brazoCm}` : '—'} />
+            <Info label="Abd. alto" value={p.baseline.abdomenAltoCm ? `${p.baseline.abdomenAltoCm}` : '—'} />
+            <Info label="Abd. bajo" value={p.baseline.abdomenBajoCm ? `${p.baseline.abdomenBajoCm}` : '—'} />
+            <Info label="Pier. alta" value={p.baseline.piernaAltaCm ? `${p.baseline.piernaAltaCm}` : '—'} />
+            <Info label="Pier. baja" value={p.baseline.piernaBajaCm ? `${p.baseline.piernaBajaCm}` : '—'} />
+            <Info label="Brazo alto" value={p.baseline.brazoAltoCm ? `${p.baseline.brazoAltoCm}` : '—'} />
+            <Info label="Brazo bajo" value={p.baseline.brazoBajoCm ? `${p.baseline.brazoBajoCm}` : '—'} />
+            <Info label="Glúteos" value={p.baseline.gluteosCm ? `${p.baseline.gluteosCm}` : '—'} />
           </div>
         )}
         {p.baseline.motivos.length > 0 && (

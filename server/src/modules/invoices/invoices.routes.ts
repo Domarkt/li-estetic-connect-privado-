@@ -350,10 +350,10 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
         include: { branch: { select: { name: true } } },
       }),
     ]);
-    if (pat?.phone && cita) {
-      const cuando = cita.startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
-      const codigo = cita.code ? ` Tu código de cita es ${cita.code}.` : '';
-      const texto = `Hola ${pat.name.split(' ')[0]} 💜 Confirmamos tu cita en ${cita.branch.name}: ${cita.serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. ¿Estás de acuerdo con tu cita? Escribe "estoy de acuerdo" para confirmarla. — Li Estetic Center`;
+    if (pat?.phone && cita?.code) {
+      // Tras pagar solo se envía el CÓDIGO (la confirmación de la cita ya se
+      // mandó al agendar; no se repite para no saturar al paciente).
+      const texto = `Hola ${pat.name.split(' ')[0]} 💜 Tu código de cita en ${cita.branch.name} es ${cita.code}. Preséntalo al llegar. Te esperamos 10 min antes. — Li Estetic Center`;
       citaWhatsappUrl = `https://wa.me/${normalizePhone(pat.phone)}?text=${encodeURIComponent(texto)}`;
     }
   }
