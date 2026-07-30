@@ -10,9 +10,9 @@ const STATUS_META: Record<AppointmentStatus, { label: string; color: string }> =
 
 /** Código de turno legible (sin caracteres ambiguos) para que el paciente lo presente. */
 export function genApptCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  // Código de 4 dígitos: más fácil de dictar y teclear en cabina.
   let s = '';
-  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 4; i++) s += Math.floor(Math.random() * 10);
   return s;
 }
 
