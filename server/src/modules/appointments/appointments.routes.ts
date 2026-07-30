@@ -106,6 +106,9 @@ const createSchema = z.object({
   patientType: z.enum(['NUEVO', 'RECURRENTE']).default('RECURRENTE'),
   serviceName: z.string().min(1),
   catalogItemId: z.string().nullish(),
+  // Varios servicios al agendar: se registran como cargos pendientes y se cobran
+  // todos juntos cuando el paciente llega. Si viene esto, manda sobre catalogItemId.
+  serviceIds: z.array(z.string()).optional(),
   isFollowUp: z.boolean().optional(), // "Seguimiento": continúa tratamiento, sin cargar servicio
   treatmentId: z.string().nullish(), // paquete/combo cuya sesión consume esta cita
   date: z.string(), // YYYY-MM-DD
@@ -151,8 +154,18 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   // Seguimiento de tratamiento: sin servicio del catálogo, así que NO se cobra.
   // Si la cita consume un plan ya pagado, se conserva el nombre enviado (el del
   // combo) para que la agenda muestre a qué viene la paciente, no un genérico.
-  const serviceName = b.isFollowUp && !b.treatmentId ? 'Seguimiento de tratamiento' : b.serviceName;
-  const catalogItemId = b.isFollowUp ? null : (b.catalogItemId ?? null);
+  // Varios servicios al agendar → se guardan como CARGOS pendientes y se cobran
+  // todos al llegar. La cita muestra el conjunto; el detalle vive en los cargos.
+  const serviciosSel = b.serviceIds?.length && !b.isFollowUp && !b.treatmentId
+    ? await prisma.catalogItem.findMany({ where: { id: { in: b.serviceIds } } })
+    : [];
+  const usaCargos = serviciosSel.length > 0;
+
+  const serviceName = b.isFollowUp && !b.treatmentId
+    ? 'Seguimiento de tratamiento'
+    : usaCargos ? serviciosSel.map((s) => s.name).join(' + ') : b.serviceName;
+  // Con múltiples servicios el detalle vive en los cargos: la cita no lleva un ítem único.
+  const catalogItemId = b.isFollowUp || usaCargos ? null : (b.catalogItemId ?? null);
   const startsAt = new Date(`${b.date}T${b.time}:00`);
 
   // Disponibilidad. Cada cita dura lo que recepción indique (un proceso puede pasar de
@@ -218,6 +231,17 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     },
     include: apptInclude,
   });
+
+  // Cada servicio agendado queda como cargo pendiente: al llegar, recepción los
+  // cobra todos juntos (evita tener que agendar uno y cobrar otro por separado).
+  if (usaCargos) {
+    await prisma.chargeItem.createMany({
+      data: serviciosSel.map((s) => ({
+        branchId: patient.branchId, patientId: patient.id, catalogItemId: s.id,
+        name: s.name, price: s.price ?? 0, createdById: req.staff!.sub,
+      })),
+    });
+  }
 
   // Seguimiento automático: la cita agendada crea/avanza la tarjeta del paciente.
   await upsertLead({ branchId: appt.branchId, patientId: patient.id, name: patient.name, stage: 'CITA_AGENDADA', summary: `Cita: ${serviceName}` });
