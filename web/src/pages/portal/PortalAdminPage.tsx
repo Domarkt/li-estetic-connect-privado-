@@ -70,6 +70,7 @@ export default function PortalAdminPage() {
 /** Acceso de cada paciente a su portal: se puede retirar sin borrar su expediente. */
 function AccesosTab() {
   const toast = useToast();
+  const { activeBranch } = useBranch();
   const [rows, setRows] = useState<AccesoPortal[]>([]);
   const [q, setQ] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -78,10 +79,12 @@ function AccesosTab() {
 
   const cargar = useCallback(() => {
     setCargando(true); setError(null);
-    api.get<AccesoPortal[]>('/portal-admin/accesos')
+    // Se pasa la sucursal activa para que el admin vea solo la que está mirando.
+    const bq = activeBranch && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
+    api.get<AccesoPortal[]>(`/portal-admin/accesos${bq}`)
       .then((r) => { setRows(r); setCargando(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : 'Error'); setCargando(false); });
-  }, []);
+  }, [activeBranch]);
   useEffect(cargar, [cargar]);
 
   async function cambiar(a: AccesoPortal, active: boolean) {

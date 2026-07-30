@@ -61,7 +61,12 @@ portalAdminRouter.patch('/catalogo/:id', requireStaff, requireRole(...gestores),
  */
 portalAdminRouter.get('/accesos', requireStaff, requireRole(...gestores), async (req, res) => {
   const q = (req.query.q as string | undefined)?.trim();
-  const scope = req.staff!.role === 'ADMIN' ? {} : { branchId: req.staff!.branchId ?? undefined };
+  // Recepción: solo su sucursal. Admin: la sucursal activa que eligió (o todas si
+  // no filtró). Así cada sucursal ve solo sus accesos y se evitan errores.
+  const branchParam = req.query.branch as string | undefined;
+  const scope = req.staff!.role === 'ADMIN'
+    ? (branchParam && branchParam !== 'all' ? { branchId: branchParam } : {})
+    : { branchId: req.staff!.branchId ?? undefined };
   const cuentas = await prisma.patientAccount.findMany({
     where: {
       patient: {
