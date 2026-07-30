@@ -72,7 +72,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
   const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', cedula: '', occupation: '', address: '', sector: '', province: '', consultDate: '' });
   const [motivos, setMotivos] = useState<Set<string>>(new Set());
   const [antecedentes, setAntecedentes] = useState<Record<string, boolean>>({});
-  const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', lactancia: false });
+  const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', cesareas: '', lactancia: false });
   const [quirurgicos, setQuirurgicos] = useState({ implantes: false, cirugia: false, observaciones: '' });
   const [medicamentos, setMedicamentos] = useState<Record<string, boolean>>({});
   const [fototipo, setFototipo] = useState('');
@@ -307,16 +307,18 @@ function Step1({ datos, setDatos }: {
   );
 }
 
+// Botón Sí/No que SIEMPRE queda en un estado (nunca vacío): por defecto "No".
+// Así la ficha no deja campos sin responder por olvido.
 function YesNo({ label, value, onChange }: { label: string; value: boolean | undefined; onChange: (v: boolean) => void }) {
+  const si = value === true; // undefined o false → No
   return (
     <div className="flex items-center justify-between gap-2.5 border-b border-line-2 px-0.5 py-1.5">
       <span className="text-[13px]">{label}</span>
-      <div className="flex flex-none gap-1.5">
-        {[true, false].map((v) => (
-          <label key={String(v)} className="flex cursor-pointer items-center gap-1 text-xs" style={{ color: value === v ? 'var(--magenta)' : 'var(--muted)', fontWeight: value === v ? 700 : 400 }}>
-            <input type="radio" checked={value === v} onChange={() => onChange(v)} style={{ accentColor: 'var(--magenta)' }} /> {v ? 'Sí' : 'No'}
-          </label>
-        ))}
+      <div className="flex flex-none overflow-hidden rounded-full border border-line">
+        <button type="button" onClick={() => onChange(true)} className="px-3 py-1 text-[12px] font-bold transition"
+          style={{ background: si ? 'var(--magenta)' : 'var(--card)', color: si ? '#fff' : 'var(--muted)' }}>Sí</button>
+        <button type="button" onClick={() => onChange(false)} className="px-3 py-1 text-[12px] font-bold transition"
+          style={{ background: !si ? 'var(--navy)' : 'var(--card)', color: !si ? '#fff' : 'var(--muted)' }}>No</button>
       </div>
     </div>
   );
@@ -324,7 +326,7 @@ function YesNo({ label, value, onChange }: { label: string; value: boolean | und
 
 function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir, motivos, setMotivos }: {
   ant: Record<string, boolean>; setAnt: (v: Record<string, boolean>) => void;
-  gineco: { embarazos: string; partos: string; abortos: string; lactancia: boolean }; setGineco: (v: typeof gineco) => void;
+  gineco: { embarazos: string; partos: string; abortos: string; cesareas: string; lactancia: boolean }; setGineco: (v: typeof gineco) => void;
   quir: { implantes: boolean; cirugia: boolean; observaciones: string }; setQuir: (v: typeof quir) => void;
   motivos: Set<string>; setMotivos: (s: Set<string>) => void;
 }) {
@@ -349,18 +351,18 @@ function Step2({ ant, setAnt, gineco, setGineco, quir, setQuir, motivos, setMoti
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-2">
         {ANTECEDENTES.map((r) => <YesNo key={r} label={r} value={ant[r]} onChange={(v) => setAnt({ ...ant, [r]: v })} />)}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
         <div>
           <div className="mb-2.5 text-[12.5px] font-extrabold uppercase text-navy">Antecedentes gineco-obstétricos</div>
-          <div className="mb-2.5 flex gap-2.5">
-            {(['embarazos', 'partos', 'abortos'] as const).map((k) => (
-              <label key={k} className="flex flex-1 flex-col gap-1"><span className="text-[11.5px] font-bold capitalize text-muted">{k}</span>
-                <input className="rounded-lg border border-line p-2 text-[13px]" value={gineco[k]} onChange={(e) => setGineco({ ...gineco, [k]: e.target.value })} /></label>
+          <div className="mb-2.5 grid grid-cols-4 gap-2">
+            {(['embarazos', 'partos', 'abortos', 'cesareas'] as const).map((k) => (
+              <label key={k} className="flex flex-col gap-1 min-w-0"><span className="text-[11px] font-bold capitalize text-muted">{k === 'cesareas' ? 'Cesáreas' : k}</span>
+                <input className="w-full rounded-lg border border-line p-2 text-[13px]" value={gineco[k]} onChange={(e) => setGineco({ ...gineco, [k]: e.target.value })} /></label>
             ))}
           </div>
           <YesNo label="Lactancia materna" value={gineco.lactancia} onChange={(v) => setGineco({ ...gineco, lactancia: v })} />
         </div>
-        <div>
+        <div className="sm:border-l sm:border-line-2 sm:pl-6">
           <div className="mb-2.5 text-[12.5px] font-extrabold uppercase text-navy">C · Antecedentes quirúrgicos</div>
           <YesNo label="Implantes estéticos" value={quir.implantes} onChange={(v) => setQuir({ ...quir, implantes: v })} />
           <YesNo label="Cirugía" value={quir.cirugia} onChange={(v) => setQuir({ ...quir, cirugia: v })} />
