@@ -4,7 +4,7 @@ import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
-import { fmtRD, type BillingResponse, type Receipt } from '../../lib/types';
+import { fmtRD, type BillingResponse, type BillPatient, type Receipt } from '../../lib/types';
 import BillModal from './BillModal';
 import ReceiptModal from './ReceiptModal';
 
@@ -21,8 +21,10 @@ export default function BillingPage() {
   const { staff } = useAuth();
   const { activeBranch } = useBranch();
   const [data, setData] = useState<BillingResponse>({ stats: [], invoices: [] });
+  const [porCobrar, setPorCobrar] = useState<BillPatient[]>([]); // pacientes con algo pendiente por cobrar
   const [date, setDate] = useState(todayISO());
   const [billOpen, setBillOpen] = useState(false);
+  const [billFor, setBillFor] = useState<string | null>(null); // cobro preseleccionado desde la lista
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -39,6 +41,10 @@ export default function BillingPage() {
     api.get<BillingResponse>(`/invoices?date=${date}${branchQ}`)
       .then((r) => { setData(r); setCargando(false); })
       .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
+    // Lista "por cobrar": pacientes con cargos pendientes, saldo o servicio agendado.
+    api.get<BillPatient[]>('/invoices/patients')
+      .then((ps) => setPorCobrar(ps.filter((p) => p.pendingCharges.length > 0 || (p.treatmentsConSaldo ?? []).length > 0 || !!p.scheduled)))
+      .catch(() => setPorCobrar([]));
   }, [date, branchQ]);
   useEffect(() => { load(); }, [load]);
   useAutoRefresh(load);
@@ -79,10 +85,36 @@ export default function BillingPage() {
         <button onClick={() => setBillOpen(true)} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Nuevo cobro</button>
       </div>
 
+      {/* Por cobrar: pacientes con algo pendiente. Solo seleccionar y cobrar. */}
+      {porCobrar.length > 0 && (
+        <div className="mb-4 overflow-hidden rounded-base border border-line bg-card shadow-card">
+          <div className="border-b border-line px-5 py-3 text-[13px] font-extrabold">Por cobrar · toca para cobrar <span className="text-muted">({porCobrar.length})</span></div>
+          {porCobrar.map((p) => {
+            const initials = p.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+            const saldos = p.treatmentsConSaldo ?? [];
+            const resumen = p.pendingCharges.length > 0
+              ? `${p.pendingCharges.map((c) => c.name).join(', ')} · ${fmtRD(p.pendingTotal)}`
+              : saldos.length > 0
+              ? `Saldo ${saldos.map((s) => s.name).join(', ')} · ${fmtRD(saldos.reduce((a, s) => a + s.balance, 0))}`
+              : p.scheduled ? `Agendado: ${p.scheduled.name}${p.scheduled.price ? ` · ${fmtRD(p.scheduled.price)}` : ''}` : '';
+            return (
+              <button key={p.id} type="button" onClick={() => setBillFor(p.id)}
+                className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line-2 px-5 py-3 text-left hover:bg-bg">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[12px] font-bold text-white" style={{ background: p.avatarColor }}>{initials}</div>
+                  <div className="min-w-0"><div className="text-[13.5px] font-bold">{p.name}</div><div className="truncate text-[12px] text-muted">{resumen}</div></div>
+                </div>
+                <span className="flex-none rounded-[9px] bg-magenta px-3.5 py-1.5 text-[12.5px] font-bold text-white">Cobrar →</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Recepción NO ve el listado de recibos cobrados; solo la acción de cobrar. */}
-      {!showMoney && (
+      {!showMoney && porCobrar.length === 0 && (
         <div className="rounded-base border border-line bg-card px-5 py-8 text-center text-sm text-muted shadow-card">
-          Pulsa <b>“Nuevo cobro”</b> para registrar un pago. El historial de recibos lo administra la dirección.
+          No hay nada pendiente por cobrar. Pulsa <b>“Nuevo cobro”</b> para registrar un pago.
         </div>
       )}
 
@@ -115,7 +147,7 @@ export default function BillingPage() {
       </div>
       )}
 
-      {billOpen && <BillModal onClose={() => setBillOpen(false)} onEmitted={(r) => { setReceipt(r); load(); }} />}
+      {(billOpen || billFor) && <BillModal preselectId={billFor ?? undefined} onClose={() => { setBillOpen(false); setBillFor(null); }} onEmitted={(r) => { setReceipt(r); load(); }} />}
       {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} onVoided={load} />}
     </div>
   );
