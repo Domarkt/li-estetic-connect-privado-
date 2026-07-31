@@ -456,6 +456,24 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     },
   });
 
+  // Mismo paciente + misma hora = una sola visita (varios servicios a la vez).
+  // Al cerrar el turno se cierran también las citas hermanas que quedaron abiertas,
+  // para que no queden "activas" tras despedir al paciente.
+  await prisma.appointment.updateMany({
+    where: {
+      id: { not: appt.id },
+      patientId: appt.patientId,
+      startsAt: appt.startsAt,
+      status: { notIn: ['CANCELADA', 'COMPLETADA'] },
+    },
+    data: {
+      status: 'COMPLETADA',
+      serviceStartedAt: appt.serviceStartedAt ?? endedAt,
+      serviceEndedAt: endedAt,
+      codeUsedAt: appt.codeUsedAt ?? endedAt,
+    },
+  });
+
   // Recepción recibe el aviso: puede despedir al paciente, cobrarle otro
   // servicio o agendarle la próxima cita.
   await notifyRole('RECEPCIONISTA', {
