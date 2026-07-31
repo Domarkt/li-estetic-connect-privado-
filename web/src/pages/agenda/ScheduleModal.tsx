@@ -42,8 +42,11 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [durationMin, setDurationMin] = useState(60); // un proceso puede pasar de una hora
   // Agendar varias citas de una vez (paquete recién comprado).
   const [serie, setSerie] = useState(false);
+  const [serieModo, setSerieModo] = useState<'intervalo' | 'fechas'>('intervalo');
   const [serieCount, setSerieCount] = useState('4');
-  const [serieEvery, setSerieEvery] = useState(7); // 7 semanal · 14 quincenal · 30 mensual
+  const [serieEvery, setSerieEvery] = useState(7); // 1 diario · 2 interdiario · 7 semanal · 14 quincenal · 30 mensual
+  // Fechas/horas individuales (procedimientos irregulares: 3x/semana, etc.).
+  const [serieSlots, setSerieSlots] = useState<{ date: string; time: string }[]>([{ date: '', time: '10:00' }]);
   // Tras agendar: pantalla de confirmación con el botón de WhatsApp precargado.
   const [done, setDone] = useState<{ whatsappUrl: string | null; patientName: string; emailSent: boolean } | null>(null);
 
@@ -120,6 +123,11 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
       // Serie de citas para un paciente ya registrado (paquete recién comprado).
       if (!isNew && serie) {
         if (!patientId) { toast('Selecciona un paciente'); setBusy(false); return; }
+        // Fechas individuales (diario/interdiario/3x semana/irregular) o por intervalo.
+        const slots = serieModo === 'fechas'
+          ? serieSlots.filter((s) => s.date && s.time).map((s) => ({ date: s.date, time: s.time }))
+          : undefined;
+        if (serieModo === 'fechas' && (!slots || slots.length === 0)) { toast('Agrega al menos una fecha con su hora'); setBusy(false); return; }
         const r = await api.post<{ message: string; count: number }>('/appointments/serie', {
           patientId,
           serviceName: payload.serviceName,
@@ -127,8 +135,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
           treatmentId: treatmentId || undefined,
           therapistId: therapistId || undefined,
           date, time, durationMin,
-          count: Math.max(1, Math.min(30, Number(serieCount) || 1)),
-          everyDays: serieEvery,
+          ...(slots ? { slots } : { count: Math.max(1, Math.min(60, Number(serieCount) || 1)), everyDays: serieEvery }),
         });
         toast(r.message); onSaved(); onClose(); return;
       }
@@ -397,19 +404,55 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
                 </span>
               </button>
               {serie && (
-                <div className="mt-2.5 flex gap-2.5">
-                  <label className="flex flex-1 flex-col gap-1"><span className="text-[11px] font-bold text-muted">¿Cuántas citas?</span>
-                    <input inputMode="numeric" value={serieCount} onChange={(e) => setSerieCount(e.target.value.replace(/\D/g, ''))} placeholder="4"
-                      className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
-                  <label className="flex flex-1 flex-col gap-1"><span className="text-[11px] font-bold text-muted">¿Cada cuánto?</span>
-                    <select value={serieEvery} onChange={(e) => setSerieEvery(Number(e.target.value))} className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px]">
-                      <option value={7}>Semanal</option>
-                      <option value={14}>Cada 15 días</option>
-                      <option value={30}>Mensual</option>
-                    </select></label>
+                <div className="mt-2.5 flex flex-col gap-2.5">
+                  {/* Cómo generar las citas: por intervalo regular o eligiendo cada fecha. */}
+                  <div className="flex gap-1.5">
+                    {([['intervalo', 'Por intervalo'], ['fechas', 'Elegir fechas']] as const).map(([m, lbl]) => (
+                      <button key={m} type="button" onClick={() => setSerieModo(m)}
+                        className="flex-1 rounded-[9px] border py-2 text-[12px] font-bold"
+                        style={{ borderColor: serieModo === m ? 'var(--magenta)' : 'var(--line)', background: serieModo === m ? 'var(--magenta-soft)' : 'var(--card)', color: serieModo === m ? 'var(--magenta)' : 'var(--muted)' }}>{lbl}</button>
+                    ))}
+                  </div>
+
+                  {serieModo === 'intervalo' ? (
+                    <>
+                      <div className="flex gap-2.5">
+                        <label className="flex flex-1 flex-col gap-1"><span className="text-[11px] font-bold text-muted">¿Cuántas citas?</span>
+                          <input inputMode="numeric" value={serieCount} onChange={(e) => setSerieCount(e.target.value.replace(/\D/g, ''))} placeholder="4"
+                            className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px] outline-none focus:border-magenta" /></label>
+                        <label className="flex flex-1 flex-col gap-1"><span className="text-[11px] font-bold text-muted">¿Cada cuánto?</span>
+                          <select value={serieEvery} onChange={(e) => setSerieEvery(Number(e.target.value))} className="rounded-[9px] border border-line bg-card px-3 py-2.5 text-[13px]">
+                            <option value={1}>Diario</option>
+                            <option value={2}>Interdiario (día por medio)</option>
+                            <option value={7}>Semanal</option>
+                            <option value={14}>Cada 15 días</option>
+                            <option value={30}>Mensual</option>
+                          </select></label>
+                      </div>
+                      <div className="text-[11px] text-faint">Todas a las <b>{time}</b> con la misma esteticista, desde la fecha de arriba.</div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[11px] font-bold text-muted">Fechas y horas de cada cita</span>
+                      <div className="flex flex-col gap-1.5">
+                        {serieSlots.map((s, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <input type="date" value={s.date} onChange={(e) => setSerieSlots((x) => x.map((y, j) => j === i ? { ...y, date: e.target.value } : y))}
+                              className="flex-1 rounded-[9px] border border-line bg-card px-2.5 py-2 text-[12.5px]" />
+                            <input type="time" value={s.time} onChange={(e) => setSerieSlots((x) => x.map((y, j) => j === i ? { ...y, time: e.target.value } : y))}
+                              className="rounded-[9px] border border-line bg-card px-2.5 py-2 text-[12.5px]" />
+                            <button type="button" onClick={() => setSerieSlots((x) => x.length > 1 ? x.filter((_, j) => j !== i) : x)}
+                              className="flex-none rounded-md px-2 text-[15px] font-bold text-muted hover:text-danger">×</button>
+                          </div>
+                        ))}
+                      </div>
+                      <button type="button" onClick={() => setSerieSlots((x) => [...x, { date: '', time: x[x.length - 1]?.time || '10:00' }])}
+                        className="self-start text-[12px] font-bold text-magenta">+ Agregar otra fecha</button>
+                      <div className="text-[11px] text-faint">Ideal para diario, 3 veces por semana o fechas irregulares. Cada cita con su propia esteticista se reagenda después.</div>
+                    </>
+                  )}
                 </div>
               )}
-              {serie && <div className="mt-1.5 text-[11px] text-faint">Todas quedan a las <b>{time}</b> con la misma esteticista. Puedes reagendar cualquiera después.</div>}
             </div>
           )}
 

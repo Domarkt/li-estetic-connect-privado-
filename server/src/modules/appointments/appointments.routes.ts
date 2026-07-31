@@ -318,11 +318,13 @@ const serieSchema = z.object({
   catalogItemId: z.string().nullish(),
   treatmentId: z.string().nullish(),
   therapistId: z.string().nullish(),
-  date: z.string(),                 // primera cita YYYY-MM-DD
-  time: z.string(),                 // hora HH:MM
+  date: z.string(),                 // primera cita YYYY-MM-DD (modo intervalo)
+  time: z.string(),                 // hora HH:MM (modo intervalo)
   durationMin: z.number().int().positive().default(60),
-  count: z.number().int().min(1).max(30),   // cuántas citas
-  everyDays: z.number().int().min(1).max(60).default(7), // cada cuántos días (7 = semanal)
+  count: z.number().int().min(1).max(60).optional(),   // cuántas citas (modo intervalo)
+  everyDays: z.number().int().min(1).max(60).optional(), // cada cuántos días (1 diario, 2 interdiario, 7 semanal…)
+  // Fechas/horas individuales (diario, 3x/semana, irregular). Si viene, manda sobre count/everyDays.
+  slots: z.array(z.object({ date: z.string(), time: z.string() })).max(60).optional(),
 });
 
 /**
@@ -337,12 +339,22 @@ appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONI
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
 
-  const base = new Date(`${b.date}T${b.time}:00`);
-  const fechas: Date[] = [];
-  for (let i = 0; i < b.count; i++) {
-    const d = new Date(base); d.setDate(d.getDate() + i * b.everyDays);
-    fechas.push(d);
+  // Fechas: o bien una lista individual (diario/3x semana/irregular), o generadas
+  // por intervalo desde la primera (semanal, interdiario, etc.).
+  let fechas: Date[];
+  if (b.slots?.length) {
+    fechas = b.slots.map((s) => new Date(`${s.date}T${s.time}:00`)).filter((d) => !isNaN(d.getTime()));
+  } else {
+    const base = new Date(`${b.date}T${b.time}:00`);
+    const cuantas = b.count ?? 1;
+    const cada = b.everyDays ?? 7;
+    fechas = [];
+    for (let i = 0; i < cuantas; i++) {
+      const d = new Date(base); d.setDate(d.getDate() + i * cada);
+      fechas.push(d);
+    }
   }
+  if (!fechas.length) return res.status(400).json({ error: 'No hay fechas válidas para la serie' });
   await prisma.appointment.createMany({
     data: fechas.map((startsAt) => ({
       patientId: patient.id, branchId: patient.branchId,
