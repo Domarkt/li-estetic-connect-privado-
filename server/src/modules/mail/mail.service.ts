@@ -112,15 +112,15 @@ export async function sendAppointmentConfirmation(
         <h2 style="margin:6px 0 0">Li Estetic Center</h2>
       </div>
       <div style="padding:24px;color:#1C2540">
-        <p>Hola <b>${opts.name}</b>, ¡tu cita quedó agendada! 💜</p>
+        <p>Hola <b>${opts.name}</b>, ¡su cita quedó agendada! 💜</p>
         <p style="background:#F0F6FB;border-radius:10px;padding:12px 14px">
           <b>Servicio:</b> ${opts.service}<br/>
           <b>Fecha:</b> ${opts.date} · <b>Hora:</b> ${opts.time}<br/>
           ${opts.branchName ? `<b>Sucursal:</b> ${opts.branchName}${opts.branchPlace ? ` · ${opts.branchPlace}` : ''}<br/>` : ''}
-          ${opts.code ? `<b>Código de tu turno:</b> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;color:#B31C86">${opts.code}</span>` : '<b>Preséntate en recepción:</b> allí te entregarán tu código de turno al registrarte.'}
+          ${opts.code ? `<b>Código de su turno:</b> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;color:#B31C86">${opts.code}</span>` : '<b>Preséntese en recepción:</b> allí le entregarán su código de turno al registrarse.'}
         </p>
-        <p>Preséntalo al llegar. Cuando visites la estética y realices tu primer servicio, te daremos acceso a tu <b>portal del paciente</b> para ver tu proceso y tu ficha. ¡Te esperamos!</p>
-        <p style="background:#FBEAF4;border-radius:10px;padding:12px 14px;color:#7A1560"><b>¿Estás de acuerdo con tu cita?</b> Responde este mensaje con <b>"estoy de acuerdo"</b> para confirmarla.</p>
+        <p>Preséntelo al llegar. Cuando visite la estética y realice su primer servicio, le daremos acceso a su <b>portal del paciente</b> para ver su proceso y su ficha. ¡Le esperamos!</p>
+        <p style="background:#FBEAF4;border-radius:10px;padding:12px 14px;color:#7A1560"><b>¿Está de acuerdo con su cita?</b> Responda este mensaje con <b>"estoy de acuerdo"</b> para confirmarla.</p>
       </div>
     </div>`;
   return deliver(to, opts.code ? `Tu cita en Li Estetic Center · código ${opts.code}` : 'Tu cita en Li Estetic Center quedó agendada', html, opts.replyTo);

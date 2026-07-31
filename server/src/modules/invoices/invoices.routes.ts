@@ -10,6 +10,7 @@ import { decrementSoldProducts } from '../inventory/inventory.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, sendReceipt } from '../mail/mail.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
+import { tratoFormal } from '../../utils/trato.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { createTreatmentFromCatalog } from '../patients/areas.service.js';
 import { audit } from '../audit/audit.service.js';
@@ -343,7 +344,7 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   if (b.patientId) {
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     const [pat, cita] = await Promise.all([
-      prisma.patient.findUnique({ where: { id: b.patientId }, select: { name: true, phone: true } }),
+      prisma.patient.findUnique({ where: { id: b.patientId }, select: { name: true, phone: true, sex: true } }),
       prisma.appointment.findFirst({
         where: { patientId: b.patientId, status: { not: 'CANCELADA' }, codeUsedAt: null, startsAt: { gte: hoy } },
         orderBy: { startsAt: 'asc' },
@@ -353,7 +354,7 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     if (pat?.phone && cita?.code) {
       // Tras pagar solo se envía el CÓDIGO (la confirmación de la cita ya se
       // mandó al agendar; no se repite para no saturar al paciente).
-      const texto = `Hola ${pat.name.split(' ')[0]} 💜 Tu código de cita en ${cita.branch.name} es ${cita.code}. Preséntalo al llegar. Te esperamos 10 min antes. — Li Estetic Center`;
+      const texto = `Hola ${tratoFormal(pat.name, pat.sex)} 💜 Su código de cita en ${cita.branch.name} es ${cita.code}. Preséntelo al llegar. Le esperamos 10 min antes. — Li Estetic Center`;
       citaWhatsappUrl = `https://wa.me/${normalizePhone(pat.phone)}?text=${encodeURIComponent(texto)}`;
     }
   }

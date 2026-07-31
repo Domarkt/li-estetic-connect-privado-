@@ -5,6 +5,7 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.js';
+import { tratoFormal } from '../../utils/trato.js';
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
 import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
@@ -277,7 +278,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
     const mail = await sendAppointmentConfirmation(patient.email, {
       // Cliente NUEVO: sin código — se le entrega al pagar en recepción.
-      name: patient.name, service: serviceName, date: fecha, time: hora,
+      name: tratoFormal(patient.name, patient.sex), service: serviceName, date: fecha, time: hora,
       code: patient.type === 'NUEVO' ? '' : (appt.code ?? ''),
       branchName: appt.branch.name, branchPlace: appt.branch.place,
       replyTo: appt.branch.email ?? undefined,
@@ -300,8 +301,8 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   let whatsappUrl: string | null = null;
   if (patient.phone) {
     const cuando = startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
-    const codigo = appt.code && patient.type !== 'NUEVO' ? ` Tu código de cita es ${appt.code}.` : '';
-    const confirmText = `Hola ${patient.name.split(' ')[0]} 💜 Confirmamos tu cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Te esperamos 10 min antes. ¿Estás de acuerdo con tu cita? Escribe "estoy de acuerdo" para confirmarla. — Li Estetic Center`;
+    const codigo = appt.code && patient.type !== 'NUEVO' ? ` Su código de cita es ${appt.code}.` : '';
+    const confirmText = `Hola ${tratoFormal(patient.name, patient.sex)} 💜 Confirmamos su cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Le esperamos 10 min antes. ¿Está de acuerdo con su cita? Escriba "estoy de acuerdo" para confirmarla. — Li Estetic Center`;
     whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(confirmText)}`;
   }
 
@@ -483,7 +484,7 @@ appointmentsRouter.post('/:id/cancel', requireStaff, requireRole('ADMIN', 'RECEP
   let emailSent = false;
   if (appt.patient.email) {
     const mail = await sendAppointmentCancelled(appt.patient.email, {
-      name: appt.patient.name, service: appt.serviceName, date: fecha, time: hora,
+      name: tratoFormal(appt.patient.name, appt.patient.sex), service: appt.serviceName, date: fecha, time: hora,
       reason, by: 'clinic', branchName: appt.branch.name, replyTo: appt.branch.email ?? undefined,
     });
     emailSent = mail.sent;
