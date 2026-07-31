@@ -26,6 +26,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'portal', label: 'Portal del paciente' },
     { key: 'inventario', label: 'Inventario' },
     { key: 'compras', label: 'Compras & Facturas' },
+    { key: 'contactar', label: 'Seguimiento pacientes' },
     { key: 'puntos', label: 'Puntos & Comisiones' },
     { key: 'reportes', label: 'Reportes' },
     { key: 'equipo', label: 'Equipo' },
@@ -39,6 +40,7 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'facturacion', label: 'Cobro & Facturación' },
     { key: 'inventario', label: 'Inventario' },
     { key: 'compras', label: 'Compras & Facturas' },
+    { key: 'contactar', label: 'Seguimiento pacientes' },
     { key: 'chat', label: 'Chat equipo' },
     { key: 'cierre', label: 'Cierre de caja' },
     { key: 'seguimiento', label: 'Seguimiento' },
@@ -46,6 +48,7 @@ const NAV: Record<Role, NavItem[]> = {
   ESTETICISTA: [
     { key: 'agenda', label: 'Mi Agenda' },
     { key: 'pacientes', label: 'Pacientes' },
+    { key: 'contactar', label: 'Seguimiento pacientes' },
     { key: 'equipos', label: 'Equipos' },
     { key: 'chat', label: 'Chat equipo' },
     // "Mis Puntos" queda oculto mientras se afina; se muestra con el interruptor
@@ -64,6 +67,7 @@ const PAGE_TITLE: Record<string, { title: string; sub: string }> = {
   inventario: { title: 'Inventario', sub: 'Stock de productos e insumos por sucursal' },
   equipos: { title: 'Equipos y suministros', sub: 'Consulta y reporta averías o incidentes' },
   compras: { title: 'Compras & Facturas', sub: 'Registra gastos y anexa la factura del proveedor' },
+  contactar: { title: 'Seguimiento de pacientes', sub: 'Valida tratamientos, reactiva inactivos y felicita cumpleaños' },
   chat: { title: 'Chat del equipo', sub: 'Instrucciones internas · admin y sucursales' },
   puntos: { title: 'Puntos & Comisiones', sub: 'Programa Líderes LI' },
   reportes: { title: 'Reportes', sub: 'Ventas, operación, equipo y campañas' },

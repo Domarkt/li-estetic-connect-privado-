@@ -30,6 +30,7 @@ import { assetsRouter } from './modules/assets/assets.routes.js';
 import { teamRouter } from './modules/team/team.routes.js';
 import { maintenanceRouter } from './modules/maintenance/maintenance.routes.js';
 import { purchasesRouter } from './modules/purchases/purchases.routes.js';
+import { followupRouter } from './modules/followup/followup.routes.js';
 
 export function createApp() {
   const app = express();
@@ -92,6 +93,7 @@ export function createApp() {
   app.use('/api/team-chat', teamRouter);
   app.use('/api/maintenance', maintenanceRouter);
   app.use('/api/purchases', purchasesRouter);
+  app.use('/api/followup', followupRouter);
 
   // Fases siguientes montan aquí sus routers:
   // app.use('/api/invoices', invoicesRouter);   // Fase 4
