@@ -126,6 +126,29 @@ export async function sendAppointmentConfirmation(
   return deliver(to, opts.code ? `Tu cita en Li Estetic Center · código ${opts.code}` : 'Tu cita en Li Estetic Center quedó agendada', html, opts.replyTo);
 }
 
+/**
+ * Correo de CAMPAÑA (cumpleaños, reactivación, promoción). Cuerpo formal,
+ * ya viene con el saludo (Sr./Sra.) armado por quien lo llama.
+ */
+export async function sendCampaignEmail(
+  to: string,
+  opts: { greeting: string; subject: string; lines: string[]; branchName?: string; replyTo?: string },
+): Promise<MailResult> {
+  const cuerpo = opts.lines.map((l) => `<p>${l}</p>`).join('');
+  const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;border:1px solid #EEE;border-radius:12px;overflow:hidden">
+      <div style="background:#1C2540;padding:20px;text-align:center;color:#fff">
+        <h2 style="margin:6px 0 0">Li Estetic Center</h2>
+      </div>
+      <div style="padding:24px;color:#1C2540">
+        <p><b>${opts.greeting}</b></p>
+        ${cuerpo}
+        ${opts.branchName ? `<p style="color:#6A7089;font-size:13px">${opts.branchName}</p>` : ''}
+        <p style="color:#B31C86">Con cariño, el equipo de Li Estetic Center 💜</p>
+      </div>
+    </div>`;
+  return deliver(to, opts.subject, html, opts.replyTo);
+}
+
 export interface ReceiptMail {
   id: string; ncf: string | null; date: string; patient: string;
   items: { name: string; qty: number; total: number }[];

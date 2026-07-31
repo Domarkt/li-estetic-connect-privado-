@@ -267,6 +267,7 @@ model Patient {
   sex         String? // 'M' | 'F' — para redactar mensajes en género correcto
   age         Int?
   birthDate   DateTime?
+  lastBdayGreetYear Int? // año en que se le envió el saludo de cumpleaños (evita repetir)
   occupation  String?
   address     String? // calle y número (cifrado, PII)
   sector      String? // sector/barrio
