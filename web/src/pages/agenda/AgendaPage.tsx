@@ -256,8 +256,9 @@ export default function AgendaPage() {
                 {a.fichaComplete ? 'Abrir ficha' : 'Llenar ficha'}
               </button>
             )}
-            {/* Recordar la cita es control de recepción/admin: la esteticista no lo ve. */}
-            {!isMasa && a.status !== 'CANCELADA' && (
+            {/* Recordar la cita es control de recepción/admin: la esteticista no lo ve.
+                Tras cerrar el turno (o si ya se completó/canceló) tampoco tiene sentido. */}
+            {!isMasa && a.status !== 'CANCELADA' && a.status !== 'COMPLETADA' && !a.finished && (
               <button onClick={() => setRemindFor(a)} className="rounded-[9px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-muted hover:border-magenta hover:text-magenta">
                 {a.reminderSent ? 'Recordado ✓' : 'Recordar'}
               </button>

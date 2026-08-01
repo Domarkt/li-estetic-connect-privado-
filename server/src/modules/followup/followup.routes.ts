@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope } from '../../middleware/auth.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
-import { tratoFormal } from '../../utils/trato.js';
+import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
 import { sendCampaignEmail } from '../mail/mail.service.js';
 
 export const followupRouter = Router();
@@ -40,7 +40,7 @@ async function buckets(scopeBranchId: string | null) {
   const scope = scopeBranchId ? { branchId: scopeBranchId } : {};
   const pacientes = await prisma.patient.findMany({
     where: scope,
-    select: { id: true, name: true, phone: true, email: true, sex: true, birthDate: true, branch: { select: { name: true } } },
+    select: { id: true, name: true, phone: true, email: true, sex: true, birthDate: true, branch: { select: { name: true, place: true } } },
   });
   const porValidar: Row[] = [];
   const inactivos = { m3: [] as Row[], m6: [] as Row[], m12: [] as Row[] };
@@ -60,7 +60,7 @@ async function buckets(scopeBranchId: string | null) {
     const trato = tratoFormal(p.name, p.sex);
     const ultima = ultimaDe.get(p.id) ?? null;
     const dias = ultima ? Math.floor((ahora - ultima.getTime()) / DIA) : null;
-    const base: Row = { id: p.id, name: p.name, trato, phone: p.phone, email: p.email, sex: p.sex, branch: p.branch?.name ?? '—', ultimaVisita: fmt(ultima), dias, wa: null };
+    const base: Row = { id: p.id, name: p.name, trato, phone: p.phone, email: p.email, sex: p.sex, branch: sucursalLabel(p.branch?.name ?? '—', p.branch?.place), ultimaVisita: fmt(ultima), dias, wa: null };
 
     if (dias != null && dias <= 7) porValidar.push({ ...base, wa: wa(p.phone, `Hola ${trato} 💜 Le saludamos de ${NEGOCIO}. ¿Cómo se ha sentido después de su tratamiento? Nos encantaría saber cómo va su proceso.`) });
     else if (dias != null && dias >= 365) inactivos.m12.push({ ...base, wa: wa(p.phone, MSG.m12.wa(trato)) });

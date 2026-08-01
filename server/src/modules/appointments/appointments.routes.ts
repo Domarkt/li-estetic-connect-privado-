@@ -5,7 +5,7 @@ import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../.
 import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.js';
-import { tratoFormal } from '../../utils/trato.js';
+import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
 import { notify, notifyBranchTherapists } from '../notifications/notifications.service.js';
 import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
@@ -302,7 +302,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   if (patient.phone) {
     const cuando = startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
     const codigo = appt.code && patient.type !== 'NUEVO' ? ` Su código de cita es ${appt.code}.` : '';
-    const confirmText = `Hola ${tratoFormal(patient.name, patient.sex)} 💜 Confirmamos su cita en ${appt.branch.name}: ${serviceName} el ${cuando}.${codigo} Le esperamos 10 min antes. ¿Está de acuerdo con su cita? Escriba "estoy de acuerdo" para confirmarla. — Li Estetic Center`;
+    const confirmText = `Hola ${tratoFormal(patient.name, patient.sex)} 💜 Confirmamos su cita en ${sucursalLabel(appt.branch.name, appt.branch.place)}: ${serviceName} el ${cuando}.${codigo} Le esperamos 10 min antes. ¿Está de acuerdo con su cita? Escriba "estoy de acuerdo" para confirmarla. — Li Estetic Center`;
     whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(confirmText)}`;
   }
 

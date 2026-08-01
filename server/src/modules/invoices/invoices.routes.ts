@@ -10,7 +10,7 @@ import { decrementSoldProducts } from '../inventory/inventory.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, sendReceipt } from '../mail/mail.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
-import { tratoFormal } from '../../utils/trato.js';
+import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { createTreatmentFromCatalog } from '../patients/areas.service.js';
 import { audit } from '../audit/audit.service.js';
@@ -348,13 +348,13 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       prisma.appointment.findFirst({
         where: { patientId: b.patientId, status: { not: 'CANCELADA' }, codeUsedAt: null, startsAt: { gte: hoy } },
         orderBy: { startsAt: 'asc' },
-        include: { branch: { select: { name: true } } },
+        include: { branch: { select: { name: true, place: true } } },
       }),
     ]);
     if (pat?.phone && cita?.code) {
       // Tras pagar solo se envía el CÓDIGO (la confirmación de la cita ya se
       // mandó al agendar; no se repite para no saturar al paciente).
-      const texto = `Hola ${tratoFormal(pat.name, pat.sex)} 💜 Su código de cita en ${cita.branch.name} es ${cita.code}. Preséntelo al llegar. Le esperamos 10 min antes. — Li Estetic Center`;
+      const texto = `Hola ${tratoFormal(pat.name, pat.sex)} 💜 Su código de cita en ${sucursalLabel(cita.branch.name, cita.branch.place)} es ${cita.code}. Preséntelo al llegar. Le esperamos 10 min antes. — Li Estetic Center`;
       citaWhatsappUrl = `https://wa.me/${normalizePhone(pat.phone)}?text=${encodeURIComponent(texto)}`;
     }
   }
