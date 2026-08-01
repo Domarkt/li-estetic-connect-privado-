@@ -404,10 +404,12 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             </label>
           )}
 
-          {/* Áreas que trae el combo por defecto: se cargan al venderlo al paciente. */}
+          {/* Áreas que trae el combo por defecto: se cargan al venderlo al paciente.
+              Sin tope: 2, 3, 4 o las que elijas. Las sesiones totales se reparten
+              entre las áreas elegidas. */}
           {componible && areaGroup && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold text-muted">Áreas del combo <span className="font-semibold text-faint">({areas.length} elegidas · {areas.length ? Math.floor((Number(sessions) || 1) / areas.length) : 0} sesiones c/u)</span></span>
+              <span className="text-xs font-bold text-muted">Áreas incluidas en el combo <span className="font-semibold text-faint">({areas.length} {areas.length === 1 ? 'área' : 'áreas'}{areas.length ? ` · ${Math.floor((Number(sessions) || 1) / areas.length)} sesiones c/u de ${sessions || 1} en total` : ''})</span></span>
               <div className="flex flex-wrap gap-1.5">
                 {areaOpts.filter((a) => a.grupo === areaGroup).map((a) => {
                   const on = areas.includes(a.key);
