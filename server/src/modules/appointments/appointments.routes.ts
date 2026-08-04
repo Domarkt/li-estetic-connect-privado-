@@ -382,6 +382,12 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
   });
   if (!appt) return res.status(404).json({ error: 'Código inválido · no corresponde a ninguna cita' });
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'La cita es de otra sucursal' });
+  // Una esteticista solo abre el turno de SUS citas (o de una sin asignar, que pasa a
+  // ser suya). Si la cita ya está asignada a otra esteticista, se bloquea: recepción
+  // debe reasignarla. Admin y recepción no tienen esta restricción.
+  if (req.staff!.role === 'ESTETICISTA' && appt.therapistId && appt.therapistId !== req.staff!.sub) {
+    return res.status(403).json({ error: 'Esta cita está asignada a otra esteticista. Pídele a recepción que te la reasigne si la vas a atender tú.' });
+  }
   if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita está cancelada' });
   // Idempotente: si el turno YA está abierto y aún no se cerró, revalidar el mismo
   // código simplemente lo reabre (lleva a la ficha) en vez de bloquear. Antes, si
@@ -396,8 +402,12 @@ appointmentsRouter.post('/checkin', requireStaff, requireRole('ADMIN', 'ESTETICI
 
   const updated = await prisma.appointment.update({
     where: { id: appt.id },
-    // Inicia el contador de atención (oculto para la esteticista).
-    data: { codeUsedAt: new Date(), serviceStartedAt: new Date(), status: 'CONFIRMADA' },
+    // Inicia el contador de atención (oculto para la esteticista). Si la cita no tenía
+    // esteticista asignada y la abre una, queda asignada a ella (aparece en su agenda).
+    data: {
+      codeUsedAt: new Date(), serviceStartedAt: new Date(), status: 'CONFIRMADA',
+      ...(req.staff!.role === 'ESTETICISTA' && !appt.therapistId ? { therapistId: req.staff!.sub } : {}),
+    },
     include: apptInclude,
   });
   res.json({ ok: true, message: `Turno abierto: ${appt.patient.name} · ${appt.serviceName}`, appointment: serializeAppt(updated) });
@@ -413,6 +423,10 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
   const appt = await prisma.appointment.findUnique({ where: { id: req.params.id }, include: apptInclude });
   if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
+  // Una esteticista solo cierra el turno de SUS citas (recepción/admin, cualquiera).
+  if (req.staff!.role === 'ESTETICISTA' && appt.therapistId && appt.therapistId !== req.staff!.sub) {
+    return res.status(403).json({ error: 'Esta cita está asignada a otra esteticista.' });
+  }
   if (!appt.serviceStartedAt) return res.status(409).json({ error: 'El turno no ha sido abierto todavía' });
   if (appt.serviceEndedAt) return res.status(409).json({ error: 'El proceso ya fue cerrado' });
 

@@ -239,7 +239,10 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const [price, setPrice] = useState(item?.price != null ? String(item.price) : '');
   const [sessions, setSessions] = useState(item?.sessions ? String(item.sessions) : '1');
   const [unit, setUnit] = useState(item?.unit ?? '');
-  const [showInPortal, setShowInPortal] = useState(item?.showInPortal ?? true);
+  // Al crear, el portal arranca APAGADO: la admin decide explícitamente qué combo/
+  // paquete se publica al paciente (evita exponer todo sin querer). En edición respeta
+  // lo guardado.
+  const [showInPortal, setShowInPortal] = useState(item?.showInPortal ?? false);
   const [imageUrl, setImageUrl] = useState<string | null>(item?.imageUrl ?? null);
   const [validUntil, setValidUntil] = useState(item?.validUntil ? item.validUntil.slice(0, 10) : '');
   const [busy, setBusy] = useState(false);

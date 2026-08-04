@@ -10,13 +10,17 @@ export function Portal({ children }: { children: ReactNode }) {
   return createPortal(children, document.body);
 }
 
-export function Overlay({ children, onClose, z = 110 }: { children: ReactNode; onClose: () => void; z?: number }) {
+export function Overlay({ children, onClose, z = 110, closeOnBackdrop = false }: { children: ReactNode; onClose: () => void; z?: number; closeOnBackdrop?: boolean }) {
   // Dos capas: el scroll vertical va en la capa exterior (bloque); el centrado en la
   // interior (flex con min-h-full). Así el modal conserva su ancho fijo y nunca se
   // recorta ni colapsa, aunque el contenido sea más alto que la pantalla.
+  //
+  // Por defecto el clic en el fondo NO cierra el modal: así un formulario de alta
+  // (producto, combo, insumo, paciente…) no se borra por un clic accidental afuera.
+  // Se cierra solo con el botón × o Cancelar. Pasa closeOnBackdrop para permitirlo.
   return (
     <Portal>
-      <div onClick={onClose} className="fixed inset-0 overflow-y-auto" style={{ background: 'rgba(28,37,64,.5)', zIndex: z }}>
+      <div onClick={closeOnBackdrop ? onClose : undefined} className="fixed inset-0 overflow-y-auto" style={{ background: 'rgba(28,37,64,.5)', zIndex: z }}>
         <div className="flex min-h-full items-start justify-center p-4 sm:p-7">
           {children}
         </div>
