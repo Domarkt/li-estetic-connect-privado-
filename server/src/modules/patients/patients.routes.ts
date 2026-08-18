@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, listarSesiones, bitacoraPaciente } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, listarSesiones, bitacoraPaciente } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
@@ -122,7 +122,12 @@ const createPatientSchema = z.object({
   age: z.number().int().optional(),
   cedula: z.string().optional(),
   occupation: z.string().optional(),
+  // Dirección seccionada: se captura al crear el paciente (antes solo se veía en la
+  // ficha, después de agendar, y se saltaba). address va cifrado (PII); sector/
+  // provincia son planos (sirven para saber de dónde nos visitan).
   address: z.string().optional(),
+  sector: z.string().optional(),
+  province: z.string().optional(),
 });
 
 /**
@@ -142,6 +147,8 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
       branchId, name: body.name, phone: body.phone, age: body.age ?? null,
       sex: body.sex ?? null,
       ...encryptPatientWrite({ cedula: body.cedula ?? null, address: body.address ?? null }),
+      sector: body.sector?.trim() || null,
+      province: body.province?.trim() || null,
       occupation: body.occupation ?? null,
       type: 'NUEVO',
       avatarColor: colors[Math.floor(Math.random() * colors.length)],
@@ -313,6 +320,56 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
     message: monto > 0
       ? `${areaLabel} agregada · RD$${monto.toLocaleString('en-US')} pendiente de cobrar en recepción`
       : `${areaLabel} agregada (sin cargo)`,
+  });
+});
+
+const cambioComboSchema = z.object({
+  catalogItemId: z.string().min(1),
+  price: z.number().int().nonnegative().optional(), // monto del nuevo combo si recepción lo negocia
+});
+
+/**
+ * Cambio de combo: la clienta pasa a un combo de mayor valor (con más áreas/sesiones).
+ * Conserva el avance y crea un cargo pendiente por la DIFERENCIA de precio, que recepción
+ * factura como cualquier otro cargo. Simplifica el "me cambiaron el combo en cabina".
+ */
+patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requireRole(...areasRoles), async (req, res) => {
+  const { catalogItemId, price } = cambioComboSchema.parse(req.body);
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const r = await cambiarCombo(t.id, catalogItemId, price);
+  if ('error' in r) {
+    const msg = r.error === 'nocatalog' ? 'El combo elegido no existe'
+      : r.error === 'notcombo' ? 'Solo se puede cambiar por un combo o paquete'
+      : r.error === 'same' ? 'Ese ya es el combo actual del paciente'
+      : 'Plan no encontrado';
+    return res.status(400).json({ error: msg });
+  }
+
+  // La diferencia se cobra como cargo pendiente (recepción lo factura). Si no hay
+  // diferencia (mismo precio o menor), solo se cambia el combo sin cargo.
+  if (r.diferencia > 0) {
+    await prisma.chargeItem.create({
+      data: {
+        branchId: t.patient.branchId, patientId: t.patientId, catalogItemId,
+        name: `Cambio de combo: ${r.oldName} → ${r.nombre}`,
+        price: r.diferencia, createdById: req.staff!.sub,
+      },
+    });
+  }
+
+  await audit(req, {
+    action: 'TREATMENT_COMBO_CHANGE', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
+    summary: `Cambió el combo de ${t.patient.name}: ${r.oldName} → ${r.nombre}${r.diferencia > 0 ? ` · diferencia RD$${r.diferencia.toLocaleString('en-US')}` : ' (sin diferencia)'}`,
+  });
+
+  res.json({
+    ok: true, diferencia: r.diferencia, nombre: r.nombre,
+    message: r.diferencia > 0
+      ? `Combo cambiado a ${r.nombre} · RD$${r.diferencia.toLocaleString('en-US')} de diferencia pendiente de cobrar en recepción`
+      : `Combo cambiado a ${r.nombre} (sin diferencia a cobrar)`,
   });
 });
 

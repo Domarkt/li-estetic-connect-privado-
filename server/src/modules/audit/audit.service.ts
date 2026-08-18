@@ -16,6 +16,7 @@ export type AuditAction =
   | 'PRICE_CHANGE'        // cambió el precio de un ítem del catálogo
   | 'CATALOG_DELETE'
   | 'TREATMENT_AREAS'     // se (re)definieron las áreas de un plan
+  | 'TREATMENT_COMBO_CHANGE' // se cambió el combo del paciente por uno de mayor valor
   | 'TREATMENT_SESSION'   // se registró el procedimiento aplicado (firmado)
   | 'PORTAL_ACCESS'      // se retiró/devolvió el acceso al portal de un paciente
   | 'PORTAL_MESSAGE'     // se publicó un mensaje/oferta en el portal

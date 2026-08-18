@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Portal, stop } from '../../components/Modal';
-import { fmtRD, type PatientDetail, type PatientPackage } from '../../lib/types';
+import { fmtRD, type CatalogItem, type PatientDetail, type PatientPackage } from '../../lib/types';
 
 interface Props {
   patientId: string;
@@ -29,6 +29,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [waUrl, setWaUrl] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [areasFor, setAreasFor] = useState<PatientPackage | null>(null); // paquete/combo al que se le definen áreas
+  const [cambioFor, setCambioFor] = useState<PatientPackage | null>(null); // combo que se va a cambiar por uno de mayor valor
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -247,6 +248,11 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                           </div>
                         </div>
                       )}
+
+                      {/* Cambio de combo: pasa a uno de mayor valor; solo se cobra la diferencia. */}
+                      <div className="mt-2.5 border-t border-line-2 pt-2.5">
+                        <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ Cambiar de combo (cobra solo la diferencia)</button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -299,6 +305,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
       {areasFor && (
         <AreasModal pkg={areasFor} onClose={() => setAreasFor(null)}
           onSaved={() => { setAreasFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
+      )}
+      {cambioFor && (
+        <CambioComboModal pkg={cambioFor} onClose={() => setCambioFor(null)}
+          onSaved={() => { setCambioFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
       )}
     </div>
     </Portal>
@@ -423,6 +433,112 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
         <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
           <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Guardar áreas</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const KIND_TAG_COMBO: Record<string, string> = { COMBO: 'Combo', PAQUETE: 'Paquete' };
+
+/**
+ * Cambio de combo por uno de MAYOR valor. Muestra el precio actual, el del nuevo combo
+ * y la DIFERENCIA a cobrar (editable si recepción negocia el monto). Al confirmar, el
+ * plan se actualiza (conserva el avance) y la diferencia queda como cargo pendiente
+ * para que recepción la facture.
+ */
+function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [combos, setCombos] = useState<CatalogItem[]>([]);
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState<CatalogItem | null>(null);
+  const [precio, setPrecio] = useState(''); // precio del nuevo combo (editable)
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get<CatalogItem[]>('/catalog')
+      .then((all) => setCombos(all.filter((c) => c.kind === 'COMBO' || c.kind === 'PAQUETE')))
+      .catch(() => setCombos([]));
+  }, []);
+
+  const texto = q.trim().toLowerCase();
+  const lista = combos.filter((c) => !texto || c.name.toLowerCase().includes(texto));
+  const nuevoPrecio = precio !== '' ? Number(precio) : (sel?.price ?? 0);
+  const diferencia = Math.max(0, nuevoPrecio - pkg.price);
+
+  function elegir(c: CatalogItem) {
+    setSel(c);
+    setPrecio(c.price ? String(c.price) : '');
+  }
+
+  async function confirmar() {
+    if (!sel) { toast('Elige el nuevo combo'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/change-combo`, {
+        catalogItemId: sel.id, price: nuevoPrecio || undefined,
+      });
+      toast(r.message);
+      onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" style={{ background: 'rgba(28,37,64,.5)' }}>
+      <div onClick={stop} className="flex max-h-[88vh] w-[460px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex flex-none items-center border-b border-line px-6 py-5">
+          <div className="flex-1"><div className="text-base font-extrabold">Cambiar de combo</div><div className="text-[12.5px] text-muted">Actual: {pkg.name} · {fmtRD(pkg.price)}</div></div>
+          <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+        </div>
+
+        <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
+          <div className="text-xs font-bold text-muted">Elige el nuevo combo (de mayor valor)</div>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Buscar combo o paquete…"
+            className="w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
+          <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
+            {combos.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay combos en el catálogo.</div>}
+            {combos.length > 0 && lista.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Sin coincidencias.</div>}
+            {lista.map((c) => {
+              const on = sel?.id === c.id;
+              return (
+                <button key={c.id} onClick={() => elegir(c)}
+                  className="flex items-center gap-2 rounded-[10px] border px-3 py-2.5 text-left"
+                  style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                  <span className="rounded-full bg-navy-soft px-1.5 py-0.5 text-[9.5px] font-bold text-navy">{KIND_TAG_COMBO[c.kind] ?? c.kind}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-bold">{c.name}</span>
+                  <span className="flex-none text-[12.5px] font-extrabold text-magenta">{c.price ? fmtRD(c.price) : 'sin $'}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {sel && (
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold text-muted">Precio del nuevo combo <span className="font-semibold text-faint">(editable)</span></span>
+                <div className="flex items-center rounded-[10px] border border-line px-3 focus-within:border-magenta">
+                  <span className="text-[13px] font-bold text-muted">RD$</span>
+                  <input value={precio} onChange={(e) => setPrecio(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="0"
+                    className="w-full bg-transparent px-2 py-2.5 text-[15px] font-extrabold outline-none" />
+                </div>
+              </label>
+              <div className="flex flex-col gap-1 rounded-[11px] border-2 border-magenta bg-magenta-soft px-4 py-3">
+                <div className="flex justify-between text-[12.5px]"><span className="text-muted">Combo actual</span><span className="font-bold">{fmtRD(pkg.price)}</span></div>
+                <div className="flex justify-between text-[12.5px]"><span className="text-muted">Nuevo combo</span><span className="font-bold">{fmtRD(nuevoPrecio)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-magenta/30 pt-1.5 text-[15px] font-extrabold"><span>Diferencia a cobrar</span><span className="text-magenta">{fmtRD(diferencia)}</span></div>
+              </div>
+              <p className="text-[11px] text-faint">
+                {diferencia > 0
+                  ? 'La diferencia queda como cargo pendiente: recepción la factura desde “Cobrar / Facturar”. Se conserva el avance del paciente.'
+                  : 'El nuevo combo no cuesta más que el actual: se cambia sin cargo.'}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+          <button onClick={confirmar} disabled={busy || !sel} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Cambiando…' : 'Cambiar combo'}</button>
         </div>
       </div>
     </div>

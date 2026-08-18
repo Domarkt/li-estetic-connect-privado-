@@ -163,6 +163,77 @@ export async function createTreatmentFromCatalog(
 }
 
 /**
+ * Cambio de combo: la clienta pasa a un combo de MAYOR valor (más áreas/sesiones).
+ * Se conserva el avance (sesiones hechas, áreas y técnicas ya consumidas) y solo se
+ * cobra la DIFERENCIA de precio. Las áreas adicionales ya cobradas (isExtra) se
+ * mantienen. No se toca el saldo previo del plan: la diferencia es un cargo aparte.
+ *
+ * Devuelve la diferencia a cobrar (nunca negativa) para que recepción la facture.
+ */
+export async function cambiarCombo(
+  treatmentId: string,
+  newCatalogItemId: string,
+  priceOverride?: number,
+) {
+  const t = await prisma.treatment.findUnique({
+    where: { id: treatmentId },
+    include: { areas: true, techniques: true },
+  });
+  if (!t) return { error: 'notfound' as const };
+  const item = await prisma.catalogItem.findUnique({
+    where: { id: newCatalogItemId },
+    include: { incluye: { include: { service: true } } },
+  });
+  if (!item) return { error: 'nocatalog' as const };
+  if (!(item.kind === 'COMBO' || item.kind === 'PAQUETE')) return { error: 'notcombo' as const };
+  if (item.id === t.catalogItemId) return { error: 'same' as const };
+
+  const nuevoPrecio = item.price ?? 0;
+  // Diferencia = precio del nuevo combo − precio del actual (nunca negativa). Si
+  // recepción negocia un monto, se usa el override.
+  const diferencia = Math.max(0, (priceOverride ?? nuevoPrecio) - t.price);
+  // El total nunca baja de lo ya realizado (no se pierde el avance del paciente).
+  const nuevoTotal = Math.max(t.doneSessions, item.sessions ?? 1);
+  const oldName = t.name;
+
+  // Áreas incluidas: se reemplazan por las del nuevo combo, conservando el avance
+  // de las que coinciden. Las adicionales ya cobradas (isExtra) se mantienen intactas.
+  if (item.defaultAreas?.length) {
+    const prevDone = new Map(t.areas.filter((a) => !a.isExtra).map((a) => [a.area, a.doneSessions]));
+    const reparto = repartirSesiones(nuevoTotal, item.defaultAreas.length);
+    await prisma.treatmentArea.deleteMany({ where: { treatmentId: t.id, isExtra: false } });
+    await prisma.treatmentArea.createMany({
+      data: item.defaultAreas.map((area, i) => ({
+        treatmentId: t.id, area, totalSessions: reparto[i],
+        doneSessions: Math.min(prevDone.get(area) ?? 0, reparto[i]),
+        isExtra: false,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  // Técnicas: se reemplazan por las del nuevo combo, conservando lo ya aplicado.
+  if (item.incluye?.length) {
+    const prevDone = new Map(t.techniques.map((x) => [x.name, x.done]));
+    await prisma.treatmentTechnique.deleteMany({ where: { treatmentId: t.id } });
+    await prisma.treatmentTechnique.createMany({
+      data: item.incluye.map((x) => ({
+        treatmentId: t.id, name: x.service.name, total: x.qty,
+        done: Math.min(prevDone.get(x.service.name) ?? 0, x.qty),
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  await prisma.treatment.update({
+    where: { id: t.id },
+    data: { name: item.name, catalogItemId: item.id, totalSessions: nuevoTotal, price: nuevoPrecio, active: true },
+  });
+
+  return { ok: true as const, diferencia, nuevoPrecio, nombre: item.name, oldName, totalSessions: nuevoTotal };
+}
+
+/**
  * Registra lo que se le APLICÓ al paciente en una visita y descuenta lo consumido.
  *
  * Es el punto donde queda constancia de cuál de las técnicas del combo se usó ese

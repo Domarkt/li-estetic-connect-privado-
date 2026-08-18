@@ -13,6 +13,9 @@ export default function NewPatientModal({ onClose, onCreated }: { onClose: () =>
   const toast = useToast();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [sector, setSector] = useState('');
+  const [province, setProvince] = useState('');
   const [branchId, setBranchId] = useState(staff?.role === 'ADMIN' ? (branches[0]?.id ?? '') : (staff?.branchId ?? ''));
   const [busy, setBusy] = useState(false);
 
@@ -22,6 +25,9 @@ export default function NewPatientModal({ onClose, onCreated }: { onClose: () =>
     try {
       const p = await api.post<PatientRow>('/patients', {
         name: name.trim(), phone: phone.trim(),
+        address: address.trim() || undefined,
+        sector: sector.trim() || undefined,
+        province: province.trim() || undefined,
         branchId: staff?.role === 'ADMIN' ? branchId : undefined,
       });
       onCreated(p);
@@ -41,6 +47,17 @@ export default function NewPatientModal({ onClose, onCreated }: { onClose: () =>
           <p className="text-[12.5px] text-muted">Al crear el paciente se abrirá su ficha clínica para completar el Paso 1.</p>
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Nombre completo</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellidos" /></label>
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Celular</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="809-000-0000" /></label>
+
+          {/* Dirección seccionada: se captura aquí para que no se salte (antes solo salía
+              en la ficha, después de agendar). Sector y provincia por separado. */}
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Dirección <span className="font-semibold text-faint">(calle y número)</span></span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="C/ Duarte #12" /></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sector</span><input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={sector} onChange={(e) => setSector(e.target.value)} placeholder="Villa Verde" /></label>
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Provincia</span>
+              <input className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" list="prov-do-new" value={province} onChange={(e) => setProvince(e.target.value)} placeholder="La Romana" />
+              <datalist id="prov-do-new">{['Distrito Nacional','Santo Domingo','Santiago','La Romana','La Altagracia','San Pedro de Macorís','La Vega','Puerto Plata','Duarte','San Cristóbal','Espaillat','Azua','Barahona','Monseñor Nouel','Peravia','Hermanas Mirabal','Monte Plata','Sánchez Ramírez','María Trinidad Sánchez','Samaná','Valverde','Montecristi','Hato Mayor','El Seibo','San Juan','Baoruco','Independencia','Pedernales','Elías Piña','Santiago Rodríguez','Dajabón','San José de Ocoa'].map((pr) => <option key={pr} value={pr} />)}</datalist>
+            </label>
+          </div>
           <p className="text-[11.5px] text-faint">El sexo y demás datos se completan en el Paso 1 de la ficha.</p>
           {staff?.role === 'ADMIN' && (
             <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sucursal</span>

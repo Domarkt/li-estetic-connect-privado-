@@ -312,6 +312,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   }
 
   // Atribuye la venta a la esteticista que atiende al paciente (ficha) para puntos y comisiones.
+  // TODO lo que sigue es POSTERIOR al cobro ya registrado: nunca debe tumbar la respuesta
+  // (si fallara, el cajero vería "error interno" con la factura YA creada y recobraría).
+  try {
   if (b.patientId) {
     const cr = await prisma.clinicalRecord.findUnique({ where: { patientId: b.patientId }, select: { therapistId: true } });
     if (cr?.therapistId) {
@@ -336,11 +339,16 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     const leadPat = await prisma.patient.findUnique({ where: { id: b.patientId }, select: { name: true, branchId: true } });
     if (leadPat) await upsertLead({ branchId: leadPat.branchId, patientId: b.patientId, name: leadPat.name, stage: 'VENDIDO', summary: 'Compra registrada' });
   }
+  } catch (e) {
+    // La factura ya quedó registrada: no se rompe el cobro por un fallo posterior.
+    console.error('[invoices] post-cobro (atribución/portal/lead) falló:', e);
+  }
 
   // Tras cobrar se ofrece enviar por WhatsApp la CITA del paciente CON su código:
   // ahora sí, porque ya pagó (al nuevo no se le entrega el código hasta este momento).
   // Se toma su próxima cita no cancelada y con el turno aún sin abrir.
   let citaWhatsappUrl: string | null = null;
+  try {
   if (b.patientId) {
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     const [pat, cita] = await Promise.all([
@@ -357,6 +365,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       const texto = `Hola ${tratoFormal(pat.name, pat.sex)} 💜 Su código de cita en ${sucursalLabel(cita.branch.name, cita.branch.place)} es ${cita.code}. Preséntelo al llegar. Le esperamos 10 min antes. — Li Estetic Center`;
       citaWhatsappUrl = `https://wa.me/${normalizePhone(pat.phone)}?text=${encodeURIComponent(texto)}`;
     }
+  }
+  } catch (e) {
+    console.error('[invoices] post-cobro (whatsapp de cita) falló:', e);
   }
 
   const pendiente = saldoServicios || saldoPlan;

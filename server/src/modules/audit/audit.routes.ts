@@ -16,6 +16,7 @@ const ACCION_LABEL: Record<string, string> = {
   PRICE_CHANGE: 'Cambió precio',
   CATALOG_DELETE: 'Eliminó del catálogo',
   TREATMENT_AREAS: 'Definió áreas',
+  TREATMENT_COMBO_CHANGE: 'Cambió el combo',
   PORTAL_LOGIN: 'Paciente entró al portal',
   PORTAL_MESSAGE: 'Publicó en el portal',
   PORTAL_ACCESS: 'Cambió acceso al portal',
