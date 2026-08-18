@@ -151,6 +151,7 @@ const billSchema = z.object({
 
 /** Emitir recibo (cobro). Asigna No. + NCF, calcula ITBIS y marca cargos facturados. */
 invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  try {
   const b = billSchema.parse(req.body);
 
   // Sucursal: la del recepcionista; admin usa la del paciente o la activa por ?branch=.
@@ -377,6 +378,12 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     ? `${b.paymentKind === 'SALDO' ? 'Saldo pagado' : 'Abono registrado'} · saldo restante ${'RD$' + treatmentAfter.balance.toLocaleString('en-US')}${treatmentAfter.balance > 0 ? ` (${'RD$' + treatmentAfter.perSession.toLocaleString('en-US')}/sesión en ${treatmentAfter.remaining} sesiones)` : ''}`
     : 'Recibo emitido · pago registrado en caja';
   res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg, citaWhatsappUrl });
+  } catch (e) {
+    // DIAGNÓSTICO TEMPORAL: registra el error completo en el log de Render y devuelve
+    // el mensaje real a la pantalla para ver la causa exacta del "error interno".
+    console.error('[invoices][POST] fallo del cobro:', e);
+    return res.status(500).json({ error: 'Cobro falló: ' + (e instanceof Error ? e.message : 'error desconocido') });
+  }
 });
 
 /**
