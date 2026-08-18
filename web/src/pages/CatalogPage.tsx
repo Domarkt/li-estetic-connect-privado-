@@ -51,7 +51,7 @@ export default function CatalogPage() {
 
   const cargar = () => {
     setCargando(true); setErrorCarga(null);
-    api.get<CatalogItem[]>('/catalog')
+    api.get<CatalogItem[]>('/catalog?images=1')
       .then((r) => { setItems(r); setCargando(false); })
       .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   };

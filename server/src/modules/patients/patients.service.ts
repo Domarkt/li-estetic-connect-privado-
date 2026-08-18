@@ -17,17 +17,20 @@ export function ageFromBirth(birthDate: Date | null | undefined): number | null 
   return age >= 0 && age < 130 ? age : null;
 }
 
+// Forma mínima que necesita la lista. Se escribe a mano (no atada a un include
+// concreto) para que la LISTA pueda traer solo lo indispensable y el DETALLE pueda
+// pasar un objeto más rico: ambos cumplen esta forma (subtipado estructural).
+interface PatientListShape {
+  id: string; name: string; phone: string; sex: string | null;
+  birthDate: Date | null; age: number | null; branchId: string; avatarColor: string; type: string;
+  branch: { name: string };
+  clinicalRecord: { status: string; patientFilledAt: Date | null; sentToPatientAt: Date | null; therapistId: string | null } | null;
+  treatments: { id: string; name: string; totalSessions: number; doneSessions: number; price: number; balance: number; active: boolean }[];
+  appointments: { startsAt: Date; status: string; therapist: { name: string } | null }[];
+}
+
 /** Serializa un paciente para la lista (columnas del prototipo). */
-export function serializePatient(
-  p: Prisma.PatientGetPayload<{
-    include: {
-      branch: true;
-      clinicalRecord: true;
-      treatments: { include: { areas: true; techniques: true; catalogItem: { include: { incluye: { include: { service: true } } } } } };
-      appointments: { include: { therapist: true } };
-    };
-  }>,
-) {
+export function serializePatient(p: PatientListShape) {
   // Un paciente puede tener VARIOS paquetes/combos comprados y sin consumir a la vez
   // (antes solo se mostraba uno y por eso el control se llevaba en papel).
   const activos = p.treatments.filter((t) => t.active);
@@ -96,6 +99,27 @@ export const patientInclude = {
   clinicalRecord: true,
   treatments: { include: { areas: true, techniques: true, catalogItem: { include: { incluye: { include: { service: true } } } } } },
   appointments: { include: { therapist: true } },
+} satisfies Prisma.PatientInclude;
+
+/**
+ * Include LIVIANO para la LISTA de pacientes: solo lo que usa serializePatient.
+ * Evita traer áreas/técnicas/catalogItem de cada tratamiento y TODAS las citas de
+ * cada paciente (la causa principal de la lentitud al abrir Pacientes). Trae los
+ * tratamientos activos y las últimas citas (para "próxima cita" y la esteticista).
+ */
+export const patientListInclude = {
+  branch: { select: { name: true } },
+  clinicalRecord: { select: { status: true, patientFilledAt: true, sentToPatientAt: true, therapistId: true } },
+  treatments: {
+    where: { active: true },
+    select: { id: true, name: true, totalSessions: true, doneSessions: true, price: true, balance: true, active: true },
+  },
+  appointments: {
+    where: { status: { not: 'CANCELADA' as const } },
+    select: { startsAt: true, status: true, therapist: { select: { name: true } } },
+    orderBy: { startsAt: 'desc' as const },
+    take: 8,
+  },
 } satisfies Prisma.PatientInclude;
 
 /**

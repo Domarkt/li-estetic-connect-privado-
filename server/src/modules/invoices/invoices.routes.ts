@@ -379,10 +379,10 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     : 'Recibo emitido · pago registrado en caja';
   res.status(201).json({ receipt: { ...serializeReceipt(invoice), paymentKind: b.paymentKind, treatmentAfter }, message: msg, citaWhatsappUrl });
   } catch (e) {
-    // DIAGNÓSTICO TEMPORAL: registra el error completo en el log de Render y devuelve
-    // el mensaje real a la pantalla para ver la causa exacta del "error interno".
+    // Red de seguridad: registra el error completo en el log de Render (para
+    // diagnosticar) y devuelve un mensaje limpio. Nunca deja el cobro sin respuesta.
     console.error('[invoices][POST] fallo del cobro:', e);
-    return res.status(500).json({ error: 'Cobro falló: ' + (e instanceof Error ? e.message : 'error desconocido') });
+    return res.status(500).json({ error: 'No se pudo registrar el cobro. Verifica los datos e inténtalo de nuevo.' });
   }
 });
 

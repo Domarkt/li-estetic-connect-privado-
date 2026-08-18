@@ -63,12 +63,16 @@ const serialize = <T extends ItemConServicios>(i: T) => ({
 /** Lista del catálogo, opcionalmente filtrada por tipo (?kind=SERVICIO...). */
 catalogRouter.get('/', requireStaff, async (req, res) => {
   const kind = req.query.kind as string | undefined;
+  // Las fotos (imageUrl) son data URIs pesados (~cientos de KB c/u). Solo se envían
+  // cuando se piden con ?images=1 (la pantalla de Catálogo). Facturación, agenda y
+  // demás listas no las usan: así abren mucho más rápido.
+  const withImages = req.query.images === '1';
   const items = await prisma.catalogItem.findMany({
     where: { active: true, ...(kind ? { kind: kind as never } : {}) },
     orderBy: [{ kind: 'asc' }, { name: 'asc' }],
     include: conServicios,
   });
-  res.json(items.map(serialize));
+  res.json(items.map((i) => serialize(withImages ? i : { ...i, imageUrl: null })));
 });
 
 const catalogSchema = z.object({
