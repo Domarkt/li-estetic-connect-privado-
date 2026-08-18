@@ -11,7 +11,7 @@
  *    Como Vite pone hash en el nombre, cada deploy trae archivos nuevos sin conflicto.
  */
 const CACHE = 'lec-v1';
-const SHELL = ['/', '/index.html', '/li-logo.png', '/icon.svg', '/manifest.webmanifest'];
+const SHELL = ['/', '/index.html', '/li-logo.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

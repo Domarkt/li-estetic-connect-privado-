@@ -19,6 +19,7 @@ function wa(phone: string, texto: string): string | null {
 interface Row {
   id: string; name: string; trato: string; phone: string; email: string | null; sex: string | null;
   branch: string; ultimaVisita: string | null; dias: number | null; dia?: number; wa: string | null;
+  monto?: number; // saldo pendiente (cuentas por cobrar)
 }
 
 /** Mensajes de campaña por grupo (correo y WhatsApp). */
@@ -45,13 +46,24 @@ async function buckets(scopeBranchId: string | null) {
   const porValidar: Row[] = [];
   const inactivos = { m3: [] as Row[], m6: [] as Row[], m12: [] as Row[] };
   const cumpleanos: Row[] = [];
-  if (!pacientes.length) return { porValidar, inactivos, cumpleanos };
+  const porCobrar: Row[] = [];
+  if (!pacientes.length) return { porValidar, inactivos, cumpleanos, porCobrar };
 
+  const ids = pacientes.map((p) => p.id);
   const ult = await prisma.treatmentSession.groupBy({
     by: ['patientId'], _max: { at: true },
-    where: { patientId: { in: pacientes.map((p) => p.id) } },
+    where: { patientId: { in: ids } },
   });
   const ultimaDe = new Map(ult.map((u) => [u.patientId, u._max.at ?? null]));
+
+  // Cuentas por cobrar: saldo pendiente en un plan (abono) + cargos pendientes de facturar.
+  const [saldos, cargos] = await Promise.all([
+    prisma.treatment.groupBy({ by: ['patientId'], where: { patientId: { in: ids }, balance: { gt: 0 } }, _sum: { balance: true } }),
+    prisma.chargeItem.groupBy({ by: ['patientId'], where: { patientId: { in: ids }, status: 'PENDIENTE_FACTURAR' }, _sum: { price: true } }),
+  ]);
+  const debeDe = new Map<string, number>();
+  for (const s of saldos) debeDe.set(s.patientId, (debeDe.get(s.patientId) ?? 0) + (s._sum.balance ?? 0));
+  for (const c of cargos) debeDe.set(c.patientId, (debeDe.get(c.patientId) ?? 0) + (c._sum.price ?? 0));
   const ahora = Date.now();
   const mesActual = new Date().getMonth();
   const fmt = (d: Date | null) => (d ? d.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }) : null);
@@ -68,9 +80,20 @@ async function buckets(scopeBranchId: string | null) {
     else if (dias != null && dias >= 90) inactivos.m3.push({ ...base, wa: wa(p.phone, MSG.m3.wa(trato)) });
 
     if (p.birthDate && p.birthDate.getMonth() === mesActual) cumpleanos.push({ ...base, dia: p.birthDate.getDate(), wa: wa(p.phone, MSG.cumpleanos.wa(trato)) });
+
+    // Cuentas por cobrar: si el paciente debe, se le invita a agendar su próxima
+    // sesión y a saldar el pendiente al presentarse.
+    const debe = debeDe.get(p.id) ?? 0;
+    if (debe > 0) {
+      porCobrar.push({
+        ...base, monto: debe,
+        wa: wa(p.phone, `Hola ${trato} 💜 Le escribimos de ${NEGOCIO}. Su tratamiento le está esperando: agende su próxima cita cuando guste para continuar su proceso. Tiene un saldo pendiente de RD$${debe.toLocaleString('en-US')} que puede saldar al presentarse. ¿Le agendamos su cita? 💜`),
+      });
+    }
   }
   cumpleanos.sort((a, b) => (a.dia ?? 0) - (b.dia ?? 0));
-  return { porValidar, inactivos, cumpleanos };
+  porCobrar.sort((a, b) => (b.monto ?? 0) - (a.monto ?? 0));
+  return { porValidar, inactivos, cumpleanos, porCobrar };
 }
 
 /** Reporte de seguimiento/actividad del paciente (admin/recepción/esteticista). */

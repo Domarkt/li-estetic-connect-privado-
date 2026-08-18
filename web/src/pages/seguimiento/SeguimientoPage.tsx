@@ -8,12 +8,16 @@ import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 interface SegPatient {
   id: string; name: string; trato: string; phone: string; email: string | null; sex: string | null;
   branch: string; ultimaVisita: string | null; dias: number | null; wa: string | null; dia?: number;
+  monto?: number;
 }
 interface SegData {
   porValidar: SegPatient[];
   inactivos: { m3: SegPatient[]; m6: SegPatient[]; m12: SegPatient[] };
   cumpleanos: SegPatient[];
+  porCobrar: SegPatient[];
 }
+
+const fmtRD = (n: number) => 'RD$' + (n || 0).toLocaleString('en-US');
 
 function telHref(phone: string) {
   const d = (phone || '').replace(/\D/g, '');
@@ -100,6 +104,12 @@ export default function SeguimientoPage() {
       <div className="rounded-base border border-line bg-card p-4 text-[12.5px] text-muted shadow-card">
         Contacta a tus pacientes con un mensaje ya escrito (formal, con Sr./Sra.). <b className="text-navy">Llamar</b> abre el teléfono; <b className="text-navy">WhatsApp</b> abre el chat con el mensaje listo — solo toca enviar.
       </div>
+
+      {/* Cuentas por cobrar: lo primero para recepción. Invita a agendar y saldar. */}
+      <Seccion titulo="Cuentas por cobrar 💰" color="var(--danger)"
+        hint="Pacientes con saldo pendiente · invítalos a agendar su próxima sesión y saldan al presentarse."
+        rows={data.porCobrar}
+        extra={(p) => `Saldo pendiente: ${fmtRD(p.monto ?? 0)} · agéndale su próxima cita`} />
 
       <Seccion titulo="Por validar el tratamiento" color="var(--ok)"
         hint="Atendidos en los últimos 7 días · llámalos para saber cómo se sintieron."
