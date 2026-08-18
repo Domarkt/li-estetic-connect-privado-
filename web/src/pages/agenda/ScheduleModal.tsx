@@ -25,6 +25,8 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [newEmail, setNewEmail] = useState('');
   const [newBirth, setNewBirth] = useState('');
   const [newAddress, setNewAddress] = useState('');
+  const [newSector, setNewSector] = useState('');
+  const [newProvince, setNewProvince] = useState('');
   const [branchId, setBranchId] = useState(staff?.role === 'ADMIN' ? (branches[0]?.id ?? '') : (staff?.branchId ?? ''));
   const [services, setServices] = useState<CatalogItem[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>([]); // varios servicios a agendar/cobrar
@@ -147,6 +149,8 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
           email: newEmail.trim() || undefined,
           birthDate: newBirth || undefined,
           address: newAddress.trim() || undefined,
+          sector: newSector.trim() || undefined,
+          province: newProvince.trim() || undefined,
         };
         if (staff?.role === 'ADMIN') payload.branchId = branchId;
       } else {
@@ -237,7 +241,15 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
                 <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha de nacimiento</span><input type="date" value={newBirth} onChange={(e) => setNewBirth(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
               </div>
               <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Correo electrónico <span className="font-semibold text-faint">(para enviarle acceso + código)</span></span><input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="paciente@correo.com" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
-              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Dirección</span><input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Calle, sector, ciudad" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              {/* Dirección seccionada: se captura aquí, al agendar, para que no se salte. */}
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Dirección <span className="font-semibold text-faint">(calle y número)</span></span><input value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="C/ Duarte #12" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              <div className="flex gap-3">
+                <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sector</span><input value={newSector} onChange={(e) => setNewSector(e.target.value)} placeholder="Villa Verde" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+                <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Provincia</span>
+                  <input list="prov-do-sched" value={newProvince} onChange={(e) => setNewProvince(e.target.value)} placeholder="La Romana" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" />
+                  <datalist id="prov-do-sched">{['Distrito Nacional','Santo Domingo','Santiago','La Romana','La Altagracia','San Pedro de Macorís','La Vega','Puerto Plata','Duarte','San Cristóbal','Espaillat','Azua','Barahona','Monseñor Nouel','Peravia','Hermanas Mirabal','Monte Plata','Sánchez Ramírez','María Trinidad Sánchez','Samaná','Valverde','Montecristi','Hato Mayor','El Seibo','San Juan','Baoruco','Independencia','Pedernales','Elías Piña','Santiago Rodríguez','Dajabón','San José de Ocoa'].map((pr) => <option key={pr} value={pr} />)}</datalist>
+                </label>
+              </div>
               {staff?.role === 'ADMIN' && (
                 <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sucursal</span>
                   <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]">

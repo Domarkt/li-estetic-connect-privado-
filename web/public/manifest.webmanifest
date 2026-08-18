@@ -1,0 +1,16 @@
+{
+  "name": "Li Estetic Connect",
+  "short_name": "Li Estetic",
+  "description": "Gestión de pacientes, citas y facturación de Li Estetic Center.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#B31C86",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

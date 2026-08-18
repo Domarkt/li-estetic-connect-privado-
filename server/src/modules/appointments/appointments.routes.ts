@@ -103,6 +103,8 @@ const createSchema = z.object({
     email: z.string().email().optional().or(z.literal('')),
     birthDate: z.string().optional(),
     address: z.string().optional(),
+    sector: z.string().optional(),
+    province: z.string().optional(),
   }).nullish(),
   patientType: z.enum(['NUEVO', 'RECURRENTE']).default('RECURRENTE'),
   serviceName: z.string().min(1),
@@ -140,6 +142,8 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
         email: np.email ? np.email : null,
         birthDate: np.birthDate ? new Date(np.birthDate) : null,
         ...encryptPatientWrite({ address: np.address ?? null }),
+        sector: np.sector?.trim() || null,
+        province: np.province?.trim() || null,
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
         // Si recepción ya capturó datos del Paso 1, la ficha queda lista para la parte clínica.
         clinicalRecord: { create: { status: hasStep1 ? 'PASO1_OK' : 'PENDIENTE', consultDate: new Date() } },
