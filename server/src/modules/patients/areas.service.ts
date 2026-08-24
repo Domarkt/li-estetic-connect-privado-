@@ -269,12 +269,15 @@ export async function cambiarCombo(
   });
   if (!item) return { error: 'nocatalog' as const };
   if (!(item.kind === 'COMBO' || item.kind === 'PAQUETE')) return { error: 'notcombo' as const };
-  if (item.id === t.catalogItemId) return { error: 'same' as const };
+  const sameName = item.name.trim().toLocaleLowerCase('es') === t.name.trim().toLocaleLowerCase('es');
+  if (item.id === t.catalogItemId || sameName) return { error: 'same' as const };
 
   const nuevoPrecio = item.price ?? 0;
+  const precioAplicado = priceOverride ?? nuevoPrecio;
+  if (precioAplicado <= t.price) return { error: 'notgreater' as const };
   // Diferencia = precio del nuevo combo − precio del actual (nunca negativa). Si
   // recepción negocia un monto, se usa el override.
-  const diferencia = Math.max(0, (priceOverride ?? nuevoPrecio) - t.price);
+  const diferencia = precioAplicado - t.price;
   // El total nunca baja de lo ya realizado (no se pierde el avance del paciente).
   const nuevoTotal = Math.max(t.doneSessions, item.sessions ?? 1);
   const oldName = t.name;

@@ -68,6 +68,18 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
     } finally { setSending(false); }
   }
 
+  async function voidPendingCharge(charge: PatientDetail['pendingCharges'][number]) {
+    const reason = window.prompt(`Motivo para anular “${charge.name}”:`);
+    if (reason === null) return;
+    if (reason.trim().length < 3) { toast('Escribe un motivo de al menos 3 caracteres'); return; }
+    if (!window.confirm(`¿Anular el cargo pendiente de ${fmtRD(charge.price)}? Quedará registrado en auditoría.`)) return;
+    try {
+      const r = await api.post<{ message: string }>(`/invoices/pending-charges/${charge.id}/void`, { reason: reason.trim() });
+      toast(r.message);
+      setD(await api.get<PatientDetail>(`/patients/${patientId}`));
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo anular el cargo'); }
+  }
+
   return (
     <Portal>
     <div onClick={onClose} className="fixed inset-0 z-[100] flex justify-end" style={{ background: 'rgba(28,37,64,.42)' }}>
@@ -272,7 +284,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                 <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
                   <div className="mb-1.5 text-xs font-bold" style={{ color: '#1E5A82' }}>Cargos pendientes de facturar</div>
                   {d.pendingCharges.map((c) => (
-                    <div key={c.id} className="flex justify-between text-[12.5px]" style={{ color: '#2C6B94' }}><span>{c.name}</span><span className="font-bold">{fmtRD(c.price)}</span></div>
+                    <div key={c.id} className="flex items-center justify-between gap-2 py-0.5 text-[12.5px]" style={{ color: '#2C6B94' }}>
+                      <span className="min-w-0 flex-1 truncate">{c.name}</span><span className="font-bold">{fmtRD(c.price)}</span>
+                      {staff?.role === 'ADMIN' && <button type="button" onClick={() => voidPendingCharge(c)} className="rounded-[7px] border border-danger px-2 py-0.5 text-[11px] font-bold text-danger">Anular</button>}
+                    </div>
                   ))}
                 </div>
               )}
@@ -506,7 +521,12 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
 
   useEffect(() => {
     api.get<CatalogItem[]>('/catalog')
-      .then((all) => setCombos(all.filter((c) => c.kind === 'COMBO' || c.kind === 'PAQUETE')))
+      .then((all) => setCombos(all.filter((c) =>
+        (c.kind === 'COMBO' || c.kind === 'PAQUETE')
+        && c.id !== pkg.catalogItemId
+        && c.name.trim().toLowerCase() !== pkg.name.trim().toLowerCase()
+        && c.price > pkg.price,
+      )))
       .catch(() => setCombos([]));
   }, []);
 
@@ -545,7 +565,7 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Buscar combo o paquete…"
             className="w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
           <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
-            {combos.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay combos en el catálogo.</div>}
+            {combos.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay otro combo de mayor valor disponible.</div>}
             {combos.length > 0 && lista.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Sin coincidencias.</div>}
             {lista.map((c) => {
               const on = sel?.id === c.id;

@@ -77,7 +77,7 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
     packages: patient.treatments
       .filter((t) => t.active)
       .map((t) => ({
-        id: t.id, name: t.name,
+        id: t.id, name: t.name, catalogItemId: t.catalogItemId,
         total: t.totalSessions, done: t.doneSessions,
         remaining: Math.max(0, t.totalSessions - t.doneSessions),
         pct: t.totalSessions > 0 ? Math.round((t.doneSessions / t.totalSessions) * 100) : 0,
@@ -372,6 +372,7 @@ patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requi
     const msg = r.error === 'nocatalog' ? 'El combo elegido no existe'
       : r.error === 'notcombo' ? 'Solo se puede cambiar por un combo o paquete'
       : r.error === 'same' ? 'Ese ya es el combo actual del paciente'
+      : r.error === 'notgreater' ? 'El nuevo combo debe tener un valor mayor que el actual'
       : 'Plan no encontrado';
     return res.status(400).json({ error: msg });
   }

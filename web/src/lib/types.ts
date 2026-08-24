@@ -41,7 +41,7 @@ export type PatientType = 'NUEVO' | 'RECURRENTE';
 
 /** Paquete/combo comprado por el paciente, con su avance de sesiones y saldo. */
 export interface PatientPackage {
-  id: string; name: string;
+  id: string; name: string; catalogItemId?: string | null;
   total: number; done: number; remaining: number;
   pct: number; price: number; balance: number;
   /** Áreas del cuerpo del combo (2 incluidas + posible 3ra adicional). */
