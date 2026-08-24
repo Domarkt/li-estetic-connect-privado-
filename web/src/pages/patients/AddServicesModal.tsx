@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type CatalogItem } from '../../lib/types';
 
 export default function AddServicesModal({ patientId, canBillNow, onClose, onSaved, afterAdd }: { patientId: string; canBillNow?: boolean; onClose: () => void; onSaved: () => void; afterAdd?: (patientId: string) => void }) {
   const toast = useToast();
+  const { staff } = useAuth();
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [cart, setCart] = useState<Set<string>>(new Set());
+  const [historical, setHistorical] = useState(false);
+  const [remainingSessions, setRemainingSessions] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -16,18 +20,26 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
     );
   }, []);
 
-  const toggle = (id: string) => { const n = new Set(cart); n.has(id) ? n.delete(id) : n.add(id); setCart(n); };
+  const toggle = (id: string) => {
+    if (historical) { setCart((current) => current.has(id) ? new Set() : new Set([id])); return; }
+    const n = new Set(cart); n.has(id) ? n.delete(id) : n.add(id); setCart(n);
+  };
 
   async function send() {
     if (!cart.size) { toast('Selecciona al menos un servicio o producto'); return; }
+    if (historical && (!remainingSessions || Number(remainingSessions) < 1)) { toast('Indica cuántas sesiones le quedan'); return; }
     setBusy(true);
     try {
-      const r = await api.post<{ message: string }>(`/patients/${patientId}/charges`, { catalogItemIds: [...cart] });
+      const r = historical
+        ? await api.post<{ message: string }>(`/patients/${patientId}/historical-treatment`, {
+            catalogItemId: [...cart][0], remainingSessions: Number(remainingSessions),
+          })
+        : await api.post<{ message: string }>(`/patients/${patientId}/charges`, { catalogItemIds: [...cart] });
       toast(r.message);
       onSaved();
       onClose();
       // Recepción/Admin: pasa directo a cobrar para asegurar el pago antes de que el cliente se vaya.
-      if (canBillNow && afterAdd) afterAdd(patientId);
+      if (!historical && canBillNow && afterAdd) afterAdd(patientId);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error');
     } finally {
@@ -40,10 +52,18 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
       <div onClick={stop} className="flex w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="border-b border-line px-6 py-5">
           <div className="text-base font-extrabold">Agregar servicios / productos</div>
-          <div className="mt-0.5 text-[12.5px] text-muted">{canBillNow ? 'Selecciona lo que eligió el paciente · pasarás a cobrar de inmediato' : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar'}</div>
+          <div className="mt-0.5 text-[12.5px] text-muted">{historical ? 'Carga un plan ya pagado antes de usar el sistema' : canBillNow ? 'Selecciona lo que eligió el paciente · pasarás a cobrar de inmediato' : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar'}</div>
         </div>
+        {(staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA') && (
+          <div className="border-b border-line px-6 py-4">
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3.5" style={{ borderColor: historical ? 'var(--magenta)' : 'var(--line)', background: historical ? 'var(--magenta-soft)' : 'var(--bg)' }}>
+              <input type="checkbox" checked={historical} onChange={(e) => { setHistorical(e.target.checked); setCart(new Set()); setRemainingSessions(''); }} className="mt-0.5 h-4 w-4 accent-magenta" />
+              <span><span className="block text-[13px] font-extrabold text-navy">Saldo anterior · no facturar</span><span className="mt-0.5 block text-[11.5px] leading-normal text-muted">Para combos, paquetes o servicios comprados antes de usar Li Estetic Connect. No crea cobro, saldo pendiente, venta ni comisión.</span></span>
+            </label>
+          </div>
+        )}
         <div className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto px-6 py-4">
-          {items.map((it) => {
+          {items.filter((it) => !historical || it.kind !== 'PRODUCTO').map((it) => {
             const on = cart.has(it.id);
             return (
               <div key={it.id} onClick={() => toggle(it.id)}
@@ -56,10 +76,16 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
             );
           })}
         </div>
+        {historical && (
+          <div className="border-t border-line bg-bg px-6 py-4">
+            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sesiones que le quedan</span><input value={remainingSessions} onChange={(e) => setRemainingSessions(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ej. 6" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+            <div className="mt-2 text-[11.5px] font-semibold text-ok">Se guardará como pagado, con balance RD$0.</div>
+          </div>
+        )}
         <div className="flex items-center gap-2.5 border-t border-line px-6 py-4">
           <div className="flex-1 text-[12.5px] font-semibold text-muted">{cart.size} seleccionado(s)</div>
           <button onClick={onClose} className="rounded-[10px] border border-line bg-card px-4 py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-          <button onClick={send} disabled={busy} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{canBillNow ? 'Agregar y cobrar →' : 'Enviar a recepción →'}</button>
+          <button onClick={send} disabled={busy} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{historical ? 'Guardar saldo anterior' : canBillNow ? 'Agregar y cobrar →' : 'Enviar a recepción →'}</button>
         </div>
       </div>
     </Overlay>

@@ -162,6 +162,78 @@ export async function createTreatmentFromCatalog(
   return treatment.id;
 }
 
+/** Reparte un saldo histórico entre técnicas respetando la proporción del combo. */
+export function repartirSesionesPorPeso(total: number, pesos: number[]): number[] {
+  if (total <= 0 || !pesos.length) return pesos.map(() => 0);
+  const normalizados = pesos.map((p) => Math.max(0, p));
+  const suma = normalizados.reduce((acc, p) => acc + p, 0);
+  if (suma <= 0) return repartirSesiones(total, pesos.length);
+  const exactos = normalizados.map((p) => (p / suma) * total);
+  const reparto = exactos.map(Math.floor);
+  let faltan = total - reparto.reduce((acc, n) => acc + n, 0);
+  const prioridad = exactos.map((n, i) => ({ i, resto: n - Math.floor(n) })).sort((a, b) => b.resto - a.resto);
+  for (let n = 0; n < faltan; n += 1) reparto[prioridad[n % prioridad.length].i] += 1;
+  return reparto;
+}
+
+/**
+ * Carga un plan comprado antes de usar Li Estetic Connect.
+ *
+ * Solo registra las sesiones que todavía debe recibir el paciente. No crea cargos,
+ * facturas, ventas ni comisiones, y el plan nace con precio/saldo en cero para que
+ * nunca se mezcle con las cuentas por cobrar actuales.
+ */
+export async function createHistoricalTreatmentFromCatalog(
+  patientId: string,
+  catalogItemId: string,
+  remainingSessions: number,
+): Promise<{ id: string; name: string; sessions: number } | { error: 'notfound' | 'notplan' | 'duplicate' }> {
+  const item = await prisma.catalogItem.findUnique({
+    where: { id: catalogItemId },
+    include: { incluye: { include: { service: true } } },
+  });
+  if (!item) return { error: 'notfound' };
+  if (!(item.kind === 'COMBO' || item.kind === 'PAQUETE' || item.kind === 'SERVICIO')) {
+    return { error: 'notplan' };
+  }
+
+  // Evita que una carga histórica duplique un plan que el paciente ya tiene activo.
+  const existing = await prisma.treatment.findFirst({
+    where: { patientId, catalogItemId: item.id, active: true },
+    select: { id: true },
+  });
+  if (existing) return { error: 'duplicate' };
+
+  const sessions = Math.max(1, Math.trunc(remainingSessions));
+  const treatment = await prisma.treatment.create({
+    data: {
+      patientId,
+      catalogItemId: item.id,
+      name: item.name,
+      totalSessions: sessions,
+      doneSessions: 0,
+      // Saldo anterior ya pagado fuera del sistema: nunca afecta facturación.
+      price: 0,
+      balance: 0,
+    },
+  });
+
+  if (item.defaultAreas?.length) {
+    await seedTreatmentAreas(treatment.id, item.defaultAreas, sessions);
+  }
+  // En una carga histórica solo conocemos el total restante. Las técnicas se
+  // limitan a ese total para no mostrar más servicios disponibles que el plan.
+  if (item.incluye?.length) {
+    const definidas = item.incluye.map((x) => ({ name: x.service.name, qty: x.qty }));
+    const reparto = repartirSesionesPorPeso(sessions, definidas.map((x) => x.qty));
+    await seedTreatmentTechniques(treatment.id, definidas.map((x, i) => ({ name: x.name, qty: reparto[i] })));
+  } else {
+    await seedTreatmentTechniques(treatment.id, [{ name: item.name, qty: sessions }]);
+  }
+
+  return { id: treatment.id, name: item.name, sessions };
+}
+
 /**
  * Cambio de combo: la clienta pasa a un combo de MAYOR valor (más áreas/sesiones).
  * Se conserva el avance (sesiones hechas, áreas y técnicas ya consumidas) y solo se

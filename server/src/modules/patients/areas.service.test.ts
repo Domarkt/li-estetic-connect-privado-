@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { repartirSesiones } from './areas.service.js';
+import { repartirSesiones, repartirSesionesPorPeso } from './areas.service.js';
 
 /**
  * Las sesiones que compró el paciente se reparten entre las áreas a trabajar.
@@ -40,5 +40,17 @@ describe('repartirSesiones · reparto entre áreas', () => {
     const reparto = repartirSesiones(2, 4);
     expect(reparto).toEqual([1, 1, 0, 0]);
     expect(reparto.reduce((s, n) => s + n, 0)).toBe(2);
+  });
+});
+
+describe('repartirSesionesPorPeso · saldos anteriores', () => {
+  it('conserva exactamente las sesiones restantes', () => {
+    expect(repartirSesionesPorPeso(6, [18, 3, 3])).toEqual([4, 1, 1]);
+    expect(repartirSesionesPorPeso(1, [18, 3, 3]).reduce((s, n) => s + n, 0)).toBe(1);
+  });
+
+  it('tolera pesos vacíos o inválidos sin inventar sesiones', () => {
+    expect(repartirSesionesPorPeso(3, [0, 0])).toEqual([2, 1]);
+    expect(repartirSesionesPorPeso(0, [4, 2])).toEqual([0, 0]);
   });
 });

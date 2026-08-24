@@ -17,6 +17,7 @@ export type AuditAction =
   | 'CATALOG_DELETE'
   | 'TREATMENT_AREAS'     // se (re)definieron las áreas de un plan
   | 'TREATMENT_COMBO_CHANGE' // se cambió el combo del paciente por uno de mayor valor
+  | 'SALDO_ANTERIOR_CARGADO' // se cargó un plan histórico ya pagado, sin facturación
   | 'TREATMENT_SESSION'   // se registró el procedimiento aplicado (firmado)
   | 'PORTAL_ACCESS'      // se retiró/devolvió el acceso al portal de un paciente
   | 'PORTAL_MESSAGE'     // se publicó un mensaje/oferta en el portal

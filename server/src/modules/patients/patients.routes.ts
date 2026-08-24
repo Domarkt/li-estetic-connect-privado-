@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, listarSesiones, bitacoraPaciente } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, listarSesiones, bitacoraPaciente, createHistoricalTreatmentFromCatalog } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
@@ -720,6 +720,38 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
 // ─────────────────────────────────────────────────────────────
 
 const chargeSchema = z.object({ catalogItemIds: z.array(z.string()).min(1) });
+
+const historicalTreatmentSchema = z.object({
+  catalogItemId: z.string().min(1),
+  remainingSessions: z.number().int().min(1).max(500),
+});
+
+/** Admin/Recepción cargan sesiones compradas antes del sistema, sin tocar facturación. */
+patientsRouter.post('/:id/historical-treatment', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), async (req, res) => {
+  const body = historicalTreatmentSchema.parse(req.body);
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const result = await createHistoricalTreatmentFromCatalog(patient.id, body.catalogItemId, body.remainingSessions);
+  if ('error' in result) {
+    if (result.error === 'duplicate') return res.status(409).json({ error: 'El paciente ya tiene este plan activo. Revisa sus paquetes antes de cargarlo.' });
+    if (result.error === 'notplan') return res.status(400).json({ error: 'Solo puedes cargar servicios, combos o paquetes.' });
+    return res.status(404).json({ error: 'Ítem del catálogo no encontrado' });
+  }
+
+  await audit(req, {
+    action: 'SALDO_ANTERIOR_CARGADO', entity: 'Treatment', entityId: result.id,
+    summary: `Cargó saldo anterior de ${result.name}: ${result.sessions} sesiones restantes para ${patient.name}`,
+    branchId: patient.branchId,
+  });
+
+  res.status(201).json({
+    ok: true,
+    treatmentId: result.id,
+    message: `Saldo anterior cargado: ${result.sessions} sesión${result.sessions === 1 ? '' : 'es'} · no afecta facturación ✓`,
+  });
+});
 
 /** Esteticista carga paquetes/combos a la ficha y los envía a recepción. */
 patientsRouter.post('/:id/charges', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), async (req, res) => {
