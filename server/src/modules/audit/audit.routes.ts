@@ -17,6 +17,7 @@ const ACCION_LABEL: Record<string, string> = {
   CATALOG_DELETE: 'Eliminó del catálogo',
   TREATMENT_AREAS: 'Definió áreas',
   TREATMENT_COMBO_CHANGE: 'Cambió el combo',
+  TREATMENT_BALANCE_CORRECTION: 'Corrigió saldo de plan',
   PORTAL_LOGIN: 'Paciente entró al portal',
   PORTAL_MESSAGE: 'Publicó en el portal',
   PORTAL_ACCESS: 'Cambió acceso al portal',

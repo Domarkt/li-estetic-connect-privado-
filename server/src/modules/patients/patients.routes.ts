@@ -171,6 +171,33 @@ const definirAreasSchema = z.object({
   areas: z.array(z.string().min(1)).min(1, 'Elige al menos un área').max(12),
 });
 
+const corregirSaldoSchema = z.object({
+  balance: z.number().int().nonnegative(),
+  reason: z.string().trim().min(3, 'Escribe el motivo de la corrección').max(250),
+});
+
+/**
+ * Corrige el saldo asignado a UN plan sin emitir factura ni cambiar sesiones.
+ * Es una herramienta administrativa para reparar distribuciones equivocadas de
+ * un abono. El valor anterior, el nuevo y el motivo quedan en auditoría.
+ */
+patientsRouter.patch('/treatments/:treatmentId/balance', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const b = corregirSaldoSchema.parse(req.body);
+  const treatment = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!treatment) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, treatment.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (treatment.price > 0 && b.balance > treatment.price) {
+    return res.status(400).json({ error: `El saldo no puede superar el precio del plan (RD$${treatment.price.toLocaleString('en-US')})` });
+  }
+
+  await prisma.treatment.update({ where: { id: treatment.id }, data: { balance: b.balance } });
+  await audit(req, {
+    action: 'TREATMENT_BALANCE_CORRECTION', entity: 'Treatment', entityId: treatment.id, branchId: treatment.patient.branchId,
+    summary: `${treatment.patient.name} · ${treatment.name}: RD$${treatment.balance.toLocaleString('en-US')} → RD$${b.balance.toLocaleString('en-US')} · Motivo: ${b.reason}`,
+  });
+  res.json({ ok: true, message: `Saldo corregido · ${treatment.name}: RD$${b.balance.toLocaleString('en-US')}` });
+});
+
 /** Definir las áreas incluidas del combo y repartir sus sesiones (12 → 6 y 6). */
 patientsRouter.patch('/treatments/:treatmentId/areas', requireStaff, requireRole(...areasRoles), async (req, res) => {
   const { areas } = definirAreasSchema.parse(req.body);

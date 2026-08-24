@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
-import { Portal, stop } from '../../components/Modal';
+import { Overlay, Portal, stop } from '../../components/Modal';
 import { fmtRD, type CatalogItem, type PatientDetail, type PatientPackage } from '../../lib/types';
 
 interface Props {
@@ -30,6 +30,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [qr, setQr] = useState<string | null>(null);
   const [areasFor, setAreasFor] = useState<PatientPackage | null>(null); // paquete/combo al que se le definen áreas
   const [cambioFor, setCambioFor] = useState<PatientPackage | null>(null); // combo que se va a cambiar por uno de mayor valor
+  const [saldoFor, setSaldoFor] = useState<PatientPackage | null>(null);
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -205,6 +206,11 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                         {pk.balance > 0
                           ? <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Saldo {fmtRD(pk.balance)}</span>
                           : <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Pagado</span>}
+                        {staff?.role === 'ADMIN' && (
+                          <button type="button" onClick={() => setSaldoFor(pk)} className="ml-auto rounded-[7px] border border-line bg-card px-2 py-0.5 font-bold text-magenta hover:border-magenta">
+                            Corregir saldo
+                          </button>
+                        )}
                       </div>
 
                       {/* Áreas del paquete/combo: 2 incluidas, la 3ra es adicional (RD$1,500). */}
@@ -310,8 +316,51 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
         <CambioComboModal pkg={cambioFor} onClose={() => setCambioFor(null)}
           onSaved={() => { setCambioFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
       )}
+      {saldoFor && (
+        <SaldoModal pkg={saldoFor} onClose={() => setSaldoFor(null)}
+          onSaved={() => { setSaldoFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
+      )}
     </div>
     </Portal>
+  );
+}
+
+function SaldoModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [balance, setBalance] = useState(String(pkg.balance));
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function guardar() {
+    const amount = Number(balance.replace(/,/g, ''));
+    if (!Number.isInteger(amount) || amount < 0) { toast('Escribe un saldo válido'); return; }
+    if (reason.trim().length < 3) { toast('Escribe el motivo de la corrección'); return; }
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string }>(`/patients/treatments/${pkg.id}/balance`, { balance: amount, reason: reason.trim() });
+      toast(r.message); onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo corregir el saldo'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Overlay onClose={onClose} z={140}>
+      <div onClick={stop} className="w-[430px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-6 py-5">
+          <div className="flex-1"><div className="text-base font-extrabold">Corregir saldo del plan</div><div className="mt-0.5 text-xs text-muted">{pkg.name}</div></div>
+          <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+        </div>
+        <div className="flex flex-col gap-4 px-6 py-5">
+          <div className="rounded-[9px] bg-bg px-3.5 py-3 text-[12.5px] text-muted">Saldo actual: <b className="text-ink">{fmtRD(pkg.balance)}</b>. Esta corrección no genera factura ni modifica las sesiones.</div>
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Saldo correcto en RD$</span><input autoFocus inputMode="numeric" value={balance} onChange={(e) => setBalance(e.target.value)} className="rounded-[9px] border border-line px-3.5 py-3 text-[14px] font-bold outline-none focus:border-magenta" /></label>
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Motivo obligatorio</span><textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej.: Reasignación del saldo de factura anulada F-2227" rows={3} className="resize-none rounded-[9px] border border-line px-3.5 py-3 text-[13px] outline-none focus:border-magenta" /></label>
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13px] font-bold text-muted">Cancelar</button>
+          <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13px] font-bold text-white disabled:opacity-60">Guardar corrección</button>
+        </div>
+      </div>
+    </Overlay>
   );
 }
 
