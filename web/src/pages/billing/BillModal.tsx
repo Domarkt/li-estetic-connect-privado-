@@ -173,6 +173,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     if (sinPrecio) return `Escribe el precio de: ${sinPrecio.name}`;
     if (!finalConcept.trim()) return 'Elige un servicio o paquete';
     if (!amt) return 'Escribe el monto a cobrar';
+    if (payingSaldo && t && amt > t.balance) return `El monto no puede superar el saldo (${fmtRD(t.balance)})`;
     if (freeAbono && amt >= lineasTotal) return 'El abono debe ser menor que el total';
     if (splitOn && assigned !== amt) return `El pago dividido (${fmtRD(assigned)}) debe sumar el total (${fmtRD(amt)})`;
     // Crédito fiscal: sin identificación del comprador el comprobante no sirve

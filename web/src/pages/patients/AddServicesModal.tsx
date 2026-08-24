@@ -12,6 +12,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
   const [cart, setCart] = useState<Set<string>>(new Set());
   const [historical, setHistorical] = useState(false);
   const [remainingSessions, setRemainingSessions] = useState('');
+  const [outstandingBalance, setOutstandingBalance] = useState('0');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
     try {
       const r = historical
         ? await api.post<{ message: string }>(`/patients/${patientId}/historical-treatment`, {
-            catalogItemId: [...cart][0], remainingSessions: Number(remainingSessions),
+            catalogItemId: [...cart][0], remainingSessions: Number(remainingSessions), outstandingBalance: Number(outstandingBalance) || 0,
           })
         : await api.post<{ message: string }>(`/patients/${patientId}/charges`, { catalogItemIds: [...cart] });
       toast(r.message);
@@ -57,8 +58,8 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
         {(staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA') && (
           <div className="border-b border-line px-6 py-4">
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3.5" style={{ borderColor: historical ? 'var(--magenta)' : 'var(--line)', background: historical ? 'var(--magenta-soft)' : 'var(--bg)' }}>
-              <input type="checkbox" checked={historical} onChange={(e) => { setHistorical(e.target.checked); setCart(new Set()); setRemainingSessions(''); }} className="mt-0.5 h-4 w-4 accent-magenta" />
-              <span><span className="block text-[13px] font-extrabold text-navy">Saldo anterior · no facturar</span><span className="mt-0.5 block text-[11.5px] leading-normal text-muted">Para combos, paquetes o servicios comprados antes de usar Li Estetic Connect. No crea cobro, saldo pendiente, venta ni comisión.</span></span>
+              <input type="checkbox" checked={historical} onChange={(e) => { setHistorical(e.target.checked); setCart(new Set()); setRemainingSessions(''); setOutstandingBalance('0'); }} className="mt-0.5 h-4 w-4 accent-magenta" />
+              <span><span className="block text-[13px] font-extrabold text-navy">Plan comprado antes del sistema</span><span className="mt-0.5 block text-[11.5px] leading-normal text-muted">Carga sus sesiones y el saldo que todavía debe. No crea una venta histórica ni comisión.</span></span>
             </label>
           </div>
         )}
@@ -78,8 +79,11 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
         </div>
         {historical && (
           <div className="border-t border-line bg-bg px-6 py-4">
-            <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sesiones que le quedan</span><input value={remainingSessions} onChange={(e) => setRemainingSessions(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ej. 6" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
-            <div className="mt-2 text-[11.5px] font-semibold text-ok">Se guardará como pagado, con balance RD$0.</div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sesiones que le quedan</span><input value={remainingSessions} onChange={(e) => setRemainingSessions(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ej. 6" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+              <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Saldo pendiente actual</span><input value={outstandingBalance} onChange={(e) => setOutstandingBalance(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="0 = pagado" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
+            </div>
+            <div className="mt-2 text-[11.5px] font-semibold text-ok">RD$0 significa pagado. Un saldo mayor aparecerá listo para recibir abonos, sin registrar una venta anterior.</div>
           </div>
         )}
         <div className="flex items-center gap-2.5 border-t border-line px-6 py-4">

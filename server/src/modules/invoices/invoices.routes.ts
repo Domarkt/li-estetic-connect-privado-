@@ -213,6 +213,7 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   if (b.treatmentId) {
     const t = await prisma.treatment.findUnique({ where: { id: b.treatmentId } });
     if (t && t.patientId === b.patientId) {
+      if (amount > t.balance) return res.status(400).json({ error: `El cobro no puede superar el saldo del plan (RD$${t.balance.toLocaleString('en-US')})` });
       const newBalance = Math.max(0, t.balance - amount);
       await prisma.treatment.update({ where: { id: t.id }, data: { balance: newBalance } });
       const remaining = Math.max(0, t.totalSessions - t.doneSessions);

@@ -751,6 +751,7 @@ const chargeSchema = z.object({ catalogItemIds: z.array(z.string()).min(1) });
 const historicalTreatmentSchema = z.object({
   catalogItemId: z.string().min(1),
   remainingSessions: z.number().int().min(1).max(500),
+  outstandingBalance: z.number().int().nonnegative().default(0),
 });
 
 /** Admin/Recepción cargan sesiones compradas antes del sistema, sin tocar facturación. */
@@ -760,7 +761,11 @@ patientsRouter.post('/:id/historical-treatment', requireStaff, requireRole('ADMI
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
 
-  const result = await createHistoricalTreatmentFromCatalog(patient.id, body.catalogItemId, body.remainingSessions);
+  const item = await prisma.catalogItem.findUnique({ where: { id: body.catalogItemId }, select: { price: true } });
+  if (item?.price && body.outstandingBalance > item.price) {
+    return res.status(400).json({ error: `El saldo no puede superar el precio del plan (RD$${item.price.toLocaleString('en-US')})` });
+  }
+  const result = await createHistoricalTreatmentFromCatalog(patient.id, body.catalogItemId, body.remainingSessions, body.outstandingBalance);
   if ('error' in result) {
     if (result.error === 'duplicate') return res.status(409).json({ error: 'El paciente ya tiene este plan activo. Revisa sus paquetes antes de cargarlo.' });
     if (result.error === 'notplan') return res.status(400).json({ error: 'Solo puedes cargar servicios, combos o paquetes.' });
@@ -769,14 +774,14 @@ patientsRouter.post('/:id/historical-treatment', requireStaff, requireRole('ADMI
 
   await audit(req, {
     action: 'SALDO_ANTERIOR_CARGADO', entity: 'Treatment', entityId: result.id,
-    summary: `Cargó saldo anterior de ${result.name}: ${result.sessions} sesiones restantes para ${patient.name}`,
+    summary: `Cargó saldo anterior de ${result.name}: ${result.sessions} sesiones restantes · saldo RD$${body.outstandingBalance.toLocaleString('en-US')} para ${patient.name}`,
     branchId: patient.branchId,
   });
 
   res.status(201).json({
     ok: true,
     treatmentId: result.id,
-    message: `Saldo anterior cargado: ${result.sessions} sesión${result.sessions === 1 ? '' : 'es'} · no afecta facturación ✓`,
+    message: `Plan anterior cargado: ${result.sessions} sesión${result.sessions === 1 ? '' : 'es'} · ${body.outstandingBalance > 0 ? `saldo pendiente RD$${body.outstandingBalance.toLocaleString('en-US')}` : 'pagado'} · sin crear venta histórica ✓`,
   });
 });
 

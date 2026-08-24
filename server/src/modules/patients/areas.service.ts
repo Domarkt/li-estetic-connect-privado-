@@ -180,13 +180,14 @@ export function repartirSesionesPorPeso(total: number, pesos: number[]): number[
  * Carga un plan comprado antes de usar Li Estetic Connect.
  *
  * Solo registra las sesiones que todavía debe recibir el paciente. No crea cargos,
- * facturas, ventas ni comisiones, y el plan nace con precio/saldo en cero para que
- * nunca se mezcle con las cuentas por cobrar actuales.
+ * facturas, ventas ni comisiones. Si todavía debe dinero, ese saldo sí queda en el
+ * plan para que los abonos futuros reduzcan una única fuente de verdad.
  */
 export async function createHistoricalTreatmentFromCatalog(
   patientId: string,
   catalogItemId: string,
   remainingSessions: number,
+  outstandingBalance = 0,
 ): Promise<{ id: string; name: string; sessions: number } | { error: 'notfound' | 'notplan' | 'duplicate' }> {
   const item = await prisma.catalogItem.findUnique({
     where: { id: catalogItemId },
@@ -212,9 +213,9 @@ export async function createHistoricalTreatmentFromCatalog(
       name: item.name,
       totalSessions: sessions,
       doneSessions: 0,
-      // Saldo anterior ya pagado fuera del sistema: nunca afecta facturación.
-      price: 0,
-      balance: 0,
+      // Un saldo histórico no es una venta nueva: solo habilita cobros futuros.
+      price: outstandingBalance > 0 ? item.price : 0,
+      balance: outstandingBalance,
     },
   });
 
