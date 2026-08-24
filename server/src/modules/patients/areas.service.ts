@@ -188,7 +188,8 @@ export async function createHistoricalTreatmentFromCatalog(
   catalogItemId: string,
   remainingSessions: number,
   outstandingBalance = 0,
-): Promise<{ id: string; name: string; sessions: number } | { error: 'notfound' | 'notplan' | 'duplicate' }> {
+  remainingTechniques: { serviceId: string; remaining: number }[] = [],
+): Promise<{ id: string; name: string; sessions: number } | { error: 'notfound' | 'notplan' | 'duplicate' | 'techniques' }> {
   const item = await prisma.catalogItem.findUnique({
     where: { id: catalogItemId },
     include: { incluye: { include: { service: true } } },
@@ -204,6 +205,16 @@ export async function createHistoricalTreatmentFromCatalog(
     select: { id: true },
   });
   if (existing) return { error: 'duplicate' };
+
+  // Si el combo tiene varias técnicas, recepción debe declarar exactamente
+  // cuánto queda de cada una. No se infiere: son datos clínico-operativos reales.
+  if (item.incluye?.length) {
+    const entered = new Map(remainingTechniques.map((x) => [x.serviceId, x.remaining]));
+    const valid = entered.size === item.incluye.length && item.incluye.every(
+      (x) => entered.has(x.serviceId) && (entered.get(x.serviceId) ?? -1) >= 0 && (entered.get(x.serviceId) ?? 0) <= x.qty,
+    );
+    if (!valid) return { error: 'techniques' };
+  }
 
   const sessions = Math.max(1, Math.trunc(remainingSessions));
   const treatment = await prisma.treatment.create({
@@ -222,12 +233,11 @@ export async function createHistoricalTreatmentFromCatalog(
   if (item.defaultAreas?.length) {
     await seedTreatmentAreas(treatment.id, item.defaultAreas, sessions);
   }
-  // En una carga histórica solo conocemos el total restante. Las técnicas se
-  // limitan a ese total para no mostrar más servicios disponibles que el plan.
+  // Las técnicas nacen con las cantidades restantes exactas informadas por
+  // recepción; `done=0` porque el sistema empieza a controlar desde hoy.
   if (item.incluye?.length) {
-    const definidas = item.incluye.map((x) => ({ name: x.service.name, qty: x.qty }));
-    const reparto = repartirSesionesPorPeso(sessions, definidas.map((x) => x.qty));
-    await seedTreatmentTechniques(treatment.id, definidas.map((x, i) => ({ name: x.name, qty: reparto[i] })));
+    const entered = new Map(remainingTechniques.map((x) => [x.serviceId, x.remaining]));
+    await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: entered.get(x.serviceId) ?? 0 })));
   } else {
     await seedTreatmentTechniques(treatment.id, [{ name: item.name, qty: sessions }]);
   }

@@ -752,6 +752,7 @@ const historicalTreatmentSchema = z.object({
   catalogItemId: z.string().min(1),
   remainingSessions: z.number().int().min(1).max(500),
   outstandingBalance: z.number().int().nonnegative().default(0),
+  remainingTechniques: z.array(z.object({ serviceId: z.string().min(1), remaining: z.number().int().nonnegative() })).default([]),
 });
 
 /** Admin/Recepción cargan sesiones compradas antes del sistema, sin tocar facturación. */
@@ -765,9 +766,10 @@ patientsRouter.post('/:id/historical-treatment', requireStaff, requireRole('ADMI
   if (item?.price && body.outstandingBalance > item.price) {
     return res.status(400).json({ error: `El saldo no puede superar el precio del plan (RD$${item.price.toLocaleString('en-US')})` });
   }
-  const result = await createHistoricalTreatmentFromCatalog(patient.id, body.catalogItemId, body.remainingSessions, body.outstandingBalance);
+  const result = await createHistoricalTreatmentFromCatalog(patient.id, body.catalogItemId, body.remainingSessions, body.outstandingBalance, body.remainingTechniques);
   if ('error' in result) {
     if (result.error === 'duplicate') return res.status(409).json({ error: 'El paciente ya tiene este plan activo. Revisa sus paquetes antes de cargarlo.' });
+    if (result.error === 'techniques') return res.status(400).json({ error: 'Indica correctamente cuánto queda de cada servicio incluido en el combo.' });
     if (result.error === 'notplan') return res.status(400).json({ error: 'Solo puedes cargar servicios, combos o paquetes.' });
     return res.status(404).json({ error: 'Ítem del catálogo no encontrado' });
   }

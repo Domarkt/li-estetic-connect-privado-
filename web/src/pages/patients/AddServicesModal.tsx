@@ -13,6 +13,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
   const [historical, setHistorical] = useState(false);
   const [remainingSessions, setRemainingSessions] = useState('');
   const [outstandingBalance, setOutstandingBalance] = useState('0');
+  const [remainingTechniques, setRemainingTechniques] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -22,18 +23,28 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
   }, []);
 
   const toggle = (id: string) => {
-    if (historical) { setCart((current) => current.has(id) ? new Set() : new Set([id])); return; }
+    if (historical) { setCart((current) => current.has(id) ? new Set() : new Set([id])); setRemainingTechniques({}); return; }
     const n = new Set(cart); n.has(id) ? n.delete(id) : n.add(id); setCart(n);
   };
 
   async function send() {
     if (!cart.size) { toast('Selecciona al menos un servicio o producto'); return; }
     if (historical && (!remainingSessions || Number(remainingSessions) < 1)) { toast('Indica cuántas sesiones le quedan'); return; }
+    const selectedItem = items.find((item) => cart.has(item.id));
+    if (historical && selectedItem?.services?.length) {
+      const invalid = selectedItem.services.some((service) => {
+        const raw = remainingTechniques[service.id];
+        const remaining = Number(raw);
+        return raw === undefined || raw === '' || !Number.isInteger(remaining) || remaining < 0 || remaining > (service.qty ?? 0);
+      });
+      if (invalid) { toast('Indica cuánto queda de cada servicio, sin superar lo incluido'); return; }
+    }
     setBusy(true);
     try {
       const r = historical
         ? await api.post<{ message: string }>(`/patients/${patientId}/historical-treatment`, {
             catalogItemId: [...cart][0], remainingSessions: Number(remainingSessions), outstandingBalance: Number(outstandingBalance) || 0,
+            remainingTechniques: (selectedItem?.services ?? []).map((service) => ({ serviceId: service.id, remaining: Number(remainingTechniques[service.id]) })),
           })
         : await api.post<{ message: string }>(`/patients/${patientId}/charges`, { catalogItemIds: [...cart] });
       toast(r.message);
@@ -50,7 +61,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
 
   return (
     <Overlay onClose={onClose} z={120}>
-      <div onClick={stop} className="flex w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+      <div onClick={stop} className="flex max-h-[92vh] w-[480px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="border-b border-line px-6 py-5">
           <div className="text-base font-extrabold">Agregar servicios / productos</div>
           <div className="mt-0.5 text-[12.5px] text-muted">{historical ? 'Carga un plan ya pagado antes de usar el sistema' : canBillNow ? 'Selecciona lo que eligió el paciente · pasarás a cobrar de inmediato' : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar'}</div>
@@ -58,7 +69,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
         {(staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA') && (
           <div className="border-b border-line px-6 py-4">
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3.5" style={{ borderColor: historical ? 'var(--magenta)' : 'var(--line)', background: historical ? 'var(--magenta-soft)' : 'var(--bg)' }}>
-              <input type="checkbox" checked={historical} onChange={(e) => { setHistorical(e.target.checked); setCart(new Set()); setRemainingSessions(''); setOutstandingBalance('0'); }} className="mt-0.5 h-4 w-4 accent-magenta" />
+              <input type="checkbox" checked={historical} onChange={(e) => { setHistorical(e.target.checked); setCart(new Set()); setRemainingSessions(''); setOutstandingBalance('0'); setRemainingTechniques({}); }} className="mt-0.5 h-4 w-4 accent-magenta" />
               <span><span className="block text-[13px] font-extrabold text-navy">Plan comprado antes del sistema</span><span className="mt-0.5 block text-[11.5px] leading-normal text-muted">Carga sus sesiones y el saldo que todavía debe. No crea una venta histórica ni comisión.</span></span>
             </label>
           </div>
@@ -78,11 +89,25 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
           })}
         </div>
         {historical && (
-          <div className="border-t border-line bg-bg px-6 py-4">
+          <div className="max-h-[42vh] overflow-y-auto border-t border-line bg-bg px-6 py-4">
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sesiones que le quedan</span><input value={remainingSessions} onChange={(e) => setRemainingSessions(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ej. 6" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
               <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Saldo pendiente actual</span><input value={outstandingBalance} onChange={(e) => setOutstandingBalance(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="0 = pagado" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" /></label>
             </div>
+            {(items.find((item) => cart.has(item.id))?.services ?? []).length > 0 && (
+              <div className="mt-4 rounded-[10px] border border-line bg-card p-3.5">
+                <div className="mb-1 text-[12.5px] font-extrabold">Servicios que todavía le quedan</div>
+                <div className="mb-3 text-[11.5px] text-muted">Escribe la cantidad real restante de cada técnica. Usa 0 si ya la consumió completa.</div>
+                <div className="flex flex-col gap-2.5">
+                  {items.find((item) => cart.has(item.id))!.services!.map((service) => (
+                    <label key={service.id} className="grid grid-cols-[1fr_95px] items-center gap-3">
+                      <span className="text-[12.5px] font-semibold">{service.name} <span className="text-[11px] font-normal text-faint">de {service.qty ?? 0}</span></span>
+                      <input value={remainingTechniques[service.id] ?? ''} onChange={(e) => setRemainingTechniques((current) => ({ ...current, [service.id]: e.target.value.replace(/\D/g, '') }))} inputMode="numeric" placeholder="Restan" className="rounded-[8px] border border-line px-2.5 py-2 text-center text-[13px] font-bold outline-none focus:border-magenta" />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-2 text-[11.5px] font-semibold text-ok">RD$0 significa pagado. Un saldo mayor aparecerá listo para recibir abonos, sin registrar una venta anterior.</div>
           </div>
         )}
