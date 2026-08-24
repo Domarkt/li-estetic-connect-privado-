@@ -9,13 +9,13 @@ export const teamRouter = Router();
 
 /** Sucursal efectiva del hilo para este usuario: admin puede cualquiera; el resto, la suya. */
 function resolveThreadBranch(req: Request, branchId?: string): string | null {
-  if (req.staff!.role === 'ADMIN') return branchId ?? null;
+  if (req.staff!.role === 'ADMIN' || req.staff!.role === 'COORDINADOR') return branchId ?? null;
   return req.staff!.branchId ?? null; // personal de sucursal: siempre la suya
 }
 
 /** Lista de hilos (uno por sucursal) con último mensaje y no leídos. */
 teamRouter.get('/threads', requireStaff, async (req, res) => {
-  const isAdmin = req.staff!.role === 'ADMIN';
+  const isAdmin = req.staff!.role === 'ADMIN' || req.staff!.role === 'COORDINADOR';
   const branches = await prisma.branch.findMany({
     where: isAdmin ? {} : { id: req.staff!.branchId ?? '__none__' },
     orderBy: { code: 'asc' },
@@ -48,12 +48,12 @@ teamRouter.get('/threads', requireStaff, async (req, res) => {
 teamRouter.get('/threads/:branchId/messages', requireStaff, async (req, res) => {
   const branchId = resolveThreadBranch(req, req.params.branchId);
   if (!branchId) return res.status(400).json({ error: 'Sin sucursal' });
-  if (req.staff!.role !== 'ADMIN' && branchId !== req.staff!.branchId) {
+  if (req.staff!.role !== 'ADMIN' && req.staff!.role !== 'COORDINADOR' && branchId !== req.staff!.branchId) {
     return res.status(403).json({ error: 'Solo puedes ver el chat de tu sucursal' });
   }
 
   // El personal ve mensajes dirigidos a él (ALL o su rol) y los que él mismo envió; el admin ve todo.
-  const roleFilter = req.staff!.role === 'ADMIN' ? {} : { OR: [{ targetRole: { in: ['ALL', req.staff!.role] } }, { senderId: req.staff!.sub }] };
+  const roleFilter = req.staff!.role === 'ADMIN' || req.staff!.role === 'COORDINADOR' ? {} : { OR: [{ targetRole: { in: ['ALL', req.staff!.role] } }, { senderId: req.staff!.sub }] };
   const messages = await prisma.teamMessage.findMany({ where: { branchId, ...roleFilter }, orderBy: { createdAt: 'asc' }, take: 200 });
 
   await prisma.teamThreadRead.upsert({
@@ -96,7 +96,7 @@ teamRouter.post('/threads/:branchId/messages', requireStaff, async (req, res) =>
   const b = sendSchema.parse(req.body);
   const branchId = resolveThreadBranch(req, req.params.branchId);
   if (!branchId) return res.status(400).json({ error: 'Sin sucursal' });
-  if (req.staff!.role !== 'ADMIN' && branchId !== req.staff!.branchId) {
+  if (req.staff!.role !== 'ADMIN' && req.staff!.role !== 'COORDINADOR' && branchId !== req.staff!.branchId) {
     return res.status(403).json({ error: 'Solo puedes escribir en el chat de tu sucursal' });
   }
 

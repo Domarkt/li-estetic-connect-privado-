@@ -158,7 +158,7 @@ assetsRouter.post('/:id/event', requireStaff, async (req, res) => {
     where: { id: asset.id },
     data: {
       ...(newStatus ? { status: newStatus } : {}),
-      events: { create: { type: b.type, note: b.note ?? null, cost: b.cost ?? null, reportedById: req.staff!.sub } },
+      events: { create: { type: b.type, note: b.note ?? null, cost: isAdmin ? (b.cost ?? null) : null, reportedById: req.staff!.sub } },
     },
   });
 
@@ -187,7 +187,7 @@ assetsRouter.get('/:id/events', requireStaff, branchScope, async (req, res) => {
     orderBy: { createdAt: 'desc' }, take: 50,
   });
   res.json(events.map((e) => ({
-    id: e.id, type: e.type, note: e.note, cost: e.cost,
+    id: e.id, type: e.type, note: e.note, cost: req.staff!.role === 'COORDINADOR' ? null : e.cost,
     by: e.reportedBy?.name ?? '—',
     date: e.createdAt.toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
   })));

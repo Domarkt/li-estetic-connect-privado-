@@ -31,6 +31,7 @@ import { teamRouter } from './modules/team/team.routes.js';
 import { maintenanceRouter } from './modules/maintenance/maintenance.routes.js';
 import { purchasesRouter } from './modules/purchases/purchases.routes.js';
 import { followupRouter } from './modules/followup/followup.routes.js';
+import { denyCoordinator, requireModule, requireStaff } from './middleware/auth.js';
 
 export function createApp() {
   const app = express();
@@ -72,28 +73,28 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/audit', auditRouter);
   app.use('/api/branches', branchesRouter);
-  app.use('/api/catalog', catalogRouter);
-  app.use('/api/patients', patientsRouter);
-  app.use('/api/appointments', appointmentsRouter);
+  app.use('/api/catalog', requireStaff, denyCoordinator, catalogRouter);
+  app.use('/api/patients', requireStaff, requireModule('pacientes'), patientsRouter);
+  app.use('/api/appointments', requireStaff, requireModule('agenda'), appointmentsRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api/invoices', invoicesRouter);
-  app.use('/api/messaging', messagingRouter);
+  app.use('/api/invoices', requireStaff, denyCoordinator, invoicesRouter);
+  app.use('/api/messaging', requireStaff, requireModule('mensajes'), messagingRouter);
   app.use('/api/pipeline', pipelineRouter);
-  app.use('/api/points', pointsRouter);
-  app.use('/api/config', configRouter);
-  app.use('/api/portal-admin', portalAdminRouter);
+  app.use('/api/points', requireStaff, denyCoordinator, pointsRouter);
+  app.use('/api/config', requireStaff, denyCoordinator, configRouter);
+  app.use('/api/portal-admin', requireStaff, denyCoordinator, portalAdminRouter);
   app.use('/api/portal', portalRouter);
-  app.use('/api/cashclose', cashCloseRouter);
+  app.use('/api/cashclose', requireStaff, denyCoordinator, cashCloseRouter);
   app.use('/api/badges', badgesRouter);
   app.use('/api/notifications', notificationsRouter);
-  app.use('/api/reports', reportsRouter);
-  app.use('/api/inventory', inventoryRouter);
-  app.use('/api/assets', assetsRouter);
-  app.use('/api/team-chat', teamRouter);
+  app.use('/api/reports', requireStaff, denyCoordinator, reportsRouter);
+  app.use('/api/inventory', requireStaff, denyCoordinator, inventoryRouter);
+  app.use('/api/assets', requireStaff, requireModule('equipos'), assetsRouter);
+  app.use('/api/team-chat', requireStaff, requireModule('chat'), teamRouter);
   app.use('/api/maintenance', maintenanceRouter);
-  app.use('/api/purchases', purchasesRouter);
-  app.use('/api/followup', followupRouter);
+  app.use('/api/purchases', requireStaff, denyCoordinator, purchasesRouter);
+  app.use('/api/followup', requireStaff, requireModule('contactar'), followupRouter);
 
   // Fases siguientes montan aquí sus routers:
   // app.use('/api/invoices', invoicesRouter);   // Fase 4

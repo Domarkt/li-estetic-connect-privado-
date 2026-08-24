@@ -8,6 +8,7 @@ import type { Role, Branch } from '../lib/types';
 // Sin correos de ejemplo: cada quien escribe sus credenciales (nunca precargadas).
 const ROLE_TILES: { key: Role; label: string; desc: string; icon: string }[] = [
   { key: 'ADMIN', label: 'Administradora', desc: 'Vista general', icon: 'grid' },
+  { key: 'COORDINADOR', label: 'Coordinador', desc: 'Módulos asignados · sin finanzas', icon: 'grid' },
   { key: 'RECEPCIONISTA', label: 'Recepcionista', desc: 'Agenda · cobro', icon: 'cal' },
   { key: 'ESTETICISTA', label: 'Esteticista', desc: 'Fichas · atención', icon: 'star' },
 ];
@@ -49,16 +50,16 @@ export default function StaffLogin() {
       });
   }, []);
 
-  const isAdmin = role === 'ADMIN';
-  const branchHint = isAdmin
-    ? 'La Administradora accede al panel general de las 3 sucursales.'
+  const isGlobal = role === 'ADMIN' || role === 'COORDINADOR';
+  const branchHint = isGlobal
+    ? 'Este rol accede a las sucursales permitidas desde su panel.'
     : 'Solo verás y operarás datos de la sucursal seleccionada.';
 
   async function submit() {
     setError('');
     setBusy(true);
     try {
-      await loginStaff(email.trim(), password, role, isAdmin ? undefined : branchId);
+      await loginStaff(email.trim(), password, role, isGlobal ? undefined : branchId);
       navigate('/app');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
@@ -145,7 +146,7 @@ export default function StaffLogin() {
             </label>
           </div>
 
-          {!isAdmin && (
+          {!isGlobal && (
             <>
               <div className="mb-2.5 text-[13px] font-bold text-ink">Sucursal</div>
               <div className="mb-3 flex flex-col gap-2">

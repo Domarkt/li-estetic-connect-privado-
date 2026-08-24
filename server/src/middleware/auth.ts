@@ -2,6 +2,10 @@ import type { Request, Response, NextFunction } from 'express';
 import type { Role } from '@prisma/client';
 import { verifyStaff, verifyPatient } from '../utils/jwt.js';
 import type { StaffTokenPayload, PatientTokenPayload } from '../utils/jwt.js';
+import { prisma } from '../db/prisma.js';
+
+export const COORDINATOR_MODULES = ['pacientes', 'agenda', 'mensajes', 'equipos', 'contactar', 'chat'] as const;
+export type CoordinatorModule = typeof COORDINATOR_MODULES[number];
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -57,7 +61,7 @@ export function requireRole(...roles: Role[]) {
 export function branchScope(req: Request, res: Response, next: NextFunction) {
   if (!req.staff) return res.status(401).json({ error: 'No autenticado' });
 
-  if (req.staff.role === 'ADMIN') {
+  if (req.staff.role === 'ADMIN' || req.staff.role === 'COORDINADOR') {
     const q = (req.query.branch as string | undefined) ?? null;
     req.scopeBranchId = !q || q === 'all' ? null : q;
   } else {
@@ -75,8 +79,28 @@ export function branchScope(req: Request, res: Response, next: NextFunction) {
  */
 export function assertBranchAccess(req: Request, targetBranchId: string): boolean {
   if (!req.staff) return false;
-  if (req.staff.role === 'ADMIN') return true;
+  if (req.staff.role === 'ADMIN' || req.staff.role === 'COORDINADOR') return true;
   return req.staff.branchId === targetBranchId;
+}
+
+/** Coordinación solo entra a módulos operativos habilitados por administración. */
+export function requireModule(module: CoordinatorModule) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.staff) return res.status(401).json({ error: 'No autenticado' });
+    if (req.staff.role !== 'COORDINADOR') return next();
+    const user = await prisma.user.findUnique({ where: { id: req.staff.sub }, select: { active: true, allowedModules: true } });
+    if (!user?.active || !user.allowedModules.includes(module)) {
+      return res.status(403).json({ error: 'Este módulo no está habilitado para coordinación' });
+    }
+    next();
+  };
+}
+
+/** Cerrojazo explícito para áreas financieras, aunque una ruta interna sea solo requireStaff. */
+export function denyCoordinator(req: Request, res: Response, next: NextFunction) {
+  if (!req.staff) return res.status(401).json({ error: 'No autenticado' });
+  if (req.staff.role === 'COORDINADOR') return res.status(403).json({ error: 'Coordinación no tiene acceso financiero' });
+  next();
 }
 
 /** Requiere token de paciente válido (portal externo). */

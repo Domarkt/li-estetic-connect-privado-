@@ -4,6 +4,7 @@ import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
+import { useBranch } from '../../layout/BranchContext';
 
 interface SegPatient {
   id: string; name: string; trato: string; phone: string; email: string | null; sex: string | null;
@@ -72,6 +73,7 @@ function Seccion({ titulo, hint, color, rows, extra, grupo, onEnviar, enviando }
 export default function SeguimientoPage() {
   const { staff } = useAuth();
   const toast = useToast();
+  const { activeBranch } = useBranch();
   const [data, setData] = useState<SegData | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,10 +82,11 @@ export default function SeguimientoPage() {
 
   const load = useCallback(() => {
     setCargando(true); setError(null);
-    api.get<SegData>('/followup')
+    const q = (staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR') && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
+    api.get<SegData>(`/followup${q}`)
       .then((r) => { setData(r); setCargando(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : 'Error'); setCargando(false); });
-  }, []);
+  }, [activeBranch, staff?.role]);
   useEffect(() => { load(); }, [load]);
   useAutoRefresh(load);
 

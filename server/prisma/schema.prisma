@@ -20,6 +20,7 @@ datasource db {
 
 enum Role {
   ADMIN // Administradora (Dueña/Directora) — ve las 3 sucursales
+  COORDINADOR // Coordina sucursales; módulos operativos asignados, sin finanzas
   RECEPCIONISTA // Recepcionista — solo su sucursal, factura
   ESTETICISTA // Esteticista (Masajista) — solo su sucursal, parte clínica
 }
@@ -105,6 +106,7 @@ enum PointsReason {
 enum ChargeItemStatus {
   PENDIENTE_FACTURAR // cargado por esteticista, esperando recepción
   FACTURADO
+  ANULADO // retirado por administración; se conserva para auditoría
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -207,6 +209,8 @@ model User {
   active           Boolean  @default(true)
   // Permiso extra: gestionar el catálogo (servicios/productos) sin ser admin.
   canManageCatalog Boolean  @default(false)
+  // Módulos operativos habilitados por Admin. Solo se usa para COORDINADOR.
+  allowedModules   String[] @default([])
   avatarColor      String   @default("#B31C86")
   createdAt        DateTime @default(now())
 

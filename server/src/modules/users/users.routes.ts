@@ -5,11 +5,12 @@ import { requireStaff, requireRole, branchScope } from '../../middleware/auth.js
 import { hashPassword } from '../../utils/password.js';
 import { commissionFor } from '../points/points.service.js';
 import { isBaseAdmin } from '../../config/baseAccounts.js';
+import { COORDINATOR_MODULES } from '../../middleware/auth.js';
 
 export const usersRouter = Router();
 
 const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Administradora', RECEPCIONISTA: 'Recepcionista', ESTETICISTA: 'Esteticista',
+  ADMIN: 'Administradora', COORDINADOR: 'Coordinador', RECEPCIONISTA: 'Recepcionista', ESTETICISTA: 'Esteticista',
 };
 const AVATAR_COLORS = ['#B31C86', '#8E1268', '#2C7FB8', '#1F9D6B', '#245E85', '#C9880E', '#17805A'];
 
@@ -47,7 +48,7 @@ usersRouter.get('/team', requireStaff, requireRole('ADMIN'), branchScope, async 
   const systemUsers = users.map((u) => ({
     id: u.id, name: u.name, email: u.email, role: ROLE_LABEL[u.role], roleKey: u.role,
     branch: u.branch?.name ?? 'Todas', branchId: u.branchId, avatarColor: u.avatarColor, active: u.active,
-    canManageCatalog: u.canManageCatalog,
+    canManageCatalog: u.canManageCatalog, allowedModules: u.allowedModules,
     // Correo base de Domarkt: no se puede eliminar ni desactivar desde aquí.
     protected: isBaseAdmin(u.email),
   }));
@@ -59,9 +60,10 @@ const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
-  role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']),
+  role: z.enum(['ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA']),
   branchId: z.string().nullish(),
   canManageCatalog: z.boolean().optional(),
+  allowedModules: z.array(z.enum(COORDINATOR_MODULES)).default([]),
 });
 
 /** Crear colaborador (Admin): asigna correo + contraseña de acceso al sistema. */
@@ -73,13 +75,16 @@ usersRouter.post('/', requireStaff, requireRole('ADMIN'), async (req, res) => {
   if (exists) return res.status(409).json({ error: 'Ya existe un usuario con ese correo' });
 
   // Recepción/Esteticista requieren sucursal; Admin ve todas (branchId null).
-  const branchId = b.role === 'ADMIN' ? null : b.branchId ?? null;
-  if (b.role !== 'ADMIN' && !branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
+  const globalRole = b.role === 'ADMIN' || b.role === 'COORDINADOR';
+  if (b.role === 'COORDINADOR' && b.allowedModules.length === 0) return res.status(400).json({ error: 'Habilita al menos un módulo operativo' });
+  const branchId = globalRole ? null : b.branchId ?? null;
+  if (!globalRole && !branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
 
   const user = await prisma.user.create({
     data: {
       name: b.name, email, passwordHash: await hashPassword(b.password), role: b.role, branchId,
       canManageCatalog: b.canManageCatalog ?? false,
+      allowedModules: b.role === 'COORDINADOR' ? b.allowedModules : [],
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
       ...(b.role === 'ESTETICISTA' ? { therapistProfile: { create: {} } } : {}),
     },
@@ -96,10 +101,11 @@ usersRouter.post('/', requireStaff, requireRole('ADMIN'), async (req, res) => {
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
+  role: z.enum(['ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
   branchId: z.string().nullish(),
   active: z.boolean().optional(),
   canManageCatalog: z.boolean().optional(),
+  allowedModules: z.array(z.enum(COORDINATOR_MODULES)).optional(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
 });
 
@@ -128,16 +134,21 @@ usersRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) =
   }
   if (b.active !== undefined) data.active = b.active;
   if (b.canManageCatalog !== undefined) data.canManageCatalog = b.canManageCatalog;
+  if (b.allowedModules !== undefined) data.allowedModules = b.allowedModules;
   if (b.password) data.passwordHash = await hashPassword(b.password);
 
   const role = b.role ?? current.role;
+  const modules = b.allowedModules ?? current.allowedModules;
+  if (role === 'COORDINADOR' && modules.length === 0) return res.status(400).json({ error: 'Habilita al menos un módulo operativo' });
   if (b.role !== undefined) data.role = b.role;
   if (b.role !== undefined || b.branchId !== undefined) {
     // ADMIN ve todas (branchId null); Recepción/Esteticista requieren sucursal.
-    const branchId = role === 'ADMIN' ? null : (b.branchId ?? current.branchId);
-    if (role !== 'ADMIN' && !branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
+    const globalRole = role === 'ADMIN' || role === 'COORDINADOR';
+    const branchId = globalRole ? null : (b.branchId ?? current.branchId);
+    if (!globalRole && !branchId) return res.status(400).json({ error: 'Selecciona una sucursal' });
     data.branchId = branchId;
   }
+  if (role !== 'COORDINADOR') data.allowedModules = [];
   // Al volverse esteticista se crea su perfil de desempeño si aún no existe.
   if (role === 'ESTETICISTA' && !current.therapistProfile) {
     data.therapistProfile = { create: {} };

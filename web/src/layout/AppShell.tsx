@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { useBranch } from './BranchContext';
@@ -32,6 +32,14 @@ const NAV: Record<Role, NavItem[]> = {
     { key: 'equipo', label: 'Equipo' },
     { key: 'cierre', label: 'Cierre de caja' },
     { key: 'configuracion', label: 'Configuración' },
+  ],
+  COORDINADOR: [
+    { key: 'pacientes', label: 'Pacientes' },
+    { key: 'agenda', label: 'Agenda' },
+    { key: 'mensajes', label: 'Mensajes' },
+    { key: 'equipos', label: 'Equipos' },
+    { key: 'contactar', label: 'Seguimiento pacientes' },
+    { key: 'chat', label: 'Chat equipo' },
   ],
   RECEPCIONISTA: [
     { key: 'agenda', label: 'Agenda' },
@@ -92,7 +100,7 @@ export default function AppShell() {
 
   useEffect(() => {
     if (!staff) return;
-    const q = staff.role === 'ADMIN' && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
+    const q = (staff.role === 'ADMIN' || staff.role === 'COORDINADOR') && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
     api.get<Badges>(`/badges${q}`)
       .then(setBadgeData)
       .catch(() => setBadgeData({ mensajes: 0, agenda: 0, notificaciones: 0 }));
@@ -100,7 +108,9 @@ export default function AppShell() {
 
   if (!staff) return null;
   // Con el permiso de catálogo, el colaborador ve "Catálogo" aunque no sea admin.
-  const base = NAV[staff.role];
+  const base = staff.role === 'COORDINADOR'
+    ? NAV.COORDINADOR.filter((item) => staff.allowedModules?.includes(item.key as never))
+    : NAV[staff.role];
   let items = staff.canManageCatalog && !base.some((i) => i.key === 'catalogo')
     ? [...base, { key: 'catalogo', label: 'Catálogo' }]
     : base;
@@ -120,7 +130,11 @@ export default function AppShell() {
   const page = PAGE_TITLE[current] ?? PAGE_TITLE.dashboard;
 
   const initials = staff.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-  const sidebarBranch = staff.role === 'ADMIN'
+  if (staff.role === 'COORDINADOR' && !items.some((item) => item.key === current)) {
+    return <Navigate to={items[0] ? `/app/${items[0].key}` : '/login'} replace />;
+  }
+
+  const sidebarBranch = staff.role === 'ADMIN' || staff.role === 'COORDINADOR'
     ? { name: 'Todas las sucursales', place: 'Panel general', dot: '#B31C86' }
     : { name: staff.branch?.name ?? '', place: staff.branch?.place ?? '', dot: staff.branch?.dotColor ?? '#B31C86' };
 
@@ -191,7 +205,7 @@ export default function AppShell() {
             <div className="truncate text-xs text-muted">{page.sub}</div>
           </div>
 
-          {staff.role === 'ADMIN' && (
+          {(staff.role === 'ADMIN' || staff.role === 'COORDINADOR') && (
             <div className="hidden gap-1.5 rounded-[10px] border border-line bg-bg p-1 sm:flex">
               {[{ id: 'all', label: 'Todas' }, ...branches.map((b) => ({ id: b.id, label: b.name.replace('Estética ', 'E') }))].map((b) => {
                 const on = activeBranch === b.id;
@@ -216,7 +230,7 @@ export default function AppShell() {
         </header>
 
         {/* Banner de sucursal activa (admin filtrando) */}
-        {staff.role === 'ADMIN' && active && (
+        {(staff.role === 'ADMIN' || staff.role === 'COORDINADOR') && active && (
           <div className="mx-4 mt-4 flex items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-card sm:mx-7"
             style={{ borderLeft: `4px solid ${active.dotColor}` }}>
             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: active.dotColor }} />

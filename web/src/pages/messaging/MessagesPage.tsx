@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
+import { useBranch } from '../../layout/BranchContext';
 import TeamChat from '../team/ChatPage';
 import type { ChatMessage, Conversation } from '../../lib/types';
 
@@ -14,7 +15,8 @@ const ALL_FILTERS: { key: string; label: string }[] = [
 
 export default function MessagesPage() {
   const { staff } = useAuth();
-  const isAdmin = staff?.role === 'ADMIN';
+  const { activeBranch } = useBranch();
+  const isAdmin = staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR';
   // El personal de sucursal solo ve WhatsApp; los demás canales son del admin.
   const FILTERS = isAdmin ? ALL_FILTERS : [{ key: 'WHATSAPP', label: 'WhatsApp' }];
   const [filter, setFilter] = useState(isAdmin ? 'all' : 'WHATSAPP');
@@ -26,11 +28,12 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState('');
 
   const loadConvs = useCallback(() => {
-    api.get<Conversation[]>(`/messaging/conversations?channel=${filter}`).then((cs) => {
+    const branchQ = activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
+    api.get<Conversation[]>(`/messaging/conversations?channel=${filter}${branchQ}`).then((cs) => {
       setConvs(cs);
       setCurrentId((prev) => prev ?? cs[0]?.id ?? null);
     }).catch(() => {});
-  }, [filter]);
+  }, [activeBranch, filter]);
 
   useEffect(() => { loadConvs(); }, [loadConvs]);
 

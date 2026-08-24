@@ -97,8 +97,9 @@ async function buckets(scopeBranchId: string | null) {
 }
 
 /** Reporte de seguimiento/actividad del paciente (admin/recepción/esteticista). */
-followupRouter.get('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'), branchScope, async (req, res) => {
-  res.json(await buckets(req.scopeBranchId ?? null));
+followupRouter.get('/', requireStaff, requireRole('ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA'), branchScope, async (req, res) => {
+  const data = await buckets(req.scopeBranchId ?? null);
+  res.json(req.staff!.role === 'COORDINADOR' ? { ...data, porCobrar: [] } : data);
 });
 
 /** Envío masivo por correo a un grupo (solo Administradora). Manual y controlado. */

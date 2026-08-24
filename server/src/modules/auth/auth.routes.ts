@@ -12,7 +12,7 @@ const staffLoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
   // rol y sucursal seleccionados en el login interno (validados contra el usuario)
-  role: z.enum(['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
+  role: z.enum(['ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA']).optional(),
   branchId: z.string().optional(),
 });
 
@@ -35,7 +35,7 @@ authRouter.post('/staff/login', async (req, res) => {
     return res.status(403).json({ error: 'El rol seleccionado no coincide con tu cuenta' });
   }
   // Personal de sucursal: la sucursal elegida debe ser la suya.
-  if (user.role !== 'ADMIN' && branchId && branchId !== user.branchId) {
+  if (user.role !== 'ADMIN' && user.role !== 'COORDINADOR' && branchId && branchId !== user.branchId) {
     return res.status(403).json({ error: 'No perteneces a la sucursal seleccionada' });
   }
 
@@ -59,6 +59,7 @@ authRouter.post('/staff/login', async (req, res) => {
         : null,
       avatarColor: user.avatarColor,
       canManageCatalog: user.canManageCatalog,
+      allowedModules: user.allowedModules,
     },
   });
 });
@@ -81,6 +82,7 @@ authRouter.get('/staff/me', requireStaff, async (req, res) => {
       : null,
     avatarColor: user.avatarColor,
     canManageCatalog: user.canManageCatalog,
+    allowedModules: user.allowedModules,
   });
 });
 

@@ -128,6 +128,45 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
   );
 });
 
+const pendingChargeUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  price: z.number().int().nonnegative().optional(),
+}).refine((b) => b.name !== undefined || b.price !== undefined, { message: 'Indica el concepto o el monto a modificar' });
+
+/** Editar un cargo que todavía no se ha facturado. Solo administración. */
+invoicesRouter.patch('/pending-charges/:id', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+  const b = pendingChargeUpdateSchema.parse(req.body);
+  const charge = await prisma.chargeItem.findUnique({ where: { id: req.params.id }, include: { patient: true } });
+  if (!charge) return res.status(404).json({ error: 'Cobro pendiente no encontrado' });
+  if (!assertBranchAccess(req, charge.branchId)) return res.status(403).json({ error: 'Cobro de otra sucursal' });
+  if (charge.status !== 'PENDIENTE_FACTURAR') return res.status(409).json({ error: 'Solo se pueden editar cobros que siguen pendientes' });
+
+  const updated = await prisma.chargeItem.update({ where: { id: charge.id }, data: b });
+  await audit(req, {
+    action: 'PENDING_CHARGE_UPDATE', entity: 'ChargeItem', entityId: charge.id, branchId: charge.branchId,
+    summary: `${charge.patient.name} · ${charge.name} RD$${charge.price.toLocaleString('en-US')} → ${updated.name} RD$${updated.price.toLocaleString('en-US')}`,
+  });
+  res.json({ ok: true, message: 'Cobro pendiente actualizado' });
+});
+
+const pendingChargeVoidSchema = z.object({ reason: z.string().trim().min(3).max(250) });
+
+/** Anular sin borrar el rastro de un cargo pendiente. Solo administración. */
+invoicesRouter.post('/pending-charges/:id/void', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+  const { reason } = pendingChargeVoidSchema.parse(req.body);
+  const charge = await prisma.chargeItem.findUnique({ where: { id: req.params.id }, include: { patient: true } });
+  if (!charge) return res.status(404).json({ error: 'Cobro pendiente no encontrado' });
+  if (!assertBranchAccess(req, charge.branchId)) return res.status(403).json({ error: 'Cobro de otra sucursal' });
+  if (charge.status !== 'PENDIENTE_FACTURAR') return res.status(409).json({ error: 'El cobro ya no está pendiente' });
+
+  await prisma.chargeItem.update({ where: { id: charge.id }, data: { status: 'ANULADO' } });
+  await audit(req, {
+    action: 'PENDING_CHARGE_VOID', entity: 'ChargeItem', entityId: charge.id, branchId: charge.branchId,
+    summary: `${charge.patient.name} · ${charge.name} · RD$${charge.price.toLocaleString('en-US')} · Motivo: ${reason}`,
+  });
+  res.json({ ok: true, message: 'Cobro pendiente anulado' });
+});
+
 const methodEnum = z.enum(['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'AZUL']);
 const billSchema = z.object({
   patientId: z.string().nullish(),

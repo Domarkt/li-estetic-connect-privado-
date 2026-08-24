@@ -1,4 +1,5 @@
-export type Role = 'ADMIN' | 'RECEPCIONISTA' | 'ESTETICISTA';
+export type Role = 'ADMIN' | 'COORDINADOR' | 'RECEPCIONISTA' | 'ESTETICISTA';
+export type CoordinatorModule = 'pacientes' | 'agenda' | 'mensajes' | 'equipos' | 'contactar' | 'chat';
 
 export interface Branch {
   id: string;
@@ -18,6 +19,7 @@ export interface StaffUser {
   avatarColor: string;
   /** Permiso extra: crear/editar el catálogo sin ser admin. */
   canManageCatalog?: boolean;
+  allowedModules?: CoordinatorModule[];
 }
 
 export interface PatientUser {
@@ -29,6 +31,7 @@ export interface PatientUser {
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: 'Administradora',
+  COORDINADOR: 'Coordinador',
   RECEPCIONISTA: 'Recepcionista',
   ESTETICISTA: 'Esteticista',
 };
@@ -304,7 +307,7 @@ export interface PortalPackages {
 
 // ── Equipo ──
 export interface TeamCollaborator { id: string; name: string; role: string; branch: string; avatarColor: string; points: number; sales: number; commission: number; attendance: string }
-export interface SystemUser { id: string; name: string; email: string; role: string; roleKey: Role; branch: string; branchId: string | null; avatarColor: string; active: boolean; protected?: boolean; canManageCatalog?: boolean }
+export interface SystemUser { id: string; name: string; email: string; role: string; roleKey: Role; branch: string; branchId: string | null; avatarColor: string; active: boolean; protected?: boolean; canManageCatalog?: boolean; allowedModules?: CoordinatorModule[] }
 export interface TeamResponse { collaborators: TeamCollaborator[]; systemUsers: SystemUser[] }
 
 // ── Notificaciones ──

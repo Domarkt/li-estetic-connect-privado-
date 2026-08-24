@@ -22,14 +22,14 @@ branchesRouter.get('/public', async (_req, res) => {
  * - Personal de sucursal: solo la suya (aislamiento).
  */
 branchesRouter.get('/', requireStaff, branchScope, async (req, res) => {
-  const where = req.staff!.role === 'ADMIN' ? {} : { id: req.staff!.branchId! };
+  const where = req.staff!.role === 'ADMIN' || req.staff!.role === 'COORDINADOR' ? {} : { id: req.staff!.branchId! };
   const branches = await prisma.branch.findMany({ where, orderBy: { code: 'asc' } });
   res.json(branches);
 });
 
 /** Métricas resumidas por sucursal (Vista General admin / Sucursales). */
 branchesRouter.get('/summary', requireStaff, branchScope, async (req, res) => {
-  const where = req.staff!.role === 'ADMIN' ? {} : { id: req.staff!.branchId! };
+  const where = req.staff!.role === 'ADMIN' || req.staff!.role === 'COORDINADOR' ? {} : { id: req.staff!.branchId! };
   const branches = await prisma.branch.findMany({ where, orderBy: { code: 'asc' } });
   res.json(
     branches.map((b) => ({

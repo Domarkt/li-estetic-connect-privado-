@@ -44,7 +44,7 @@ export default function PatientsPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
+  const branchQuery = (staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR') && activeBranch !== 'all' ? `&branch=${activeBranch}` : '';
 
   const load = useCallback(() => {
     setCargando(true); setErrorCarga(null);

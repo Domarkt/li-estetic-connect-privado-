@@ -3,10 +3,16 @@ import { api } from '../../lib/api';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import { fmtRD, type Role, type SystemUser, type TeamResponse } from '../../lib/types';
+import { fmtRD, type CoordinatorModule, type Role, type SystemUser, type TeamResponse } from '../../lib/types';
 
 const initials = (n: string) => n.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 const roleChip = 'rounded-full bg-magenta-soft px-2.5 py-0.5 text-[11.5px] font-bold text-magenta';
+const COORDINATOR_MODULES: { key: CoordinatorModule; label: string }[] = [
+  { key: 'pacientes', label: 'Pacientes' }, { key: 'agenda', label: 'Agenda' },
+  { key: 'mensajes', label: 'Mensajes' },
+  { key: 'equipos', label: 'Equipos' }, { key: 'contactar', label: 'Seguimiento de pacientes' },
+  { key: 'chat', label: 'Chat del equipo' },
+];
 
 export default function EquipoPage() {
   const [data, setData] = useState<TeamResponse>({ collaborators: [], systemUsers: [] });
@@ -89,6 +95,7 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
   const [branchId, setBranchId] = useState(user?.branchId ?? branches[0]?.id ?? '');
   const [active, setActive] = useState(user?.active ?? true);
   const [canCatalog, setCanCatalog] = useState(user?.canManageCatalog ?? false);
+  const [allowedModules, setAllowedModules] = useState<CoordinatorModule[]>(user?.allowedModules ?? []);
   const [busy, setBusy] = useState(false);
 
   function genPassword() { setPassword('Li' + Math.random().toString(36).slice(2, 8) + '!'); }
@@ -101,14 +108,16 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
       if (isEdit) {
         const r = await api.patch<{ message: string }>(`/users/${user!.id}`, {
           name: name.trim(), email: email.trim(), role, active, canManageCatalog: canCatalog,
-          branchId: role === 'ADMIN' ? null : branchId,
+          branchId: role === 'ADMIN' || role === 'COORDINADOR' ? null : branchId,
+          allowedModules: role === 'COORDINADOR' ? allowedModules : [],
           ...(password.trim() ? { password } : {}),
         });
         toast(r.message);
       } else {
         const r = await api.post<{ message: string }>('/users', {
           name: name.trim(), email: email.trim(), password, role, canManageCatalog: canCatalog,
-          branchId: role === 'ADMIN' ? undefined : branchId,
+          branchId: role === 'ADMIN' || role === 'COORDINADOR' ? undefined : branchId,
+          allowedModules: role === 'COORDINADOR' ? allowedModules : [],
         });
         toast(r.message);
       }
@@ -138,10 +147,10 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
           <div className="flex gap-3">
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Rol</span>
               <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]">
-                <option value="RECEPCIONISTA">Recepcionista</option><option value="ESTETICISTA">Esteticista</option><option value="ADMIN">Administradora</option>
+                <option value="RECEPCIONISTA">Recepcionista</option><option value="ESTETICISTA">Esteticista</option><option value="COORDINADOR">Coordinador</option><option value="ADMIN">Administradora</option>
               </select>
             </label>
-            {role !== 'ADMIN' && (
+            {role !== 'ADMIN' && role !== 'COORDINADOR' && (
               <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Sucursal</span>
                 <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]">
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -149,7 +158,7 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
               </label>
             )}
           </div>
-          {role !== 'ADMIN' && (
+          {role !== 'ADMIN' && role !== 'COORDINADOR' && (
             <label className="flex items-start gap-2.5 rounded-[9px] border border-line px-3.5 py-3">
               <input type="checkbox" checked={canCatalog} onChange={(e) => setCanCatalog(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
               <span className="text-[13px]">
@@ -157,6 +166,20 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
                 <span className="block text-[11.5px] text-muted">Crear y editar servicios, combos y productos. Ojo: el catálogo es común a las 3 sucursales.</span>
               </span>
             </label>
+          )}
+          {role === 'COORDINADOR' && (
+            <div className="rounded-[9px] border border-line px-3.5 py-3">
+              <div className="mb-2 text-[13px] font-semibold">Módulos operativos habilitados</div>
+              <div className="grid grid-cols-2 gap-2">
+                {COORDINATOR_MODULES.map((module) => (
+                  <label key={module.key} className="flex items-center gap-2 text-[12.5px]">
+                    <input type="checkbox" checked={allowedModules.includes(module.key)} onChange={(e) => setAllowedModules((current) => e.target.checked ? [...current, module.key] : current.filter((key) => key !== module.key))} className="h-4 w-4 accent-magenta" />
+                    {module.label}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2 text-[11.5px] text-muted">Las áreas financieras permanecen bloqueadas y no pueden habilitarse.</div>
+            </div>
           )}
           {isEdit && (
             <label className="flex items-center gap-2.5 rounded-[9px] border border-line px-3.5 py-3" style={user?.protected ? { opacity: 0.6 } : undefined}>

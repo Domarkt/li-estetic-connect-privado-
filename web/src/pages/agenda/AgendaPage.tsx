@@ -31,7 +31,7 @@ export default function AgendaPage() {
   const [reagendarFor, setReagendarFor] = useState<Appointment | null>(null);
   const [apptQuery, setApptQuery] = useState(''); // buscar por nombre/teléfono en el día
 
-  const branchQuery = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
+  const branchQuery = (staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR') && activeBranch !== 'all' ? `branch=${activeBranch}` : '';
   // Recepción, Admin y Esteticista pueden agendar (la esteticista para su propia agenda).
   // Solo recepción y admin agendan: la esteticista no, para no descuadrar el
   // calendario (recepción tiene la vista completa de horarios y sucursal).

@@ -18,7 +18,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const { staff } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [activeBranch, setActiveBranch] = useState<string>(
-    staff?.role === 'ADMIN' ? 'all' : (staff?.branchId ?? 'all'),
+    staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR' ? 'all' : (staff?.branchId ?? 'all'),
   );
 
   useEffect(() => {

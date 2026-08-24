@@ -7,6 +7,7 @@ import { useBranch } from '../../layout/BranchContext';
 import { fmtRD, type BillingResponse, type BillPatient, type Receipt } from '../../lib/types';
 import BillModal from './BillModal';
 import ReceiptModal from './ReceiptModal';
+import { useToast } from '../../components/Toast';
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -20,6 +21,7 @@ const METHOD_CHIP: Record<string, { bg: string; fg: string }> = {
 export default function BillingPage() {
   const { staff } = useAuth();
   const { activeBranch } = useBranch();
+  const toast = useToast();
   const [data, setData] = useState<BillingResponse>({ stats: [], invoices: [] });
   const [porCobrar, setPorCobrar] = useState<BillPatient[]>([]); // pacientes con algo pendiente por cobrar
   const [date, setDate] = useState(todayISO());
@@ -56,6 +58,30 @@ export default function BillingPage() {
   async function reprint(id: string) {
     const r = await api.get<Receipt>(`/invoices/${id}/receipt`);
     setReceipt(r);
+  }
+
+  async function editPending(charge: BillPatient['pendingCharges'][number]) {
+    const name = window.prompt('Concepto del cobro pendiente:', charge.name);
+    if (name === null) return;
+    const priceText = window.prompt('Monto pendiente en RD$:', String(charge.price));
+    if (priceText === null) return;
+    const price = Number(priceText.replace(/,/g, ''));
+    if (!name.trim() || !Number.isInteger(price) || price < 0) { toast('Escribe un concepto y un monto válido'); return; }
+    try {
+      const r = await api.patch<{ message: string }>(`/invoices/pending-charges/${charge.id}`, { name: name.trim(), price });
+      toast(r.message); load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo editar el cobro'); }
+  }
+
+  async function voidPending(charge: BillPatient['pendingCharges'][number]) {
+    const reason = window.prompt(`Motivo para anular “${charge.name}”:`);
+    if (reason === null) return;
+    if (reason.trim().length < 3) { toast('Escribe un motivo de al menos 3 caracteres'); return; }
+    if (!window.confirm(`¿Anular este cobro pendiente de ${fmtRD(charge.price)}? Quedará registrado en auditoría.`)) return;
+    try {
+      const r = await api.post<{ message: string }>(`/invoices/pending-charges/${charge.id}/void`, { reason: reason.trim() });
+      toast(r.message); load();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo anular el cobro'); }
   }
 
   return (
@@ -98,14 +124,22 @@ export default function BillingPage() {
               ? `Saldo ${saldos.map((s) => s.name).join(', ')} · ${fmtRD(saldos.reduce((a, s) => a + s.balance, 0))}`
               : p.scheduled ? `Agendado: ${p.scheduled.name}${p.scheduled.price ? ` · ${fmtRD(p.scheduled.price)}` : ''}` : '';
             return (
-              <button key={p.id} type="button" onClick={() => setBillFor(p.id)}
+              <div key={p.id}
                 className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line-2 px-5 py-3 text-left hover:bg-bg">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[12px] font-bold text-white" style={{ background: p.avatarColor }}>{initials}</div>
                   <div className="min-w-0"><div className="text-[13.5px] font-bold">{p.name}</div><div className="truncate text-[12px] text-muted">{resumen}</div></div>
                 </div>
-                <span className="flex-none rounded-[9px] bg-magenta px-3.5 py-1.5 text-[12.5px] font-bold text-white">Cobrar →</span>
-              </button>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {staff?.role === 'ADMIN' && p.pendingCharges.map((charge) => (
+                    <span key={charge.id} className="flex gap-1">
+                      <button type="button" onClick={() => editPending(charge)} className="rounded-[8px] border border-line bg-card px-2.5 py-1.5 text-[11.5px] font-bold text-muted hover:border-magenta hover:text-magenta">Editar</button>
+                      <button type="button" onClick={() => voidPending(charge)} className="rounded-[8px] border border-line bg-card px-2.5 py-1.5 text-[11.5px] font-bold text-danger hover:border-danger">Anular</button>
+                    </span>
+                  ))}
+                  <button type="button" onClick={() => setBillFor(p.id)} className="flex-none rounded-[9px] bg-magenta px-3.5 py-1.5 text-[12.5px] font-bold text-white">Cobrar →</button>
+                </div>
+              </div>
             );
           })}
         </div>
