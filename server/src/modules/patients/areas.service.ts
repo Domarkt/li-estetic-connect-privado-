@@ -428,6 +428,40 @@ export async function rectificarSesion(
   return { sesion, done, restantes, total: t.totalSessions, agregadas: areasNuevas.length + tecNuevas.length };
 }
 
+/**
+ * DESHACE una sesión registrada por error (ej. "le pusieron 2 cuando fue 1").
+ * Revierte exactamente lo que consumió registrarSesionAplicada: devuelve la sesión
+ * del plan, y las técnicas/áreas que se habían descontado, y borra el registro.
+ * El plan vuelve a quedar activo (se libera un cupo). Solo Admin.
+ */
+export async function eliminarSesion(sessionId: string) {
+  const s = await prisma.treatmentSession.findUnique({ where: { id: sessionId } });
+  if (!s) return null;
+  const t = await prisma.treatment.findUnique({
+    where: { id: s.treatmentId }, include: { areas: true, techniques: true },
+  });
+  if (!t) return null;
+
+  // Devuelve el avance de las áreas y técnicas que traía esta sesión (sin bajar de 0).
+  for (const a of t.areas.filter((a) => s.areas.includes(a.area) && a.doneSessions > 0)) {
+    await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: { decrement: 1 } } });
+  }
+  for (const x of t.techniques.filter((x) => s.techniques.includes(x.name) && x.done > 0)) {
+    await prisma.treatmentTechnique.update({ where: { id: x.id }, data: { done: { decrement: 1 } } });
+  }
+
+  // El plan consumió tantas sesiones como áreas trajo la visita (o 1 si no tenía áreas).
+  const liberadas = s.areas.length || 1;
+  const done = Math.max(0, t.doneSessions - liberadas);
+  await prisma.treatment.update({
+    where: { id: t.id },
+    data: { doneSessions: done, active: true },
+  });
+  await prisma.treatmentSession.delete({ where: { id: s.id } });
+
+  return { done, restantes: Math.max(0, t.totalSessions - done), total: t.totalSessions, tratamiento: t.name, patientId: t.patientId };
+}
+
 /** Resuelve nombres de esteticistas en una sola consulta. */
 async function nombresTerapeutas(ids: (string | null)[]): Promise<Map<string, string>> {
   const unicos = [...new Set(ids.filter((x): x is string => !!x))];

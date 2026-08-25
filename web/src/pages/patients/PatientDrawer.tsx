@@ -31,6 +31,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [areasFor, setAreasFor] = useState<PatientPackage | null>(null); // paquete/combo al que se le definen áreas
   const [cambioFor, setCambioFor] = useState<PatientPackage | null>(null); // combo que se va a cambiar por uno de mayor valor
   const [saldoFor, setSaldoFor] = useState<PatientPackage | null>(null);
+  const [sesionesFor, setSesionesFor] = useState<PatientPackage | null>(null); // deshacer sesiones registradas por error
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -219,9 +220,16 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                           ? <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>Saldo {fmtRD(pk.balance)}</span>
                           : <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>Pagado</span>}
                         {staff?.role === 'ADMIN' && (
-                          <button type="button" onClick={() => setSaldoFor(pk)} className="ml-auto rounded-[7px] border border-line bg-card px-2 py-0.5 font-bold text-magenta hover:border-magenta">
-                            Corregir saldo
-                          </button>
+                          <span className="ml-auto flex gap-1.5">
+                            {pk.done > 0 && (
+                              <button type="button" onClick={() => setSesionesFor(pk)} className="rounded-[7px] border border-line bg-card px-2 py-0.5 font-bold text-magenta hover:border-magenta">
+                                Corregir sesiones
+                              </button>
+                            )}
+                            <button type="button" onClick={() => setSaldoFor(pk)} className="rounded-[7px] border border-line bg-card px-2 py-0.5 font-bold text-magenta hover:border-magenta">
+                              Corregir saldo
+                            </button>
+                          </span>
                         )}
                       </div>
 
@@ -335,6 +343,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
         <SaldoModal pkg={saldoFor} onClose={() => setSaldoFor(null)}
           onSaved={() => { setSaldoFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
       )}
+      {sesionesFor && (
+        <SesionesModal pkg={sesionesFor} onClose={() => setSesionesFor(null)}
+          onChanged={() => api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {})} />
+      )}
     </div>
     </Portal>
   );
@@ -373,6 +385,69 @@ function SaldoModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
         <div className="flex gap-2.5 border-t border-line px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13px] font-bold text-muted">Cancelar</button>
           <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13px] font-bold text-white disabled:opacity-60">Guardar corrección</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+type Ses = { id: string; fecha: string; techniques: string[]; areas: string[]; esteticista: string | null; firmada: boolean };
+
+/**
+ * Deshacer sesiones registradas por error (ej. "le pusieron 2 cuando fue 1"). Lista
+ * las sesiones del plan y permite al admin eliminar una: devuelve el cupo del plan y
+ * el avance de sus áreas/técnicas. Queda en auditoría.
+ */
+function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClose: () => void; onChanged: () => void }) {
+  const toast = useToast();
+  const [sesiones, setSesiones] = useState<Ses[] | null>(null);
+  const [busy, setBusy] = useState('');
+
+  function cargar() {
+    api.get<{ sesiones: Ses[] }>(`/patients/treatments/${pkg.id}/sessions`)
+      .then((r) => setSesiones(r.sesiones)).catch(() => setSesiones([]));
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(cargar, []);
+
+  async function deshacer(s: Ses) {
+    if (!window.confirm(`¿Deshacer la sesión del ${s.fecha}? Se devolverá al plan el cupo (y el avance de sus áreas/técnicas). Queda en auditoría.`)) return;
+    setBusy(s.id);
+    try {
+      const r = await api.del<{ message: string }>(`/patients/treatments/${pkg.id}/session/${s.id}`);
+      toast(r.message); cargar(); onChanged();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo deshacer la sesión'); }
+    finally { setBusy(''); }
+  }
+
+  return (
+    <Overlay onClose={onClose} z={140}>
+      <div onClick={stop} className="flex max-h-[85vh] w-[440px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex flex-none items-center border-b border-line px-6 py-5">
+          <div className="flex-1"><div className="text-base font-extrabold">Corregir sesiones</div><div className="mt-0.5 text-xs text-muted">{pkg.name} · {pkg.done}/{pkg.total}</div></div>
+          <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+        </div>
+        <div className="flex flex-col gap-2 overflow-y-auto px-6 py-5">
+          <div className="rounded-[9px] bg-bg px-3.5 py-3 text-[12px] text-muted">Elimina una sesión registrada por error. Se devuelve el cupo al plan y el avance de sus áreas/técnicas.</div>
+          {sesiones === null && <div className="py-6 text-center text-[12.5px] text-muted">Cargando…</div>}
+          {sesiones !== null && sesiones.length === 0 && <div className="py-6 text-center text-[12.5px] text-muted">No hay sesiones registradas.</div>}
+          {(sesiones ?? []).map((s) => (
+            <div key={s.id} className="flex items-start gap-2 rounded-[10px] border border-line-2 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[12.5px] font-bold">{s.fecha}{s.esteticista ? ` · ${s.esteticista}` : ''}</div>
+                <div className="mt-0.5 text-[11.5px] text-muted">
+                  {s.areas.length ? `Áreas: ${s.areas.join(', ')}` : 'Sin áreas'}{s.techniques.length ? ` · ${s.techniques.join(', ')}` : ''}
+                </div>
+              </div>
+              <button onClick={() => deshacer(s)} disabled={busy === s.id}
+                className="flex-none rounded-[8px] border border-danger/40 bg-card px-2.5 py-1.5 text-[11.5px] font-bold text-danger hover:bg-danger-soft disabled:opacity-60">
+                {busy === s.id ? '…' : 'Deshacer'}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13px] font-bold text-muted">Cerrar</button>
         </div>
       </div>
     </Overlay>

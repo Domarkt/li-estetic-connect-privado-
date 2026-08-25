@@ -47,6 +47,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   // La mayoría de los servicios se facturan SIN ITBIS: el interruptor arranca
   // apagado y solo se enciende cuando el cobro lo requiere.
   const [conItbis, setConItbis] = useState(false);
+  // "Solo registrar el ingreso": el paciente ya tiene estos servicios en su ficha
+  // (plan cargado/usado). Emite el recibo sin crear/duplicar el plan.
+  const [skipPlan, setSkipPlan] = useState(false);
   // B02 consumo final (lo normal) | B01 crédito fiscal (exige RNC del cliente).
   const [ncfType, setNcfType] = useState<'B02' | 'B01'>('B02');
   const [rnc, setRnc] = useState('');
@@ -208,6 +211,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
         items: cartOn && cart.length ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty, catalogItemId: c.catalogId })) : undefined,
         fullAmount: freeAbono ? lineasTotal : undefined,
         itbisApplied: conItbis,
+        skipPlan: (!payingSaldo && cartOn && skipPlan) ? true : undefined,
         ncfType,
         ...(ncfType === 'B01' ? { clientRnc: rnc.trim(), clientName: razonSocial.trim() } : {}),
       });
@@ -447,6 +451,26 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                   <span className="absolute h-5 w-5 rounded-full bg-white transition-all" style={{ left: conItbis ? 22 : 2 }} />
                 </span>
               </button>
+
+              {/* Solo registrar el ingreso: cuando el paciente YA tiene estos servicios
+                  en su ficha (plan cargado/usado) y solo falta dejar el cobro. Evita
+                  duplicar el plan. Solo aplica a un cobro con carrito (no saldo). */}
+              {!payingSaldo && cart.length > 0 && (
+                <button onClick={() => setSkipPlan((v) => !v)}
+                  className="mt-2 flex w-full items-center justify-between rounded-[9px] border border-line bg-card px-3 py-2.5 text-left">
+                  <span className="flex flex-col">
+                    <span className="text-[12.5px] font-bold">Solo registrar el ingreso (no crear plan)</span>
+                    <span className="text-[10.5px] text-faint">
+                      {skipPlan
+                        ? 'El plan YA está en su ficha: solo se emite el recibo, sin duplicar.'
+                        : 'Actívalo si el paciente ya tiene estos servicios cargados/usados en su ficha.'}
+                    </span>
+                  </span>
+                  <span className="relative flex h-6 w-11 flex-none items-center rounded-full transition" style={{ background: skipPlan ? 'var(--magenta)' : 'var(--line)' }}>
+                    <span className="absolute h-5 w-5 rounded-full bg-white transition-all" style={{ left: skipPlan ? 22 : 2 }} />
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* 4 · Monto: total calculado (pago total) o campo para abono/saldo */}

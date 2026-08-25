@@ -9,7 +9,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, listarSesiones, bitacoraPaciente, createHistoricalTreatmentFromCatalog } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, eliminarSesion, listarSesiones, bitacoraPaciente, createHistoricalTreatmentFromCatalog } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 
@@ -303,6 +303,28 @@ patientsRouter.get('/treatments/:treatmentId/sessions', requireStaff, async (req
   if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
   if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
   res.json({ sesiones: await listarSesiones(t.id, await getAreaLabelMap()) });
+});
+
+/**
+ * Deshacer una sesión registrada por error (ej. le pusieron 2 cuando fue 1). Solo
+ * Admin: devuelve el cupo del plan y el avance de sus áreas/técnicas, y borra el
+ * registro. Queda en auditoría.
+ */
+patientsRouter.delete('/treatments/:treatmentId/session/:sessionId', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  const r = await eliminarSesion(req.params.sessionId);
+  if (!r) return res.status(404).json({ error: 'Sesión no encontrada' });
+  await audit(req, {
+    action: 'TREATMENT_SESSION', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
+    summary: `Deshizo una sesión de ${r.tratamiento} (${t.patient.name}): ahora ${r.done}/${r.total}`,
+  });
+  res.json({
+    ok: true, done: r.done, restantes: r.restantes, total: r.total,
+    sesiones: await listarSesiones(t.id, await getAreaLabelMap()),
+    message: `Sesión deshecha · ahora ${r.done} de ${r.total}`,
+  });
 });
 
 const extraSchema = z.object({

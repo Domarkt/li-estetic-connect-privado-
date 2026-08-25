@@ -186,6 +186,10 @@ const billSchema = z.object({
   // No todos los servicios estéticos llevan ITBIS: recepción lo decide al cobrar.
   itbisApplied: z.boolean().default(true),
   fullAmount: z.number().int().positive().optional(), // precio total del combo/compra (para abono a concepto libre)
+  // "Solo registrar el ingreso": el paciente YA tiene estos servicios en su ficha
+  // (plan cargado/usado). Emite el recibo pero NO crea/duplica el plan. Úsalo para
+  // regularizar un cobro que faltaba de un plan que ya existe.
+  skipPlan: z.boolean().optional(),
 });
 
 /** Emitir recibo (cobro). Asigna No. + NCF, calcula ITBIS y marca cargos facturados. */
@@ -352,10 +356,12 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   //
   // Si el cobro fue un abono, el faltante se registra en el balance del PLAN (fuente
   // única), no como un cargo pendiente aparte.
-  if (b.patientId && (b.items?.length || charges.length)) {
+  if (!b.skipPlan && b.patientId && (b.items?.length || charges.length)) {
     // Tanto el carrito como los cargos que envió la esteticista (con su
     // catalogItemId) generan plan: así un servicio de varias sesiones cobrado por
     // recepción queda disponible para agendarle la cita después.
+    // Si skipPlan viene activo, se omite: el plan YA existe en la ficha y solo se
+    // está registrando el ingreso (no se duplica).
     const fuentes = [
       ...(b.items ?? []).filter((it) => it.catalogItemId).map((it) => ({ id: it.catalogItemId!, qty: it.qty })),
       ...charges.filter((c) => c.catalogItemId).map((c) => ({ id: c.catalogItemId!, qty: 1 })),
