@@ -12,6 +12,7 @@ import { notifyRole } from '../notifications/notifications.service.js';
 import { audit } from '../audit/audit.service.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
+import { businessHoursError } from './business-hours.js';
 
 export const appointmentsRouter = Router();
 
@@ -184,11 +185,16 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   // Con múltiples servicios el detalle vive en los cargos: la cita no lleva un ítem único.
   const catalogItemId = b.isFollowUp || usaCargos ? null : (b.catalogItemId ?? null);
   const startsAt = new Date(`${b.date}T${b.time}:00`);
+  const branchHours = await prisma.branch.findUnique({ where: { id: patient.branchId }, select: { businessHours: true } });
+  const hoursError = businessHoursError(branchHours?.businessHours, startsAt, b.durationMin);
+  if (hoursError) return res.status(400).json({ error: hoursError });
 
   // Disponibilidad. Cada cita dura lo que recepción indique (un proceso puede pasar de
   // una hora), así que el choque se calcula con la duración REAL de cada cita, no con
   // una ventana fija. Entre pacientes se deja una separación mínima de 30 minutos.
-  const SEPARACION_MIN = 30;
+  // La duración elegida ya reserva el bloque completo. Se permiten citas consecutivas
+  // (p. ej. 5:30–6:30 y 6:30–7:00) sin añadir un colchón fijo artificial.
+  const SEPARACION_MIN = 0;
   const nuevoInicio = startsAt.getTime();
   const nuevoFin = nuevoInicio + b.durationMin * 60_000;
   const margenMs = SEPARACION_MIN * 60_000;
@@ -222,7 +228,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
       const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
       const quien = conflict.therapist?.name ?? 'la esteticista';
       return res.status(409).json({
-        error: `${quien} tiene una cita a las ${h} (${conflict.durationMin} min). Deja al menos ${SEPARACION_MIN} min entre pacientes, o elige otra esteticista.`,
+        error: `${quien} tiene una cita a las ${h} (${conflict.durationMin} min). Elige otra hora o esteticista.`,
       });
     }
   } else {
@@ -383,6 +389,9 @@ appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONI
     }
   }
   if (!fechas.length) return res.status(400).json({ error: 'No hay fechas válidas para la serie' });
+  const branchHours = await prisma.branch.findUnique({ where: { id: patient.branchId }, select: { businessHours: true } });
+  const fuera = fechas.find((d) => businessHoursError(branchHours?.businessHours, d, b.durationMin));
+  if (fuera) return res.status(400).json({ error: businessHoursError(branchHours?.businessHours, fuera, b.durationMin)! });
   await prisma.appointment.createMany({
     data: fechas.map((startsAt) => ({
       patientId: patient.id, branchId: patient.branchId,
@@ -595,6 +604,11 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
 
   const startsAt = body.date && body.time ? new Date(`${body.date}T${body.time}:00`) : undefined;
+  if (startsAt) {
+    const branchHours = await prisma.branch.findUnique({ where: { id: appt.branchId }, select: { businessHours: true } });
+    const hoursError = businessHoursError(branchHours?.businessHours, startsAt, appt.durationMin);
+    if (hoursError) return res.status(400).json({ error: hoursError });
+  }
 
   // (Re)asignación de esteticista: solo recepción y admin, con validación de conflicto.
   const cambiaTerapeuta = body.therapistId !== undefined;
@@ -610,7 +624,7 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
       // No puede tener otra cita que solape (respetando la separación mínima).
       const ini = (startsAt ?? appt.startsAt).getTime();
       const fin = ini + appt.durationMin * 60_000;
-      const margen = 30 * 60_000; // separación mínima entre pacientes distintos
+      const margen = 0; // la duración real permite citas consecutivas
       const otras = await prisma.appointment.findMany({
         where: { id: { not: appt.id }, therapistId: nuevoTherapistId, status: { not: 'CANCELADA' },
           startsAt: { gt: new Date(ini - 8 * 3_600_000), lt: new Date(fin + 8 * 3_600_000) } },

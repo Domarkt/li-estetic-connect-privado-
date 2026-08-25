@@ -4,13 +4,22 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import { fmtRD, type CatalogItem, type PatientRow, type PatientType, type Therapist } from '../../lib/types';
+import { fmtRD, type BusinessHours, type CatalogItem, type PatientRow, type PatientType, type Therapist } from '../../lib/types';
 
 interface Props { branchQuery: string; onClose: () => void; onSaved: () => void }
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 // Mismas etiquetas que en el cobro, para que el equipo vea siempre el mismo formato.
 const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
+const DEFAULT_HOURS: BusinessHours = {
+  weekdays: { open: '09:00', close: '19:00', closed: false },
+  saturday: { open: '09:00', close: '15:00', closed: false },
+  sunday: { open: '09:00', close: '15:00', closed: true },
+};
+const minusMinutes = (hhmm: string, amount: number) => {
+  const [h, m] = hhmm.split(':').map(Number); const n = Math.max(0, h * 60 + m - amount);
+  return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+};
 
 export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) {
   const { staff } = useAuth();
@@ -70,6 +79,13 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   }, [branchQuery]);
 
   const isNew = type === 'NUEVO';
+  const appointmentBranchId = isNew
+    ? (staff?.role === 'ADMIN' ? branchId : staff?.branchId)
+    : patients.find((p) => p.id === patientId)?.branchId;
+  const configuredHours = branches.find((b) => b.id === appointmentBranchId)?.businessHours ?? DEFAULT_HOURS;
+  const dayNo = new Date(`${date}T12:00:00`).getDay();
+  const dayHours = dayNo === 0 ? configuredHours.sunday : dayNo === 6 ? configuredHours.saturday : configuredHours.weekdays;
+  const latestStart = minusMinutes(dayHours.close, durationMin);
 
   // Paquetes/combos que el paciente YA PAGÓ y aún tiene sesiones por consumir.
   // Son la primera opción al agendar: buscar el mismo servicio en el catálogo
@@ -92,6 +108,11 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   });
 
   async function save() {
+    if (dayHours.closed) { toast('La sucursal está cerrada ese día. Administración puede modificarlo en Configuración.'); return; }
+    if (time < dayHours.open || time > latestStart) {
+      toast(`Para ${durationMin} minutos, elige una hora entre ${dayHours.open} y ${latestStart}`);
+      return;
+    }
     // Paciente conocido: hay que decir a qué viene (su plan pagado, un servicio
     // nuevo o un seguimiento). Sin esto la cita quedaba como "Valoración inicial".
     if (!isNew && !treatmentId && !followUp && serviceIds.length === 0) {
@@ -391,7 +412,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
 
           <div className="flex gap-3">
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha</span><input type="date" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Hora</span><input type="time" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={time} onChange={(e) => setTime(e.target.value)} /></label>
+            <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Hora</span><input type="time" min={dayHours.open} max={latestStart} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={time} onChange={(e) => setTime(e.target.value)} /></label>
           </div>
           {/* Duración real del proceso: reserva a la esteticista todo ese tiempo. */}
           <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">¿Cuánto durará?</span>
@@ -400,7 +421,10 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
                 <option key={m} value={m}>{m < 60 ? `${m} minutos` : m % 60 === 0 ? `${m / 60} hora${m > 60 ? 's' : ''}` : `${Math.floor(m / 60)}h ${m % 60}min`}</option>
               ))}
             </select>
-            <span className="text-[11px] text-faint">La esteticista queda reservada todo ese tiempo. Entre pacientes se dejan 30 minutos.</span>
+            <span className="text-[11px] text-faint">La esteticista queda reservada exactamente durante ese bloque. Puede agendarse otra cita al terminar.</span>
+            <span className="text-[11px] font-semibold" style={{ color: dayHours.closed ? 'var(--danger)' : 'var(--teal)' }}>
+              {dayHours.closed ? 'Sucursal cerrada ese día' : `Horario de la sucursal: ${dayHours.open}–${dayHours.close} · última hora para ${durationMin} min: ${latestStart}`}
+            </span>
           </label>
 
           {/* Serie de citas: cuando compra un paquete se agendan todas de una vez. */}

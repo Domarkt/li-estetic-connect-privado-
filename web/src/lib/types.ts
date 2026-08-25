@@ -7,7 +7,11 @@ export interface Branch {
   name: string;
   place: string;
   dotColor: string;
+  businessHours?: BusinessHours | null;
 }
+
+export interface DayHours { open: string; close: string; closed: boolean }
+export interface BusinessHours { weekdays: DayHours; saturday: DayHours; sunday: DayHours }
 
 export interface StaffUser {
   id: string;
@@ -134,6 +138,8 @@ export type AppointmentStatus = 'SIN_CONFIRMAR' | 'CONFIRMADA' | 'COMPLETADA' | 
 export interface Appointment {
   id: string;
   time: string;
+  endTime: string;
+  durationMin: number;
   startsAt: string;
   patientId: string;
   patient: string;
@@ -245,7 +251,7 @@ export interface CommissionsView {
 export interface PointsRules { earn: { label: string; pts: string }[]; deduct: { label: string; pts: string }[] }
 
 // ── Configuración ──
-export interface BranchGoal { id: string; code: string; name: string; place: string; dotColor: string; address: string; phone: string; email: string | null; monthlyGoal: number; dailyGoal: number; perAsesorGoal: number }
+export interface BranchGoal { id: string; code: string; name: string; place: string; dotColor: string; address: string; phone: string; email: string | null; monthlyGoal: number; dailyGoal: number; perAsesorGoal: number; businessHours: BusinessHours }
 export interface PointsRule { id: string; label: string; points: number; isEarn: boolean; active: boolean; sortOrder: number }
 export interface RewardItem { id: string; label: string; cost: number; icon: string; active: boolean }
 

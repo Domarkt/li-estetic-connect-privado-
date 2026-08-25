@@ -176,7 +176,10 @@ export default function AgendaPage() {
         {visibles.map((a) => (
           <div key={a.id} className="flex flex-col gap-2.5 rounded-[11px] px-3.5 py-3.5 hover:bg-bg sm:flex-row sm:items-center sm:gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
-            <div className="w-[52px] flex-none pt-0.5 text-right sm:w-[74px] sm:pt-0"><div className="text-sm font-extrabold">{a.time}</div></div>
+            <div className="w-[66px] flex-none pt-0.5 text-right sm:w-[92px] sm:pt-0">
+              <div className="text-sm font-extrabold">{a.time}</div>
+              <div className="text-[10.5px] font-semibold text-faint">hasta {a.endTime}</div>
+            </div>
             <div className="w-[3px] self-stretch flex-none rounded" style={{ background: a.barColor }} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2.5">
@@ -189,7 +192,7 @@ export default function AgendaPage() {
                 {a.finished && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }}>✓ Atendido</span>}
               </div>
               <div className="mt-0.5 text-[12.5px] text-muted">
-                {a.service} · <span style={!a.therapistId ? { color: 'var(--warn)', fontWeight: 700 } : undefined}>{a.therapist}</span> · {a.branchName}
+                {a.service} · ⏱ {a.durationMin} min · <span style={!a.therapistId ? { color: 'var(--warn)', fontWeight: 700 } : undefined}>{a.therapist}</span> · {a.branchName}
                 {canAssign && a.status !== 'CANCELADA' && !a.finished && (
                   <button onClick={() => setAssignFor(a)} className="ml-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] font-bold text-magenta hover:bg-magenta-soft">
                     {a.therapistId ? 'cambiar' : '+ asignar'}

@@ -38,6 +38,7 @@ export function serializeAppt(
   opts?: { includeDuration?: boolean },
 ) {
   const meta = STATUS_META[a.status];
+  const scheduledEnd = new Date(a.startsAt.getTime() + a.durationMin * 60_000);
   const fichaComplete = a.patient.clinicalRecord?.status === 'COMPLETA';
   // La etiqueta Nuevo/Recurrente refleja el estado ACTUAL del paciente (regla del
   // handoff: es "Nuevo" mientras su ficha esté pendiente; al completarla pasa a
@@ -53,6 +54,8 @@ export function serializeAppt(
   return {
     id: a.id,
     time: a.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
+    endTime: scheduledEnd.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
+    durationMin: a.durationMin,
     startsAt: a.startsAt.toISOString(),
     patientId: a.patientId,
     patient: a.patient.name,

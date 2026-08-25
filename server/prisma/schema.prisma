@@ -126,6 +126,8 @@ model Branch {
   monthlyGoal   Int      @default(0)
   dailyGoal     Int      @default(0)
   perAsesorGoal Int      @default(0)
+  // Horario configurable: { weekdays, saturday, sunday } con open/close/closed.
+  businessHours Json?
   createdAt     DateTime @default(now())
 
   users         User[]

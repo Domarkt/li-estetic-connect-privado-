@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole } from '../../middleware/auth.js';
 import { googleConfigured, buildAuthUrl, getConnection, disconnect as calDisconnect } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, sendWhatsAppTemplate } from '../messaging/whatsapp.service.js';
+import { DEFAULT_BUSINESS_HOURS, normalizeBusinessHours } from '../appointments/business-hours.js';
 
 export const configRouter = Router();
 
@@ -16,6 +17,7 @@ configRouter.get('/branch-goals', async (_req, res) => {
   res.json(branches.map((b) => ({
     id: b.id, code: b.code, name: b.name, place: b.place, dotColor: b.dotColor,
     address: b.address, phone: b.phone, email: b.email,
+    businessHours: normalizeBusinessHours(b.businessHours),
     monthlyGoal: b.monthlyGoal, dailyGoal: b.dailyGoal, perAsesorGoal: b.perAsesorGoal,
   })));
 });
@@ -26,6 +28,11 @@ const branchSchema = z.object({
   address: z.string().min(1),
   phone: z.string().min(1),
   email: z.string().email().optional().or(z.literal('')),
+  businessHours: z.object({
+    weekdays: z.object({ open: z.string().regex(/^\d{2}:\d{2}$/), close: z.string().regex(/^\d{2}:\d{2}$/), closed: z.boolean() }),
+    saturday: z.object({ open: z.string().regex(/^\d{2}:\d{2}$/), close: z.string().regex(/^\d{2}:\d{2}$/), closed: z.boolean() }),
+    sunday: z.object({ open: z.string().regex(/^\d{2}:\d{2}$/), close: z.string().regex(/^\d{2}:\d{2}$/), closed: z.boolean() }),
+  }).default(DEFAULT_BUSINESS_HOURS),
 });
 
 /** Editar datos del negocio por sucursal (nombre, dirección, teléfono → recibo). */

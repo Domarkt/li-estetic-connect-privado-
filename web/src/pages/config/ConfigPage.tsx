@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import type { BranchGoal, IntegrationsView, PointsRule, RewardItem } from '../../lib/types';
+import type { BranchGoal, BusinessHours, IntegrationsView, PointsRule, RewardItem } from '../../lib/types';
 import ImportPatientsPanel from '../patients/ImportPatientsPanel';
 
 type Tab = 'negocio' | 'metas' | 'reglas' | 'premios' | 'areas' | 'integraciones' | 'importar' | 'mantenimiento';
@@ -239,8 +239,13 @@ function BusinessTab() {
   useEffect(() => { api.get<BranchGoal[]>('/config/branch-goals').then(setBranches).catch(() => {}); }, []);
 
   function set(id: string, k: keyof BranchGoal, v: string) { setBranches((g) => g.map((b) => b.id === id ? { ...b, [k]: v } : b)); }
+  function setHours(id: string, day: keyof BusinessHours, field: 'open' | 'close' | 'closed', value: string | boolean) {
+    setBranches((rows) => rows.map((b) => b.id === id
+      ? { ...b, businessHours: { ...b.businessHours, [day]: { ...b.businessHours[day], [field]: value } } }
+      : b));
+  }
   async function save(b: BranchGoal) {
-    await api.patch(`/config/branches/${b.id}`, { name: b.name, place: b.place, address: b.address, phone: b.phone, email: b.email ?? '' });
+    await api.patch(`/config/branches/${b.id}`, { name: b.name, place: b.place, address: b.address, phone: b.phone, email: b.email ?? '', businessHours: b.businessHours });
     toast(`Datos de ${b.name} guardados`);
   }
 
@@ -258,6 +263,26 @@ function BusinessTab() {
             <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Dirección (recibo)</span><input className={inp} value={b.address} onChange={(e) => set(b.id, 'address', e.target.value)} /></label>
             <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Teléfono</span><input className={inp} value={b.phone} onChange={(e) => set(b.id, 'phone', e.target.value)} /></label>
             <label className="mb-3.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Correo de la sucursal</span><input className={inp} value={b.email ?? ''} onChange={(e) => set(b.id, 'email', e.target.value)} placeholder="sucursal@gmail.com" /></label>
+            <div className="mb-3.5 rounded-[10px] border border-line-2 bg-bg p-3">
+              <div className="mb-2 text-[12px] font-extrabold text-navy">Horario de citas</div>
+              {([
+                ['weekdays', 'Lunes a viernes'], ['saturday', 'Sábado'], ['sunday', 'Domingo'],
+              ] as const).map(([day, label]) => {
+                const h = b.businessHours[day];
+                return (
+                  <div key={day} className="mb-2 border-b border-line-2 pb-2 last:mb-0 last:border-0 last:pb-0">
+                    <label className="mb-1 flex items-center justify-between text-[11.5px] font-bold">
+                      <span>{label}</span>
+                      <span className="flex items-center gap-1.5 text-faint"><input type="checkbox" checked={!h.closed} onChange={(e) => setHours(b.id, day, 'closed', !e.target.checked)} className="accent-magenta" /> Abierto</span>
+                    </label>
+                    {!h.closed && <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[10.5px] text-muted">Desde<input type="time" value={h.open} onChange={(e) => setHours(b.id, day, 'open', e.target.value)} className="mt-0.5 w-full rounded-md border border-line bg-card px-2 py-1.5" /></label>
+                      <label className="text-[10.5px] text-muted">Hasta<input type="time" value={h.close} onChange={(e) => setHours(b.id, day, 'close', e.target.value)} className="mt-0.5 w-full rounded-md border border-line bg-card px-2 py-1.5" /></label>
+                    </div>}
+                  </div>
+                );
+              })}
+            </div>
             <button onClick={() => save(b)} className="w-full rounded-[10px] bg-magenta py-2.5 text-[13px] font-bold text-white">Guardar datos</button>
           </div>
         ))}
