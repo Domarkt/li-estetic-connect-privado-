@@ -453,12 +453,15 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
                 return (
                   <div key={a.key} className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => toggle(a.key)} disabled={esExtra}
+                      <button onClick={() => esExtra ? confirmarExtra(a.key) : toggle(a.key)} disabled={busy && esExtra}
                         className="flex flex-1 items-center gap-3 rounded-[11px] border px-4 py-2.5 text-left disabled:opacity-60"
-                        style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                        style={{
+                          borderColor: esExtra ? 'var(--warn)' : on ? 'var(--magenta)' : 'var(--line)',
+                          background: esExtra ? 'var(--warn-soft)' : on ? 'var(--magenta-soft)' : 'var(--card)',
+                        }}>
                         <span className="flex-1 text-[13.5px] font-bold">{a.label}</span>
                         {esExtra
-                          ? <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[10.5px] font-bold text-warn">adicional</span>
+                          ? <span className="text-right text-[10.5px] font-bold leading-tight text-warn">adicional<br />Enviar {fmtRD(PRECIO_AREA_EXTRA)} a cobro</span>
                           : <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>}
                       </button>
                       {!esExtra && !on && sel.length >= 1 && (
@@ -466,12 +469,6 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
                           className="flex-none rounded-[9px] border px-2.5 py-2 text-[11.5px] font-bold"
                           style={{ borderColor: 'var(--warn)', color: 'var(--warn)', background: editando ? 'var(--warn)' : 'var(--warn-soft)', ...(editando ? { color: '#fff' } : {}) }}>
                           + adicional
-                        </button>
-                      )}
-                      {esExtra && (
-                        <button onClick={() => confirmarExtra(a.key)} disabled={busy}
-                          className="flex-none rounded-[9px] border border-magenta bg-magenta-soft px-2.5 py-2 text-[11px] font-bold text-magenta">
-                          Enviar cobro {fmtRD(PRECIO_AREA_EXTRA)}
                         </button>
                       )}
                     </div>
