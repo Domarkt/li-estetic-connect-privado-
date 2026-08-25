@@ -229,6 +229,25 @@ export default function AppShell() {
           </div>
         </header>
 
+        {/* Selector global para móvil. El control de escritorio se oculta debajo de
+            sm; este select mantiene disponible el cambio de sucursal en todos los
+            módulos (Facturación, Cuadre, Agenda, Pacientes, etc.). */}
+        {(staff.role === 'ADMIN' || staff.role === 'COORDINADOR') && (
+          <div className="border-b border-line bg-card px-4 py-2.5 sm:hidden">
+            <label className="flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2">
+              <span className="h-2.5 w-2.5 flex-none rounded-full"
+                style={{ background: active?.dotColor ?? '#B31C86' }} />
+              <span className="flex-none text-[12px] font-bold text-muted">Sucursal</span>
+              <select value={activeBranch} onChange={(e) => setActiveBranch(e.target.value)}
+                aria-label="Seleccionar sucursal"
+                className="min-w-0 flex-1 bg-transparent text-right text-[13px] font-extrabold text-navy outline-none">
+                <option value="all">Todas las estéticas</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
+
         {/* Banner de sucursal activa (admin filtrando) */}
         {(staff.role === 'ADMIN' || staff.role === 'COORDINADOR') && active && (
           <div className="mx-4 mt-4 flex items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-card sm:mx-7"
