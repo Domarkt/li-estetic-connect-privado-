@@ -13,7 +13,7 @@ export default function PatientLogin() {
   const { loginPatient } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [verClave, setVerClave] = useState(false);
   const [error, setError] = useState(params.get('expirada') ? 'Tu sesión venció. Entra de nuevo.' : '');
@@ -21,10 +21,10 @@ export default function PatientLogin() {
 
   async function entrar() {
     setError('');
-    if (!email.trim() || !password.trim()) { setError('Escribe tu correo y tu contraseña'); return; }
+    if (!usuario.trim() || !password.trim()) { setError('Escribe tu correo o celular y tu contraseña'); return; }
     setBusy(true);
     try {
-      await loginPatient(email.trim(), password);
+      await loginPatient(usuario.trim(), password);
       navigate('/portal');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión');
@@ -49,13 +49,13 @@ export default function PatientLogin() {
 
         <div className="p-6 sm:p-[30px]">
           <p className="mb-[22px] mt-0 text-center text-[13.5px] text-muted">
-            Entra con el <b>correo</b> que registraste en la estética.
+            Entra con tu <b>correo</b> o tu <b>número de celular</b> registrado en la estética.
           </p>
 
           <label className="mb-3.5 flex flex-col gap-1.5">
-            <span className="text-xs font-bold text-muted">Correo</span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email"
-              className={inputCls} placeholder="tucorreo@ejemplo.com" />
+            <span className="text-xs font-bold text-muted">Correo o celular</span>
+            <input type="text" inputMode="email" value={usuario} onChange={(e) => setUsuario(e.target.value)} autoComplete="username"
+              className={inputCls} placeholder="tucorreo@ejemplo.com  o  809-000-0000" />
           </label>
 
           <label className="mb-2 flex flex-col gap-1.5">

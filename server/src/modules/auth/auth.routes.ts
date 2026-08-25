@@ -87,36 +87,47 @@ authRouter.get('/staff/me', requireStaff, async (req, res) => {
 });
 
 const patientLoginSchema = z.object({
-  email: z.string().email(),
+  // Puede ser el CORREO o el CELULAR (hay pacientes sin correo o que no lo usan).
+  usuario: z.string().trim().min(1).optional(),
+  email: z.string().trim().optional(), // compatibilidad con versiones anteriores
   password: z.string().min(1, 'Escribe tu contraseña'),
 });
 
 /**
- * Login del paciente en su portal: correo + contraseña.
+ * Login del paciente en su portal: **correo O celular** + contraseña.
  *
- * La contraseña inicial es su número de teléfono (el que registró la estética) y
- * puede cambiarla desde su perfil por una propia. Se guarda con bcrypt, nunca en
- * claro. Se probó el acceso por código de un solo uso, pero le complicaba la
- * entrada a las pacientes.
+ * Muchos pacientes no tienen correo (o no saben usarlo), así que se puede entrar con
+ * el número de celular registrado. La contraseña inicial es su propio teléfono (solo
+ * los números) y puede cambiarla desde su perfil. Se busca entre las cuentas de portal
+ * ACTIVAS (conjunto acotado) y se compara el teléfono ya normalizado (sin guiones).
  */
 authRouter.post('/patient/login', async (req, res) => {
-  const { email, password } = patientLoginSchema.parse(req.body);
-  const normalizedEmail = email.trim().toLowerCase();
+  const b = patientLoginSchema.parse(req.body);
+  const idRaw = (b.usuario ?? b.email ?? '').trim();
 
-  const candidatos = await prisma.patient.findMany({
-    where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
-    include: { patientAccount: true, branch: true },
-  });
-
-  // Mensaje único: no se revela si el correo existe ni si la cuenta está activa.
   const invalido = () => res.status(401).json({
-    error: 'Correo o contraseña incorrectos. Si es tu primera vez, tu contraseña es tu número de teléfono.',
+    error: 'Usuario o contraseña incorrectos. Puedes entrar con tu correo o tu celular; si es tu primera vez, tu contraseña es tu número de teléfono.',
+  });
+  if (!idRaw) return invalido();
+
+  const esEmail = idRaw.includes('@');
+  const emailNorm = idRaw.toLowerCase();
+  const digits = idRaw.replace(/\D/g, '');
+
+  const cuentas = await prisma.patientAccount.findMany({
+    where: { active: true },
+    include: { patient: { include: { branch: true } } },
   });
 
-  for (const patient of candidatos) {
-    const cuenta = patient.patientAccount;
-    if (!cuenta?.active) continue;
-    if (!(await verifyPassword(password, cuenta.passwordHash))) continue;
+  for (const cuenta of cuentas) {
+    const patient = cuenta.patient;
+    if (!patient) continue;
+    const pdigits = (patient.phone || '').replace(/\D/g, '');
+    const emailMatch = esEmail && !!patient.email && patient.email.toLowerCase() === emailNorm;
+    const phoneMatch = !esEmail && digits.length >= 7 && pdigits.length >= 7 &&
+      (pdigits === digits || pdigits.endsWith(digits) || digits.endsWith(pdigits));
+    if (!emailMatch && !phoneMatch) continue;
+    if (!(await verifyPassword(b.password, cuenta.passwordHash))) continue;
 
     const token = signPatient({ sub: cuenta.id, patientId: patient.id, name: patient.name });
     await audit(req, {
@@ -124,7 +135,7 @@ authRouter.post('/patient/login', async (req, res) => {
       summary: `${patient.name} entró a su portal`, branchId: patient.branchId,
     });
     // Se le avisa si aún usa su teléfono como contraseña, para que la cambie.
-    const usandoTelefono = await verifyPassword((patient.phone || '').replace(/\D/g, ''), cuenta.passwordHash);
+    const usandoTelefono = await verifyPassword(pdigits, cuenta.passwordHash);
     return res.json({
       token,
       debeCambiarClave: usandoTelefono,

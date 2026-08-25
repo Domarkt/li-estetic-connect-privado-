@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { api } from '../../lib/api';
+import { api, tokenStore } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
@@ -69,6 +69,16 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
     } finally { setSending(false); }
   }
 
+  // Ver el portal TAL COMO lo ve el paciente (admin), para detectar errores. Abre una
+  // pestaña nueva con un token temporal de ese paciente (no toca la sesión de staff).
+  async function verPortal() {
+    try {
+      const r = await api.post<{ token: string }>(`/patients/${patientId}/portal-preview`);
+      tokenStore.setPatient(r.token);
+      window.open(`/portal?preview=${encodeURIComponent(r.token)}`, '_blank', 'noopener');
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo abrir el portal'); }
+  }
+
   async function voidPendingCharge(charge: PatientDetail['pendingCharges'][number]) {
     const reason = window.prompt(`Motivo para anular “${charge.name}”:`);
     if (reason === null) return;
@@ -103,6 +113,14 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                   {fichaComplete ? 'Ver ficha' : staff?.role === 'RECEPCIONISTA' ? (paso1Done ? 'Ver / editar datos' : 'Completar Paso 1') : 'Continuar/validar ficha'}
                 </button>
               </div>
+
+              {/* Admin: ver el portal tal como lo ve la paciente (para detectar errores). */}
+              {staff?.role === 'ADMIN' && (
+                <button onClick={verPortal}
+                  className="flex w-full items-center justify-center gap-2 rounded-[11px] border border-line bg-card py-2.5 text-[12.5px] font-bold text-navy hover:border-magenta">
+                  👁 Ver su portal (como lo ve la paciente)
+                </button>
+              )}
 
               {/* El paciente ya completó su parte: recepción no necesita reenviar. */}
               {canBill && !fichaComplete && fichaFilled && (

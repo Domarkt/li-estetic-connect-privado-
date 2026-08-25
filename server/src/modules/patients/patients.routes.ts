@@ -12,6 +12,7 @@ import { upsertLead } from '../messaging/leads.service.js';
 import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, eliminarSesion, listarSesiones, bitacoraPaciente, createHistoricalTreatmentFromCatalog } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
+import { signPatient } from '../../utils/jwt.js';
 
 export const patientsRouter = Router();
 
@@ -284,6 +285,23 @@ patientsRouter.patch('/treatments/:treatmentId/session/:sessionId', requireStaff
     sesiones: await listarSesiones(t.id, labels),
     message: r.agregadas ? `Se agregó lo que faltaba · sesión ${r.done} de ${r.total}` : 'No había nada nuevo que agregar',
   });
+});
+
+/**
+ * Previsualizar el portal DEL paciente (solo Admin): emite un token de paciente para
+ * verlo tal como lo ve el paciente y detectar errores. Se abre en /portal?preview=token.
+ * Queda en auditoría. No requiere que el paciente tenga cuenta de portal.
+ */
+patientsRouter.post('/:id/portal-preview', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { patientAccount: true } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  const token = signPatient({ sub: patient.patientAccount?.id ?? patient.id, patientId: patient.id, name: patient.name });
+  await audit(req, {
+    action: 'FICHA_VIEW', entity: 'Patient', entityId: patient.id, branchId: patient.branchId,
+    summary: `Previsualizó el portal de ${patient.name}`,
+  });
+  res.json({ token });
 });
 
 /**

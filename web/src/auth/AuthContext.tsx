@@ -7,8 +7,8 @@ interface AuthState {
   patient: PatientUser | null;
   loading: boolean;
   loginStaff: (email: string, password: string, role?: Role, branchId?: string) => Promise<void>;
-  /** Portal: correo + contraseña (la inicial es su teléfono). */
-  loginPatient: (email: string, password: string) => Promise<void>;
+  /** Portal: correo O celular + contraseña (la inicial es su teléfono). */
+  loginPatient: (usuario: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -23,6 +23,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
+        // Previsualización del portal (admin): abre /portal?preview=<token> para VER
+        // lo que ve el paciente. Tiene prioridad sobre el token de staff (que sigue
+        // guardado para la app del personal en sus otras pestañas).
+        const preview = new URLSearchParams(window.location.search).get('preview');
+        if (preview) {
+          tokenStore.setPatient(preview);
+          // Quita el token de la URL visible (queda guardado en el token del portal).
+          window.history.replaceState({}, '', '/portal');
+          setPatient(await api.get<PatientUser>('/auth/patient/me', 'patient'));
+          setLoading(false);
+          return;
+        }
         if (tokenStore.getStaff()) {
           setStaff(await api.get<StaffUser>('/auth/staff/me', 'staff'));
         } else if (tokenStore.getPatient()) {
@@ -49,10 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStaff(res.user);
   };
 
-  const loginPatient: AuthState['loginPatient'] = async (email, password) => {
+  const loginPatient: AuthState['loginPatient'] = async (usuario, password) => {
     const res = await api.post<{ token: string; patient: PatientUser }>(
       '/auth/patient/login',
-      { email, password },
+      { usuario, password },
       'none',
     );
     tokenStore.setPatient(res.token);
