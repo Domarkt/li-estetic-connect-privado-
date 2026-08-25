@@ -11,6 +11,7 @@ export type AuditAction =
   | 'PATIENT_CREATE'
   | 'INVOICE_CREATE'      // se emitió un recibo
   | 'INVOICE_VOID'        // se anuló un recibo
+  | 'INVOICE_REBILL'      // el cobro anulado quedó preparado para refacturar
   | 'PENDING_CHARGE_UPDATE'
   | 'PENDING_CHARGE_VOID'
   | 'APPOINTMENT_CANCEL'

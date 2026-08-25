@@ -16,6 +16,7 @@ const METHOD_CHIP: Record<string, { bg: string; fg: string }> = {
   Transferencia: { bg: 'var(--teal-soft)', fg: 'var(--teal)' },
   Tarjeta: { bg: 'var(--warn-soft)', fg: 'var(--warn)' },
   Azul: { bg: 'var(--navy-soft)', fg: 'var(--navy)' },
+  Mixto: { bg: 'var(--magenta-soft)', fg: 'var(--magenta)' },
 };
 
 export default function BillingPage() {
@@ -171,7 +172,14 @@ export default function BillingPage() {
               <div className="text-[13px] font-bold text-magenta">{i.number}</div>
               <div><div className="text-[13px] font-semibold">{i.patient}</div><div className="text-[11.5px] text-faint">{i.date} · {i.branchName}</div></div>
               <div className="text-[13px]">{i.concept}</div>
-              <div><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: chip.bg, color: chip.fg }}>{i.method}</span></div>
+              <div>
+                <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: chip.bg, color: chip.fg }}>{i.method}</span>
+                {i.method === 'Mixto' && i.payments && (
+                  <div className="mt-1.5 flex flex-col gap-0.5 text-[10.5px] leading-tight text-muted">
+                    {i.payments.map((p) => <span key={p.method}>{p.method}: <b>{fmtRD(p.amount)}</b></span>)}
+                  </div>
+                )}
+              </div>
               {showMoney && <div className="text-[13.5px] font-extrabold">{fmtRD(i.total)}</div>}
               <div><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={i.status === 'Anulada' ? { background: 'var(--danger-soft)', color: 'var(--danger)' } : { background: 'var(--ok-soft)', color: 'var(--ok)' }}>{i.status}</span></div>
             </button>

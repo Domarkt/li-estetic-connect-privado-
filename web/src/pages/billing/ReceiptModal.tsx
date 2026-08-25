@@ -17,6 +17,7 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
   const { staff } = useAuth();
   const [size, setSize] = useState('carta');
   const [anulando, setAnulando] = useState(false);
+  const [reparando, setReparando] = useState(false);
 
   // Anular el recibo (solo Administradora): corrige un cobro hecho por error.
   async function anular() {
@@ -29,6 +30,16 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
       toast(r.message); onVoided?.(); onClose();
     } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo anular'); }
     finally { setAnulando(false); }
+  }
+
+  async function refacturar() {
+    if (!receipt.invoiceId) return;
+    setReparando(true);
+    try {
+      const r = await api.post<{ message: string }>(`/invoices/${receipt.invoiceId}/rebill`, {});
+      toast(r.message); onVoided?.(); onClose();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo preparar la refacturación'); }
+    finally { setReparando(false); }
   }
   const width = SIZES.find((s) => s.key === size)!.width;
 
@@ -240,11 +251,17 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
         <div className="flex gap-2.5 border-t border-line bg-card px-[22px] py-3.5">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cerrar</button>
           {/* Solo la Administradora puede anular un cobro hecho por error. */}
-          {staff?.role === 'ADMIN' && receipt.invoiceId && (
+          {staff?.role === 'ADMIN' && receipt.invoiceId && receipt.status !== 'Anulada' && (
             <button onClick={anular} disabled={anulando}
               className="flex-1 rounded-[10px] border py-3 text-[13.5px] font-bold disabled:opacity-60"
               style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-soft)' }}>
               {anulando ? 'Anulando…' : '✕ Anular'}
+            </button>
+          )}
+          {staff?.role === 'ADMIN' && receipt.invoiceId && receipt.status === 'Anulada' && (
+            <button onClick={refacturar} disabled={reparando}
+              className="flex-1 rounded-[10px] border border-magenta bg-magenta-soft py-3 text-[13.5px] font-bold text-magenta disabled:opacity-60">
+              {reparando ? 'Preparando…' : '↻ Refacturar'}
             </button>
           )}
           <button onClick={print} className="flex flex-[2] items-center justify-center gap-2 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-navy">🖨 Imprimir</button>

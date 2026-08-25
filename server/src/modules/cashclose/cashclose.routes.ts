@@ -128,7 +128,10 @@ cashCloseRouter.get('/admin', requireStaff, requireRole('ADMIN'), async (req, re
 
   const rows = await Promise.all(branches.map(async (br) => {
     const close = await prisma.cashClose.findUnique({ where: { branchId_day: { branchId: br.id, day: start } } });
-    const expected = close
+    // Mientras el cierre no esté aprobado, el esperado debe reflejar las facturas
+    // vigentes. Si administración anula/corrige una factura después del envío, usar
+    // el snapshot anterior produce un sobrante ficticio (p. ej. RD$7,000).
+    const expected = close?.status === 'CUADRADO'
       ? { EFECTIVO: close.expectedCash, TARJETA: close.expectedCard, TRANSFERENCIA: close.expectedTransfer, AZUL: close.expectedAzul }
       : await expectedForDay(br.id, start, end);
     const counted = close

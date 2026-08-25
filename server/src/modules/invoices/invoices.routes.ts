@@ -426,35 +426,91 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   }
 });
 
+type RebillableInvoice = {
+  id: string; number: string; branchId: string; patientId: string | null;
+  treatmentId: string | null; total: number;
+  items: { name: string; total: number }[];
+};
+
+/** Devuelve el cobro al paciente sin recrear el combo ni sus sesiones. */
+async function prepareForRebilling(invoice: RebillableInvoice, createdById: string): Promise<number> {
+  if (!invoice.patientId) return 0;
+
+  // Un abono/saldo vuelve al balance del mismo plan; no se crea además un cargo,
+  // porque aparecería dos veces en "Por cobrar".
+  if (invoice.treatmentId) {
+    const treatment = await prisma.treatment.findUnique({ where: { id: invoice.treatmentId } });
+    if (treatment && treatment.patientId === invoice.patientId) {
+      await prisma.treatment.update({
+        where: { id: treatment.id },
+        data: { active: true, balance: Math.min(treatment.price, treatment.balance + invoice.total) },
+      });
+      return 1;
+    }
+  }
+
+  // Para una venta normal se recrean solo las líneas positivas como cargos sin
+  // catalogItemId. Al refacturarlas no se genera un segundo combo: se conserva el
+  // plan/sesiones que ya están cargados en el expediente.
+  const lines = invoice.items.filter((it) => it.total > 0 && !it.name.toLowerCase().startsWith('saldo pendiente'));
+  if (lines.length) {
+    await prisma.chargeItem.createMany({
+      data: lines.map((it) => ({
+        branchId: invoice.branchId, patientId: invoice.patientId!,
+        name: it.name, price: it.total, createdById,
+      })),
+    });
+  }
+  return lines.length;
+}
+
 /**
- * Anular un recibo (solo Administradora): para corregir un cobro hecho por error.
- * Queda como ANULADA (no se borra: rastro para auditoría) y deja de contar en los
- * totales del día. Si el cobro había creado un plan aún SIN usar, se desactiva para
- * no dejar un tratamiento "fantasma"; si ya tenía sesiones aplicadas, no se toca.
+ * Anular un recibo (solo Administradora): se conserva para auditoría, deja de
+ * contar en caja y el mismo cobro vuelve a "Por cobrar" para emitirlo correctamente.
  */
 invoicesRouter.post('/:id/void', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
   const { reason } = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo de la anulación') }).parse(req.body ?? {});
-  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: { patient: true } });
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: { patient: true, items: true } });
   if (!invoice) return res.status(404).json({ error: 'Recibo no encontrado' });
   if (!assertBranchAccess(req, invoice.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
   if (invoice.status === 'ANULADA') return res.status(409).json({ error: 'El recibo ya está anulado' });
 
   await prisma.invoice.update({ where: { id: invoice.id }, data: { status: 'ANULADA' } });
-
-  // Plan ligado a este cobro y aún sin usar → se retira. Con sesiones aplicadas se
-  // conserva (el paciente ya recibió el servicio): el descuadre lo revisa la admin.
-  if (invoice.treatmentId) {
-    const t = await prisma.treatment.findUnique({ where: { id: invoice.treatmentId } });
-    if (t && t.active && t.doneSessions === 0) {
-      await prisma.treatment.update({ where: { id: t.id }, data: { active: false } });
-    }
-  }
+  const pending = await prepareForRebilling(invoice, req.staff!.sub);
 
   await audit(req, {
     action: 'INVOICE_VOID', entity: 'Invoice', entityId: invoice.id, branchId: invoice.branchId,
     summary: `Anuló recibo ${invoice.number} (${invoice.patient?.name ?? 'sin paciente'}): ${reason}`,
   });
-  res.json({ ok: true, message: `Recibo ${invoice.number} anulado` });
+  if (pending > 0) {
+    await audit(req, {
+      action: 'INVOICE_REBILL', entity: 'Invoice', entityId: invoice.id, branchId: invoice.branchId,
+      summary: `Recibo ${invoice.number} devuelto a Por cobrar para refacturar`,
+    });
+  }
+  res.json({ ok: true, message: pending > 0
+    ? `Recibo ${invoice.number} anulado · ya está disponible en Por cobrar para refacturar`
+    : `Recibo ${invoice.number} anulado` });
+});
+
+/** Repara facturas anuladas antes de que existiera la devolución automática. */
+invoicesRouter.post('/:id/rebill', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, include: { items: true } });
+  if (!invoice) return res.status(404).json({ error: 'Recibo no encontrado' });
+  if (!assertBranchAccess(req, invoice.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
+  if (invoice.status !== 'ANULADA') return res.status(409).json({ error: 'Solo se puede refacturar un recibo anulado' });
+  const already = await prisma.auditLog.findFirst({
+    where: { action: 'INVOICE_REBILL', entity: 'Invoice', entityId: invoice.id }, select: { id: true },
+  });
+  if (already) return res.status(409).json({ error: 'Este recibo ya fue devuelto a Por cobrar' });
+
+  const pending = await prepareForRebilling(invoice, req.staff!.sub);
+  if (!pending) return res.status(400).json({ error: 'Este recibo no tiene un paciente o líneas que puedan refacturarse' });
+  await audit(req, {
+    action: 'INVOICE_REBILL', entity: 'Invoice', entityId: invoice.id, branchId: invoice.branchId,
+    summary: `Recibo anulado ${invoice.number} devuelto manualmente a Por cobrar`,
+  });
+  res.json({ ok: true, message: `${invoice.number} ya está disponible en Por cobrar para emitir la factura correcta` });
 });
 
 /** Datos del recibo para reimprimir. */

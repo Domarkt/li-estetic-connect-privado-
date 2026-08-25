@@ -104,6 +104,7 @@ export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeo
     branchName: i.branch.name,
     concept: i.concept,
     method: lines.length > 1 ? 'Mixto' : lines[0].method,
+    payments: lines,
     total: i.total,
     status: i.status === 'PAGADA' ? 'Pagada' : i.status === 'ANULADA' ? 'Anulada' : 'Pendiente',
   };
@@ -140,5 +141,6 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     method: paymentLines(i).length > 1 ? 'Mixto' : METHOD_LABEL[i.method],
     payments: paymentLines(i), // desglose para el recibo
     paymentKind: i.paymentKind,
+    status: i.status === 'PAGADA' ? 'Pagada' : i.status === 'ANULADA' ? 'Anulada' : 'Pendiente',
   };
 }

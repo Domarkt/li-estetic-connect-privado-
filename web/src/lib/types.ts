@@ -180,6 +180,7 @@ export type PaymentMethod = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' | 'AZUL';
 export interface InvoiceRow {
   id: string; number: string; patient: string; date: string; branchName: string;
   concept: string; method: string; total: number; status: string;
+  payments?: { method: string; amount: number }[];
 }
 export interface BillingResponse {
   date?: string;
@@ -209,6 +210,7 @@ export interface Receipt {
   clientRnc?: string | null; clientName?: string | null;
   payments?: { method: string; amount: number }[];
   paymentKind?: string;
+  status?: string;
   /** Tras cobrar: enlace de WhatsApp con la CITA del paciente y su código
    *  (ya pagó, así que ahora sí se le puede entregar el código). */
   citaWhatsappUrl?: string | null;
