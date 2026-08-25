@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
-import { serializeAppt, apptInclude, dayRange, genApptCode } from './appointments.service.js';
+import { serializeAppt, apptInclude, dayRange, genApptCode, hasUsableTreatment } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.js';
 import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
@@ -156,6 +156,18 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
   }
 
+  // El plan escogido debe ser de esta paciente y conservar sesiones. Validarlo en
+  // servidor evita asociar por error un combo ajeno o agotado a la cita.
+  if (b.treatmentId) {
+    const treatment = await prisma.treatment.findUnique({ where: { id: b.treatmentId } });
+    if (!treatment || treatment.patientId !== patient.id) {
+      return res.status(400).json({ error: 'El paquete seleccionado no pertenece a esta paciente' });
+    }
+    if (!treatment.active || treatment.doneSessions >= treatment.totalSessions) {
+      return res.status(409).json({ error: 'Este paquete ya no tiene sesiones disponibles' });
+    }
+  }
+
   // Seguimiento de tratamiento: sin servicio del catálogo, así que NO se cobra.
   // Si la cita consume un plan ya pagado, se conserva el nombre enviado (el del
   // combo) para que la agenda muestre a qué viene la paciente, no un genérico.
@@ -236,6 +248,9 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     },
     include: apptInclude,
   });
+  // Un paciente importado puede seguir marcado como NUEVO porque su ficha clínica
+  // está pendiente. Si ya tiene un combo activo, no debe pasar por caja otra vez.
+  const codeEnabled = hasUsableTreatment(appt.patient.treatments);
 
   // Cada servicio agendado queda como cargo pendiente: al llegar, recepción los
   // cobra todos juntos (evita tener que agendar uno y cobrar otro por separado).
@@ -281,9 +296,9 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     const fecha = startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
     const hora = startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
     const mail = await sendAppointmentConfirmation(patient.email, {
-      // Cliente NUEVO: sin código — se le entrega al pagar en recepción.
+      // Sin plan cargado: el código se entrega al pagar en recepción.
       name: tratoFormal(patient.name, patient.sex), service: serviceName, date: fecha, time: hora,
-      code: patient.type === 'NUEVO' ? '' : (appt.code ?? ''),
+      code: codeEnabled ? (appt.code ?? '') : '',
       branchName: appt.branch.name, branchPlace: appt.branch.place,
       replyTo: appt.branch.email ?? undefined,
     });
@@ -305,7 +320,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   let whatsappUrl: string | null = null;
   if (patient.phone) {
     const cuando = startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
-    const codigo = appt.code && patient.type !== 'NUEVO' ? ` Su código de cita es ${appt.code}.` : '';
+    const codigo = appt.code && codeEnabled ? ` Su código de cita es ${appt.code}.` : '';
     const confirmText = `Hola ${tratoFormal(patient.name, patient.sex)} 💜 Confirmamos su cita en ${sucursalLabel(appt.branch.name, appt.branch.place)}: ${serviceName} el ${cuando}.${codigo} Le esperamos 10 min antes. ¿Está de acuerdo con su cita? Escriba "estoy de acuerdo" para confirmarla. — Li Estetic Center`;
     whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(confirmText)}`;
   }
@@ -342,6 +357,15 @@ appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONI
   const patient = await prisma.patient.findUnique({ where: { id: b.patientId } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (b.treatmentId) {
+    const treatment = await prisma.treatment.findUnique({ where: { id: b.treatmentId } });
+    if (!treatment || treatment.patientId !== patient.id) {
+      return res.status(400).json({ error: 'El paquete seleccionado no pertenece a esta paciente' });
+    }
+    if (!treatment.active || treatment.doneSessions >= treatment.totalSessions) {
+      return res.status(409).json({ error: 'Este paquete ya no tiene sesiones disponibles' });
+    }
+  }
 
   // Fechas: o bien una lista individual (diario/3x semana/irregular), o generadas
   // por intervalo desde la primera (semanal, interdiario, etc.).
@@ -647,7 +671,8 @@ appointmentsRouter.post('/:id/remind', requireStaff, branchScope, async (req, re
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
 
   const when = appt.startsAt.toLocaleString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' });
-  const text = `Hola ${appt.patient.name.split(' ')[0]} 💜 Te recordamos tu cita en ${appt.branch.name}: ${appt.serviceName} el ${when}. — Li Estetic Center`;
+  const codigo = hasUsableTreatment(appt.patient.treatments) && appt.code ? ` Su código de cita es ${appt.code}.` : '';
+  const text = `Hola ${tratoFormal(appt.patient.name, appt.patient.sex)} 💜 Le recordamos su cita en ${appt.branch.name}: ${appt.serviceName} el ${when}.${codigo} — Li Estetic Center`;
 
   const results: Record<string, string> = {};
   let whatsappUrl: string | null = null;

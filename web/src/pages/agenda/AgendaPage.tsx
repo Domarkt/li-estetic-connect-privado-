@@ -446,7 +446,9 @@ function CheckinModal({ appt, onClose, onDone, onAbierto }: {
   onAbierto: (p: { id: string; name: string; treatmentId: string | null }) => void;
 }) {
   const toast = useToast();
-  const [code, setCode] = useState('');
+  // La cita ya tiene un código. Precargarlo resuelve también las citas antiguas de
+  // pacientes importados que no lo recibieron en su confirmación.
+  const [code, setCode] = useState(appt?.paid ? (appt.code ?? '') : '');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   // Tras validar, el turno ya está abierto: el botón no debe seguir disponible.
@@ -478,7 +480,7 @@ function CheckinModal({ appt, onClose, onDone, onAbierto }: {
         <div className="flex items-center border-b border-line px-6 py-5"><div className="flex-1"><div className="text-base font-extrabold">Abrir turno en cabina</div><div className="text-[12.5px] text-muted">{appt ? `${appt.patient} · ${appt.time} · valida su código` : 'Valida el código del paciente antes de atender'}</div></div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
         <div className="flex flex-col gap-3 px-6 py-5">
           <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && validate()}
-            placeholder="Código del turno (ej. K7X2QP)" className="rounded-[10px] border border-line px-4 py-3 text-center text-[18px] font-extrabold tracking-[.3em] outline-none focus:border-magenta" />
+            placeholder="Código del turno (4 dígitos)" className="rounded-[10px] border border-line px-4 py-3 text-center text-[18px] font-extrabold tracking-[.3em] outline-none focus:border-magenta" />
           {result && (
             <div className="rounded-[10px] px-4 py-3 text-[13px] font-bold" style={result.ok ? { background: 'var(--ok-soft)', color: 'var(--ok)' } : { background: 'var(--danger-soft)', color: 'var(--danger)' }}>
               {result.ok ? '✓ ' : '⚠ '}{result.text}

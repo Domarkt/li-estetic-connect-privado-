@@ -16,6 +16,11 @@ export function genApptCode(): string {
   return s;
 }
 
+/** Un plan cargado habilita el turno mientras siga activo y conserve sesiones. */
+export function hasUsableTreatment(treatments: Array<{ active: boolean; totalSessions: number; doneSessions: number }>): boolean {
+  return treatments.some((t) => t.active && t.doneSessions < t.totalSessions);
+}
+
 export const apptInclude = {
   patient: { include: { clinicalRecord: true, treatments: { include: { areas: true, catalogItem: { include: { incluye: { include: { service: true } } } } } } } },
   therapist: true,
@@ -70,7 +75,7 @@ export function serializeAppt(
     // ¿El paciente ya pagó algo? Tiene al menos un plan/servicio activo. Un
     // paciente nuevo recién agendado no tiene ninguno hasta que paga en recepción:
     // hasta entonces no se le abre el turno con código (el código se entrega al pagar).
-    paid: a.patient.treatments.some((t) => t.active),
+    paid: hasUsableTreatment(a.patient.treatments),
     // Código de turno + si ya fue validado en cabina.
     code: a.code,
     treatmentId: a.treatmentId,
