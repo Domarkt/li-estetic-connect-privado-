@@ -393,9 +393,7 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
   const [sel, setSel] = useState<string[]>(incluidas.length ? incluidas : []);
   const [busy, setBusy] = useState(false);
   const [opciones, setOpciones] = useState<AreaOpt[]>([]);
-  // Área adicional con precio editable (láser varía según la zona).
   const [extraFor, setExtraFor] = useState<string | null>(null);
-  const [extraPrice, setExtraPrice] = useState(String(PRECIO_AREA_EXTRA));
 
   // Áreas administrables (incluye las que la admin agregue). Se cargan del sistema.
   useEffect(() => {
@@ -427,7 +425,7 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
     if (!extraFor) return;
     setBusy(true);
     try {
-      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/extra-area`, { area: extraFor, price: Number(extraPrice) || 0 });
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/extra-area`, { area: extraFor });
       toast(r.message);
       onSaved();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); setExtraFor(null); }
@@ -464,20 +462,18 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
                           : <span className="flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>}
                       </button>
                       {!esExtra && !on && sel.length >= 1 && (
-                        <button onClick={() => { setExtraFor(editando ? null : a.key); setExtraPrice(String(PRECIO_AREA_EXTRA)); }} disabled={busy}
+                        <button onClick={() => setExtraFor(editando ? null : a.key)} disabled={busy}
                           className="flex-none rounded-[9px] border px-2.5 py-2 text-[11.5px] font-bold"
                           style={{ borderColor: 'var(--warn)', color: 'var(--warn)', background: editando ? 'var(--warn)' : 'var(--warn-soft)', ...(editando ? { color: '#fff' } : {}) }}>
                           + adicional
                         </button>
                       )}
                     </div>
-                    {/* Área adicional con precio editable, se cobra en recepción. */}
+                    {/* Área adicional a precio fijo; se envía a cobro en recepción. */}
                     {editando && (
                       <div className="flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2">
-                        <span className="text-[12px] font-bold text-muted">RD$</span>
-                        <input autoFocus value={extraPrice} onChange={(e) => setExtraPrice(e.target.value.replace(/\D/g, ''))}
-                          className="w-24 rounded-[8px] border border-line px-2.5 py-1.5 text-[13px] outline-none focus:border-magenta" placeholder="1500" />
-                        <button onClick={confirmarExtra} disabled={busy} className="ml-auto rounded-[8px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">Agregar y cobrar</button>
+                        <span className="text-[12px] font-bold text-navy">Precio fijo: {fmtRD(PRECIO_AREA_EXTRA)}</span>
+                        <button onClick={confirmarExtra} disabled={busy} className="ml-auto rounded-[8px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">Agregar y enviar a cobro</button>
                         <button onClick={() => setExtraFor(null)} className="rounded-[8px] px-2 py-1.5 text-[12px] font-bold text-muted">×</button>
                       </div>
                     )}
