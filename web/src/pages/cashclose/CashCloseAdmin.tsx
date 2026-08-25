@@ -16,7 +16,7 @@ const STATUS_META: Record<string, { label: string; bg: string; fg: string }> = {
 type ExpectedEdits = Record<string, Record<string, string>>; // branchId -> method -> value
 
 export default function CashCloseAdmin() {
-  const { activeBranch } = useBranch();
+  const { branches, activeBranch, setActiveBranch } = useBranch();
   const toast = useToast();
   const [date, setDate] = useState(todayISO());
   const [data, setData] = useState<CashCloseAdminView | null>(null);
@@ -66,10 +66,25 @@ export default function CashCloseAdmin() {
 
   return (
     <div className="animate-fade">
-      <div className="mb-4 flex items-center gap-3">
+      {/* En móvil el selector global del encabezado se oculta por espacio. Cuadre
+          necesita el suyo para validar E1/E2/E3 sin cambiar a vista de escritorio. */}
+      <div className="-mx-1 mb-4 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:hidden">
+        {[{ id: 'all', label: 'Todas' }, ...branches.map((b) => ({ id: b.id, label: b.name.replace('Estética ', 'E') }))].map((b) => {
+          const on = activeBranch === b.id;
+          return (
+            <button key={b.id} type="button" onClick={() => setActiveBranch(b.id)}
+              aria-pressed={on}
+              className={`flex-none rounded-[9px] border px-3.5 py-2 text-[12.5px] font-bold ${on ? 'border-magenta bg-magenta text-white' : 'border-line bg-card text-muted'}`}>
+              {b.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
         <span className="text-[12.5px] font-bold text-muted">Fecha</span>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-line bg-card px-3 py-2 text-[13px]" />
-        <span className="text-[12px] text-faint">Ingresa el total del sistema por método y valida contra lo que envió la sucursal (conteo ciego).</span>
+        <span className="w-full text-[12px] text-faint sm:w-auto sm:flex-1">Ingresa el total del sistema por método y valida contra lo que envió la sucursal (conteo ciego).</span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
