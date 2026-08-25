@@ -421,11 +421,11 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
 
-  async function confirmarExtra() {
-    if (!extraFor) return;
+  async function confirmarExtra(areaKey = extraFor) {
+    if (!areaKey) return;
     setBusy(true);
     try {
-      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/extra-area`, { area: extraFor });
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/extra-area`, { area: areaKey });
       toast(r.message);
       onSaved();
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); setExtraFor(null); }
@@ -468,12 +468,18 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
                           + adicional
                         </button>
                       )}
+                      {esExtra && (
+                        <button onClick={() => confirmarExtra(a.key)} disabled={busy}
+                          className="flex-none rounded-[9px] border border-magenta bg-magenta-soft px-2.5 py-2 text-[11px] font-bold text-magenta">
+                          Enviar cobro {fmtRD(PRECIO_AREA_EXTRA)}
+                        </button>
+                      )}
                     </div>
                     {/* Área adicional a precio fijo; se envía a cobro en recepción. */}
                     {editando && (
                       <div className="flex items-center gap-2 rounded-[10px] border border-line bg-bg px-3 py-2">
                         <span className="text-[12px] font-bold text-navy">Precio fijo: {fmtRD(PRECIO_AREA_EXTRA)}</span>
-                        <button onClick={confirmarExtra} disabled={busy} className="ml-auto rounded-[8px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">Agregar y enviar a cobro</button>
+                        <button onClick={() => confirmarExtra()} disabled={busy} className="ml-auto rounded-[8px] bg-magenta px-3 py-1.5 text-[12px] font-bold text-white">Agregar y enviar a cobro</button>
                         <button onClick={() => setExtraFor(null)} className="rounded-[8px] px-2 py-1.5 text-[12px] font-bold text-muted">×</button>
                       </div>
                     )}
@@ -487,7 +493,7 @@ function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: (
               Las {pkg.total} sesiones se reparten: <b>{porArea} por área</b> ({sel.length} área{sel.length === 1 ? '' : 's'}).
             </div>
           )}
-          <div className="text-[11px] text-faint">Las áreas marcadas van incluidas. <b>+ adicional</b> agrega un área con precio editable que se cobra en recepción.</div>
+          <div className="text-[11px] text-faint">Las áreas marcadas van incluidas. <b>+ adicional</b> agrega un área por {fmtRD(PRECIO_AREA_EXTRA)} y la envía a recepción.</div>
         </div>
 
         <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">

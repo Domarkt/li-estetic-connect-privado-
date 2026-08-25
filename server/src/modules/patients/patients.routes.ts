@@ -318,13 +318,42 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
   const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true, areas: true } });
   if (!t) return res.status(404).json({ error: 'Paquete no encontrado' });
   if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
-  if (t.areas.some((a) => a.area === area)) return res.status(409).json({ error: 'Esa área ya está en el paquete' });
-
-  const incluidas = t.areas.filter((a) => !a.isExtra);
-  const sesiones = incluidas[0]?.totalSessions ?? Math.max(1, Math.round(t.totalSessions / 2));
   const monto = AREA_EXTRA_PRECIO;
   const labels = await getAreaLabelMap();
   const areaLabel = labels[area] ?? area;
+  const chargeName = `Área adicional: ${areaLabel} (${t.name})`;
+  const existingArea = t.areas.find((a) => a.area === area);
+
+  // Reparación para áreas agregadas con la versión anterior: si el área adicional
+  // existe pero nunca se creó el cargo, genera solo el cargo. Es idempotente para
+  // que tocar el botón dos veces jamás cobre RD$1,500 dos veces.
+  if (existingArea) {
+    if (!existingArea.isExtra) return res.status(409).json({ error: 'Esa área ya está incluida en el paquete' });
+    const existingCharge = await prisma.chargeItem.findFirst({
+      where: { patientId: t.patientId, branchId: t.patient.branchId, name: chargeName },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existingCharge?.status === 'ANULADO') {
+      return res.status(409).json({ error: 'El cargo de esta área fue anulado por administración. Debe revisarlo una administradora.' });
+    }
+    if (existingCharge) {
+      return res.json({ ok: true, message: existingCharge.status === 'FACTURADO'
+        ? `${areaLabel} ya fue facturada`
+        : `${areaLabel} ya tiene RD$${monto.toLocaleString('en-US')} pendiente en recepción` });
+    }
+    await prisma.chargeItem.create({
+      data: { branchId: t.patient.branchId, patientId: t.patientId, name: chargeName, price: monto, createdById: req.staff!.sub },
+    });
+    await notifyRole('RECEPCIONISTA', {
+      type: 'GENERAL', title: 'Área adicional pendiente de cobro',
+      body: `${t.patient.name} · ${areaLabel} · RD$${monto.toLocaleString('en-US')}`,
+      link: '/app/facturacion',
+    }, t.patient.branchId);
+    return res.status(201).json({ ok: true, message: `${areaLabel} · RD$${monto.toLocaleString('en-US')} enviado a cobrar en recepción` });
+  }
+
+  const incluidas = t.areas.filter((a) => !a.isExtra);
+  const sesiones = incluidas[0]?.totalSessions ?? Math.max(1, Math.round(t.totalSessions / 2));
 
   // Área y cargo se guardan juntos: si alguno falla, ninguno queda creado.
   await prisma.$transaction([
@@ -334,7 +363,7 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
     prisma.chargeItem.create({
       data: {
         branchId: t.patient.branchId, patientId: t.patientId,
-        name: `Área adicional: ${areaLabel} (${t.name})`,
+        name: chargeName,
         price: monto, createdById: req.staff!.sub,
       },
     }),
