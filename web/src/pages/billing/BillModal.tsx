@@ -144,7 +144,12 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   }
 
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const chargesTotal = hasCharges ? (current?.pendingTotal ?? 0) : 0;
+  // Solo suma los cargos MARCADOS. Antes usaba pendingTotal (todos los cargos del
+  // paciente): al desmarcar la oferta de RD$3,500 y dejar el área de RD$1,500, el
+  // recibo mostraba un concepto de 1,500 pero cobraba 5,000.
+  const chargesTotal = hasCharges
+    ? (current?.pendingCharges ?? []).filter((c) => chargeIds.includes(c.id)).reduce((s, c) => s + c.price, 0)
+    : 0;
   // Total de lo que se cobra cuando NO es saldo: cargos pendientes + carrito.
   const lineasTotal = chargesTotal + cartTotal;
   // Monto a cobrar según el caso:

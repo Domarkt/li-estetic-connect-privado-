@@ -250,8 +250,16 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     : 0;
   const carritoTienePlan = planesEnCarrito > 0;
   const charges = b.chargeItemIds?.length
-    ? await prisma.chargeItem.findMany({ where: { id: { in: b.chargeItemIds }, branchId } })
+    ? await prisma.chargeItem.findMany({
+        where: {
+          id: { in: b.chargeItemIds }, branchId, status: 'PENDIENTE_FACTURAR',
+          ...(b.patientId ? { patientId: b.patientId } : {}),
+        },
+      })
     : [];
+  if (b.chargeItemIds?.length && charges.length !== new Set(b.chargeItemIds).size) {
+    return res.status(409).json({ error: 'Uno de los cargos seleccionados ya fue facturado, anulado o pertenece a otro paciente. Actualiza y vuelve a intentarlo.' });
+  }
 
   // Carrito unificado: los cargos pendientes (que la esteticista envió) y los
   // servicios/productos agregados en el cobro van JUNTOS en el mismo recibo, cada
@@ -261,6 +269,17 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const cartLines = (b.items ?? []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty }));
   const detalle = [...chargeLines, ...cartLines];
   const brutoDetalle = detalle.reduce((s, l) => s + l.total, 0);
+
+  // Invariante contable: el dinero recibido debe coincidir con las líneas. Esta
+  // validación del servidor protege incluso si el navegador tiene una versión vieja.
+  if (detalle.length > 0 && b.paymentKind === 'TOTAL' && amount !== brutoDetalle) {
+    return res.status(400).json({
+      error: `El total cobrado (${`RD$${amount.toLocaleString('en-US')}`}) no coincide con los conceptos (${`RD$${brutoDetalle.toLocaleString('en-US')}`})`,
+    });
+  }
+  if (detalle.length > 0 && b.paymentKind === 'ABONO' && amount >= brutoDetalle) {
+    return res.status(400).json({ error: `El abono debe ser menor que el total de los conceptos (RD$${brutoDetalle.toLocaleString('en-US')})` });
+  }
 
   if (detalle.length === 0) {
     // Cobro de concepto libre (sin cargos ni carrito): una sola línea.
