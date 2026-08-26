@@ -754,6 +754,39 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
   });
 });
 
+/**
+ * Restablecer la contraseña del portal (Recepción/Admin): la devuelve a su número de
+ * teléfono. Para cuando la paciente cambió su clave y la olvidó. Crea la cuenta si no
+ * existe. Devuelve un enlace de WhatsApp con el instructivo. Queda en auditoría.
+ */
+patientsRouter.post('/:id/portal-reset', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { patientAccount: true, branch: true } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (!patient.phone) return res.status(400).json({ error: 'El paciente necesita un teléfono para restablecer su acceso.' });
+
+  const claveInicial = await hashPassword(patient.phone.replace(/\D/g, ''));
+  if (patient.patientAccount) {
+    await prisma.patientAccount.update({ where: { id: patient.patientAccount.id }, data: { passwordHash: claveInicial, active: true } });
+  } else {
+    await prisma.patientAccount.create({ data: { patientId: patient.id, login: patient.phone.trim(), passwordHash: claveInicial, active: true } });
+  }
+
+  await audit(req, {
+    action: 'PORTAL_ACCESS', entity: 'Patient', entityId: patient.id, branchId: patient.branchId,
+    summary: `Restableció la contraseña del portal de ${patient.name}`,
+  });
+
+  const usuarioTxt = patient.email
+    ? `tu correo (${patient.email}) o tu número (${patient.phone})`
+    : `tu número de celular (${patient.phone})`;
+  const waMsg = `Hola ${patient.name} 👋 Restablecimos tu acceso al portal de Li Estetic Center 💜\n\n` +
+    `Entra aquí: ${PORTAL_URL}\n\nUsuario: ${usuarioTxt}\nContraseña: tu número de teléfono (solo los números)\n\nLuego puedes cambiarla en "Mi Ficha".`;
+  const whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(waMsg)}`;
+
+  res.json({ ok: true, whatsappUrl, message: 'Contraseña restablecida a su número de teléfono. Envíaselo por WhatsApp.' });
+});
+
 const clinicalSchema = z.object({
   antecedentes: z.record(z.any()).optional(),
   ginecoObst: z.record(z.any()).optional(),

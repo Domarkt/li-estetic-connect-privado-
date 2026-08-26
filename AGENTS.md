@@ -154,6 +154,17 @@ antes de hacer Manual Deploy". Nunca asumas que la columna ya existe.
 - Flags de función: se reutiliza la tabla `Integration` (kind='flag', status CONNECTED/DISCONNECTED).
 - Fotos del catálogo son data URIs pesados: `GET /catalog` solo las manda con `?images=1`.
 
+### Portal del paciente — acceso
+- El paciente entra con **correo O celular** como usuario y su **número de teléfono** (solo
+  dígitos) como contraseña inicial; puede cambiarla en "Mi Ficha". Login en
+  `POST /auth/patient/login` (campo `usuario`), busca entre cuentas de portal activas.
+- **No requiere correo**: recepción da el acceso desde la ficha con "Dar acceso al portal"
+  (`POST /patients/:id/ficha/send-to-patient`) — crea la cuenta con el teléfono y entrega el
+  acceso por WhatsApp/QR (y correo si lo tiene). También se activa al pagar.
+- **Restablecer contraseña** (recepción/admin): `POST /patients/:id/portal-reset` la devuelve
+  al teléfono. **Ver el portal como el paciente** (admin, para diagnosticar):
+  `POST /patients/:id/portal-preview` → abre `/portal?preview=<token>`. Ambos quedan en auditoría.
+
 ---
 
 ## 8. Flujo de trabajo con Git

@@ -79,6 +79,16 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
     } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo abrir el portal'); }
   }
 
+  // Restablecer la contraseña del portal a su teléfono (para quien la cambió y la olvidó).
+  async function resetPassword() {
+    if (!window.confirm('¿Restablecer la contraseña del portal a su número de teléfono? Entrará con su celular o correo y su teléfono como contraseña.')) return;
+    try {
+      const r = await api.post<{ message: string; whatsappUrl: string | null }>(`/patients/${patientId}/portal-reset`);
+      toast(r.message);
+      if (r.whatsappUrl) window.open(r.whatsappUrl, '_blank', 'noopener');
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo restablecer la contraseña'); }
+  }
+
   async function voidPendingCharge(charge: PatientDetail['pendingCharges'][number]) {
     const reason = window.prompt(`Motivo para anular “${charge.name}”:`);
     if (reason === null) return;
@@ -119,6 +129,14 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                 <button onClick={verPortal}
                   className="flex w-full items-center justify-center gap-2 rounded-[11px] border border-line bg-card py-2.5 text-[12.5px] font-bold text-navy hover:border-magenta">
                   👁 Ver su portal (como lo ve la paciente)
+                </button>
+              )}
+
+              {/* Recepción/Admin: restablecer la contraseña del portal a su teléfono. */}
+              {canBill && (
+                <button onClick={resetPassword}
+                  className="flex w-full items-center justify-center gap-2 rounded-[11px] border border-line bg-card py-2.5 text-[12.5px] font-bold text-navy hover:border-magenta">
+                  🔑 Restablecer contraseña del portal
                 </button>
               )}
 
