@@ -704,8 +704,9 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
 
-  // El acceso es por correo + teléfono: ambos son obligatorios.
-  if (!patient.email) return res.status(400).json({ error: 'El paciente necesita un correo para acceder al portal (agrégalo en su ficha).' });
+  // El acceso funciona con SOLO el teléfono (usuario = correo o celular, contraseña =
+  // teléfono). El correo es opcional: si lo tiene, además se le manda por correo; si no,
+  // se le entrega por WhatsApp. Así los pacientes sin correo también pueden entrar.
   if (!patient.phone) return res.status(400).json({ error: 'El paciente necesita un teléfono para acceder al portal.' });
 
   // Crea/activa la cuenta del portal. La contraseña inicial es su propio teléfono;
@@ -722,13 +723,17 @@ patientsRouter.post('/:id/ficha/send-to-patient', requireStaff, requireRole('ADM
     data: { sentToPatientAt: new Date() },
   });
 
-  const mail = await sendPatientAccess(patient.email, {
-    name: patient.name, phone: patient.phone, replyTo: patient.branch.email ?? undefined,
-  });
+  // Correo solo si lo tiene.
+  const mail = patient.email
+    ? await sendPatientAccess(patient.email, { name: patient.name, phone: patient.phone, replyTo: patient.branch.email ?? undefined })
+    : { sent: false as boolean, error: undefined as string | undefined };
 
   // Enlace de WhatsApp (wa.me) con el instructivo listo para enviar desde el WhatsApp de recepción.
+  const usuarioTxt = patient.email
+    ? `tu correo (${patient.email}) o tu número (${patient.phone})`
+    : `tu número de celular (${patient.phone})`;
   const waMsg = `Hola ${patient.name} 👋 Ya tienes acceso a tu portal de Li Estetic Center 💜\n\n` +
-    `Entra aquí: ${PORTAL_URL}\nEscribe tu correo (${patient.email}) y tu teléfono (${patient.phone}) y toca "Entrar a mi portal".\n\n¡Te esperamos!`;
+    `Entra aquí: ${PORTAL_URL}\n\nUsuario: ${usuarioTxt}\nContraseña: tu número de teléfono (solo los números)\n\nLuego puedes cambiar tu contraseña en "Mi Ficha". ¡Te esperamos!`;
   const whatsappUrl = `https://wa.me/${normalizePhone(patient.phone)}?text=${encodeURIComponent(waMsg)}`;
 
   await notifyBranchTherapists(patient.branchId, {

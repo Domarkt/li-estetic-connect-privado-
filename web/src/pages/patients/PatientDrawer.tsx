@@ -133,7 +133,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
               {canBill && !fichaComplete && (
                 <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--teal-soft)', borderColor: '#CFE2F0' }}>
                   <div className="mb-2 text-[12px] leading-normal" style={{ color: '#1E5A82' }}>
-                    Cuando el paciente <b>se presenta y paga</b>, dale acceso a su portal (para ver su proceso y su ficha). Entra con su <b>correo y teléfono</b>.
+                    Cuando el paciente <b>se presenta y paga</b>, dale acceso a su portal (para ver su proceso y su ficha). Entra con su <b>correo o su celular</b> y su <b>teléfono</b> como contraseña.
                   </div>
                   <button onClick={sendToPatient} disabled={sending} className="flex w-full items-center justify-center gap-2 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-60">
                     {sending ? 'Enviando…' : d.fichaSent ? '✉ Reenviar acceso al portal' : '✉ Dar acceso al portal'}
@@ -141,7 +141,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                   {accessGiven && (
                     <div className="mt-2 rounded-[9px] bg-card p-3 text-center text-[12px]">
                       <div className="font-bold text-navy">Acceso activado ✓</div>
-                      <div className="mt-0.5 text-muted">El paciente entra con su <b>correo</b> y <b>teléfono</b>.</div>
+                      <div className="mt-0.5 text-muted">El paciente entra con su <b>correo o celular</b>, y su <b>teléfono</b> como contraseña.</div>
                       {qr && <img src={qr} alt="QR del portal" className="mx-auto my-2 h-40 w-40 rounded-lg" />}
                       {qr && <div className="text-faint">Escanea el QR para abrir el portal</div>}
                       {waUrl && (

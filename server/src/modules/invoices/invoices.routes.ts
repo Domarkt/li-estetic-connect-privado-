@@ -426,12 +426,13 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     // correo. Best-effort — no rompe el cobro. Solo la primera vez (si aún no tiene cuenta).
     try {
       const pat = await prisma.patient.findUnique({ where: { id: b.patientId }, include: { patientAccount: true, branch: true } });
-      if (pat?.email && pat.phone && !pat.patientAccount) {
-        // Contrasena inicial: su propio telefono. La paciente puede cambiarla
-        // por una propia desde su perfil en el portal.
+      // Basta con el TELÉFONO: la cuenta se crea con el teléfono (usuario y contraseña
+      // inicial). Si además tiene correo, se le envía el acceso por correo. Así los
+      // pacientes sin correo también quedan con acceso al pagar.
+      if (pat?.phone && !pat.patientAccount) {
         const claveInicial = await hashPassword((pat.phone || '').replace(/\D/g, ''));
         await prisma.patientAccount.create({ data: { patientId: pat.id, login: pat.phone.trim(), passwordHash: claveInicial, active: true } });
-        await sendPatientAccess(pat.email, { name: pat.name, phone: pat.phone, replyTo: pat.branch?.email ?? undefined });
+        if (pat.email) await sendPatientAccess(pat.email, { name: pat.name, phone: pat.phone, replyTo: pat.branch?.email ?? undefined });
       }
     } catch { /* el acceso no debe bloquear la facturación */ }
 
