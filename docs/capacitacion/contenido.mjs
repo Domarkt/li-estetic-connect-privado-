@@ -56,8 +56,8 @@ export const modulos = [
       'Toda cita queda registrada con su esteticista, su servicio y un código único de turno. El sistema controla la disponibilidad real: cada sucursal tiene varias esteticistas y solo se bloquea el horario cuando todas están ocupadas.',
     pasos: [
       { t: 'Toca "Agendar cita"', d: 'Arriba a la derecha en la Agenda.' },
-      { t: 'Elige el tipo de clienta', d: 'Cliente nuevo (se crea la paciente ahí mismo) o Recurrente (la buscas por nombre o teléfono).' },
-      { t: 'Selecciona el servicio', d: 'Sale del catálogo. Si el servicio no tiene precio fijo, se define al cobrar.' },
+      { t: 'Elige el tipo de clienta', d: 'Cliente nuevo (se crea la paciente ahí mismo — captura ya su dirección: calle, sector y provincia) o Recurrente (la buscas por nombre o teléfono).' },
+      { t: 'Selecciona el servicio', d: 'Sale del catálogo. Puedes agregar VARIOS servicios a la misma cita. Si un servicio no tiene precio fijo, se define al cobrar.' },
       { t: 'Indica el paquete, si aplica', d: 'Si la clienta tiene paquetes comprados, elige de cuál es esta sesión. Así se descuenta sola al cerrar el turno.' },
       { t: 'Fecha, hora y duración', d: 'Indica cuánto durará el proceso (puede pasar de una hora). La esteticista queda reservada todo ese tiempo.' },
       { t: 'Asigna la esteticista', d: 'Si ya tiene una cita que se solapa, el sistema te avisa y te deja elegir otra.' },
@@ -70,6 +70,8 @@ export const modulos = [
     ],
     atajos: [
       'El botón "Recordar" envía el recordatorio por WhatsApp, correo o portal. El WhatsApp también se abre con el mensaje listo.',
+      'El botón "Recordar" DESAPARECE cuando el turno ya se cerró: si no lo ves, es que la cita ya se atendió.',
+      'Los mensajes al paciente salen con la sucursal Y su ubicación (ej. "Estética 1 · Plaza San Vicente") para no confundir estéticas cercanas.',
       'La vista de mes te deja navegar días sin perder el filtro de sucursal.',
     ],
   },
@@ -86,16 +88,19 @@ export const modulos = [
       { t: 'Busca a la clienta', d: 'En Pacientes, escribe nombre o teléfono. La lista muestra el estado de su ficha.' },
       { t: 'Lee el estado de la ficha', d: 'Pendiente (sin llenar), Paso 1 OK (datos personales listos) o Completa (con la parte clínica).' },
       { t: 'Abre la ficha', d: 'Toca la fila y luego "Llenar ficha" o "Abrir ficha".' },
-      { t: 'Completa lo que te toca', d: 'Recepción: datos personales y contacto. Esteticista: antecedentes, medicamentos, fototipo, talla y peso, y la firma.' },
+      { t: 'Completa lo que te toca', d: 'Recepción: datos personales, contacto y dirección (calle, sector y provincia, por separado). Esteticista: antecedentes, medicamentos, fototipo, talla y peso, y la firma.' },
       { t: 'Guarda', d: 'La ficha guarda por pasos: si te interrumpen, no pierdes lo escrito.' },
     ],
     ojo: [
-      'La cédula, la dirección y toda la información clínica se guardan cifradas. No las compartas por WhatsApp ni por correo.',
+      'La dirección y toda la información clínica se guardan cifradas. No las compartas por WhatsApp ni por correo.',
+      'La dirección (sector y provincia) se captura al crear la paciente, no después: así no se salta.',
       'Una clienta sigue marcada como "Nueva" hasta que su ficha esté completa: reserva tiempo extra para llenarla.',
       'El fototipo (Fitzpatrick I–VI) define la intensidad del tratamiento: si dudas, consúltalo antes de aplicar.',
     ],
     atajos: [
-      'El botón de acceso genera un QR y un WhatsApp para que la clienta llene su ficha desde el celular.',
+      'Dar acceso al portal: NO hace falta correo. El botón genera un QR y un WhatsApp con el acceso; la clienta entra con su celular o correo y su teléfono como contraseña.',
+      'Restablecer contraseña (Recepción/Admin): si la clienta la cambió y la olvidó, el botón la devuelve a su teléfono y arma el WhatsApp para enviárselo.',
+      'Ver su portal (Admin): abre el portal tal como lo ve la clienta, para revisar si algo se ve mal.',
       'Desde la ficha puedes cobrar, agregar servicios o transferir la clienta a otra sucursal.',
     ],
   },
@@ -117,6 +122,7 @@ export const modulos = [
     ],
     ojo: [
       'No atiendas sin abrir el turno: la sesión no se descuenta y el servicio no queda registrado.',
+      'Solo puedes abrir/cerrar TUS citas. Si la cita está asignada a otra esteticista, el sistema te bloquea: pídele a Recepción que te la reasigne.',
       'Si la clienta tiene varios paquetes y al agendar no se eligió cuál, el sistema NO descuenta y te avisa. Corrígelo con Recepción.',
       'Un código ya usado no sirve otra vez. Si falla, verifica que sea la cita de hoy.',
     ],
@@ -141,15 +147,20 @@ export const modulos = [
       { t: 'Elige el servicio o paquete', d: 'Del catálogo. Si no tiene precio fijo, escribe el monto del día.' },
       { t: 'Reparte el pago', d: 'Puedes dividir entre Efectivo, Transferencia, Tarjeta y Azul. La suma debe dar el total.' },
       { t: 'Valida y emite', d: 'Revisa el resumen y confirma. Se emite el recibo y se registra en caja.' },
+      { t: 'Envía el recibo', d: 'Compártelo por WhatsApp (se manda como imagen) o por correo, con un toque.' },
     ],
     ojo: [
       'El ITBIS (18%) ya va incluido en el monto que escribes.',
       'En un abono, el resto queda como saldo pendiente y bloquea la próxima sesión hasta que se pague.',
       'Cuando la clienta paga, se le activa solo el acceso a su portal y le llega por correo.',
+      'Anular un recibo NO es para "arreglar" un pago ya recibido: devuelve el cobro a "Por cobrar". Si el recibo salió mal pero el dinero ya entró, mejor corrige el saldo, no anules.',
+      'Si la clienta YA tiene el servicio en su ficha (plan cargado o usado) y solo falta registrar el pago, activa "Solo registrar el ingreso (no crear plan)" para no duplicar el paquete.',
     ],
     atajos: [
-      'Si la clienta tiene servicios pendientes, el cobro se arma solo con esos cargos.',
-      'El recibo se imprime desde la pantalla de confirmación.',
+      'Si la clienta tiene servicios pendientes, el cobro se arma solo con esos cargos ("Por cobrar").',
+      'La factura ahora DETALLA cada combo: muestra las sesiones y las técnicas que incluye, aunque dos combos se llamen igual.',
+      'Puedes cobrar varios combos en una sola factura; cada uno sale con su propio detalle.',
+      'El recibo se imprime o se envía desde la pantalla de confirmación.',
     ],
   },
 
@@ -166,16 +177,21 @@ export const modulos = [
       { t: 'Mira "Paquetes activos"', d: 'Cada paquete muestra su barra de avance, cuántas sesiones quedan y si tiene saldo.' },
       { t: 'Agenda indicando el paquete', d: 'Al crear la cita, elige de cuál paquete es la sesión.' },
       { t: 'Cierra el turno', d: 'La sesión se descuenta sola de ese paquete.' },
+      { t: 'Cambiar de combo', d: 'Si la clienta pasa a un combo de mayor valor, usa "⇄ Cambiar de combo": conserva su avance y COBRA SOLO LA DIFERENCIA (queda como cargo por cobrar en Recepción).' },
+      { t: 'Área adicional', d: 'Al definir áreas, "+ adicional" agrega un área con precio editable que se cobra en Recepción.' },
       { t: 'Verifica', d: 'Vuelve al expediente: el contador bajó y el saldo se mantiene actualizado.' },
     ],
     ojo: [
       'Si no eliges el paquete al agendar y la clienta tiene varios, la sesión NO se descuenta. El sistema te avisa al cerrar.',
       'Cuando un paquete llega a su última sesión se cierra solo y deja de aparecer como activo.',
       'El saldo que ves en la lista de pacientes es la SUMA de todos los paquetes, no de uno solo.',
+      'Las sesiones de un combo se reparten entre sus áreas (ej. 6 sesiones y 3 áreas = 2 c/u). Ese "0/2" es sesiones por área, no un tope de áreas: un combo puede traer 2, 3 o más áreas.',
     ],
     atajos: [
       'Un paquete pagado muestra la etiqueta "Pagado"; uno con deuda muestra el monto en rojo.',
       'Para cobrar el saldo de un paquete específico, entra por el expediente y no por Facturación general.',
+      'Corregir saldo (Admin): ajusta a mano el saldo de un plan (con motivo, queda en auditoría) sin emitir factura.',
+      'Corregir sesiones (Admin): si por error se registró una sesión de más ("le pusieron 2 y fue 1"), "Corregir sesiones → Deshacer" devuelve el cupo y el avance de sus áreas/técnicas.',
     ],
   },
 
@@ -280,6 +296,9 @@ export const modulos = [
     atajos: [
       'Cada tarjeta trae el canal por donde llegó la clienta.',
       'Úsalo como guion de llamadas: empieza por "Cotizado", que es donde está el dinero más cerca.',
+      'En "Contactar / Seguimiento de pacientes" tienes listas listas para contactar: Cuentas por cobrar, Por validar el tratamiento, Cumpleaños del mes e Inactivas (3/6/12 meses).',
+      'CUENTAS POR COBRAR: muestra a las clientas con saldo pendiente, ordenadas por monto. Cada una trae un WhatsApp ya escrito invitándola a agendar y saldar al presentarse.',
+      'Los mensajes salen formales (Sr./Sra. según el sexo). La Administración puede enviar correos masivos por grupo (cumpleaños, inactivas).',
     ],
   },
 
@@ -332,6 +351,33 @@ export const modulos = [
     atajos: [
       'La plantilla acepta encabezados en español: nombre, telefono, correo, sexo, nacimiento, cedula.',
       'Los duplicados se detectan por teléfono, así que puedes reimportar sin miedo a repetir clientas.',
+      'Auditoría deja registro de las acciones sensibles: anular recibos, corregir saldos y sesiones, restablecer contraseñas y ver el portal de una clienta.',
+    ],
+  },
+
+  {
+    num: 13,
+    titulo: 'Portal del paciente y app',
+    bajada: 'Cómo entra la clienta, sin correo, y cómo instalar la app.',
+    roles: ['Recepción', 'Administración'],
+    duracion: '20 min',
+    proposito:
+      'La clienta tiene su propio portal para ver sus paquetes, sus sesiones, su ficha y las ofertas, y para pedir cita. Muchas no tienen correo o no lo usan: por eso ahora también se entra con el número de celular, y el sistema se puede instalar como una app en el teléfono.',
+    pasos: [
+      { t: 'Dale acceso (Recepción)', d: 'En la ficha de la clienta, "Dar acceso al portal": genera el WhatsApp y el QR con el acceso. No hace falta correo.' },
+      { t: 'Cómo entra la clienta', d: 'Con su CORREO O su CELULAR como usuario, y su NÚMERO DE TELÉFONO (solo los números) como contraseña la primera vez.' },
+      { t: 'Cambiar su contraseña', d: 'La clienta la cambia en "Mi Ficha" por una propia. Si la olvida, Recepción usa "Restablecer contraseña" y se la devuelve al teléfono.' },
+      { t: 'Instalar la app', d: 'Desde el celular, en el navegador: Android (Chrome) menú ⋮ → "Instalar aplicación"; iPhone (Safari) botón Compartir → "Agregar a pantalla de inicio". Queda como una app y abre a pantalla completa.' },
+      { t: 'Revisar un problema (Admin)', d: '"Ver su portal" abre el portal tal como lo ve la clienta, para confirmar que sus paquetes, sesiones y saldo se ven bien.' },
+    ],
+    ojo: [
+      'La contraseña inicial es el teléfono; recuérdale a la clienta cambiarla por una propia.',
+      'No entres al portal de una clienta por curiosidad: "Ver su portal" queda registrado en auditoría.',
+      'Si la clienta dice "datos inválidos", primero prueba a restablecerle la contraseña (a su teléfono) y que entre con su celular.',
+    ],
+    atajos: [
+      'La app y el portal funcionan en cualquier celular; la clienta la instala una sola vez.',
+      'El portal muestra a la clienta lo que compró con su detalle (sesiones y técnicas), lo que le queda y sus próximas citas.',
     ],
   },
 ];
