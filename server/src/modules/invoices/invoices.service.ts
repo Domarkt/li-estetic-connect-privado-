@@ -128,7 +128,7 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     patientEmail: i.patient?.email ?? null,
     patientPhone: i.patient?.phone ?? null,
     concept: i.concept,
-    items: i.items.map((it) => ({ name: it.name, qty: it.qty, total: it.total })),
+    items: i.items.map((it) => ({ name: it.name, detail: it.detail ?? null, qty: it.qty, total: it.total })),
     subtotal: i.subtotal,
     itbis: i.itbis,
     total: i.total,

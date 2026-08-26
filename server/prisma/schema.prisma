@@ -698,10 +698,11 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   invoiceId String
   name      String
-  qty       Int    @default(1)
+  detail    String? // qué incluye (sesiones y técnicas) al momento de facturar — snapshot
+  qty       Int     @default(1)
   unitPrice Int
   total     Int
 

@@ -209,7 +209,7 @@ export interface Receipt {
   id: string; invoiceId?: string; ncf: string | null;
   branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; branchEmail?: string | null; rnc: string;
   date: string; patient: string; patientEmail?: string | null; patientPhone?: string | null; concept: string;
-  items: { name: string; qty: number; total: number }[];
+  items: { name: string; qty: number; total: number; detail?: string | null }[];
   subtotal: number; itbis: number; total: number; method: string;
   // Comprobante fiscal: consumo (B02) o crédito fiscal (B01, con RNC del cliente).
   ncfType?: string; ncfLabel?: string; itbisApplied?: boolean;

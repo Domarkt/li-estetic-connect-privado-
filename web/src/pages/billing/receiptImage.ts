@@ -84,6 +84,19 @@ export async function buildReceiptImage(r: Receipt): Promise<Blob> {
   // ── Detalle ──
   hr(); y += 22;
   ctx.textAlign = 'left';
+  // Envuelve un texto largo (el detalle del combo) en varias líneas según el ancho.
+  const wrap = (s: string, maxW: number): string[] => {
+    const palabras = s.split(' ');
+    const lineas: string[] = [];
+    let actual = '';
+    for (const p of palabras) {
+      const prueba = actual ? `${actual} ${p}` : p;
+      if (ctx.measureText(prueba).width > maxW && actual) { lineas.push(actual); actual = p; }
+      else actual = prueba;
+    }
+    if (actual) lineas.push(actual);
+    return lineas;
+  };
   for (const it of r.items) {
     const nombre = `${it.qty > 1 ? `${it.qty}× ` : ''}${it.name}`;
     ctx.font = '400 15px Arial'; ctx.fillStyle = INK; ctx.textAlign = 'left';
@@ -92,7 +105,15 @@ export async function buildReceiptImage(r: Receipt): Promise<Blob> {
     if (n !== nombre) n = n.slice(0, -1) + '…';
     ctx.fillText(n, left, y);
     ctx.font = '700 15px Arial'; ctx.textAlign = 'right'; ctx.fillText(fmtRD(it.total), right, y);
-    y += 24;
+    y += 20;
+    // Detalle del combo (sesiones y técnicas): en gris, más pequeño, con salto de línea.
+    if (it.detail) {
+      ctx.font = '400 12px Arial'; ctx.fillStyle = MUT; ctx.textAlign = 'left';
+      for (const linea of wrap(it.detail, W - PAD * 2)) { ctx.fillText(linea, left, y); y += 16; }
+      y += 6;
+    } else {
+      y += 4;
+    }
   }
   y -= 2; hr(); y += 26;
 

@@ -20,6 +20,20 @@ export const invoicesRouter = Router();
 // Solo Recepción y Admin facturan.
 const billers = ['ADMIN', 'RECEPCIONISTA'] as const;
 
+/**
+ * Detalle "qué incluye" de un combo/paquete/servicio para imprimir en el recibo:
+ * las sesiones y las técnicas (con su cantidad). Devuelve null para productos/insumos
+ * o si no hay nada que detallar. Ej.: "10 sesiones · Cavitación x6, Radiofrecuencia x6".
+ */
+function buildLineDetail(item: { kind: string; sessions: number; incluye?: { qty: number; service: { name: string } }[] }): string | null {
+  if (!(item.kind === 'COMBO' || item.kind === 'PAQUETE' || item.kind === 'SERVICIO')) return null;
+  const partes: string[] = [];
+  if ((item.sessions ?? 1) > 1) partes.push(`${item.sessions} sesiones`);
+  const tec = (item.incluye ?? []).map((x) => (x.qty > 1 ? `${x.service.name} x${x.qty}` : x.service.name));
+  if (tec.length) partes.push(tec.join(', '));
+  return partes.length ? partes.join(' · ') : null;
+}
+
 /** Recibos recientes (aislados por sucursal) + estadísticas del día. */
 invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
   // Navegación por fecha: ?date=YYYY-MM-DD (por defecto, hoy).
@@ -240,7 +254,7 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const { number, ncf } = await allocateSequence(branchId, b.ncfType);
 
   // Líneas de la factura: cada servicio/producto DETALLADO por separado (para conciliar).
-  let lineItems: { name: string; qty: number; unitPrice: number; total: number }[];
+  let lineItems: { name: string; qty: number; unitPrice: number; total: number; detail?: string | null }[];
   // Dónde queda el dinero pendiente cuando el cobro es un abono. Son excluyentes:
   //  · saldoPlan      → va al balance del tratamiento (combo/paquete comprado).
   //  · saldoServicios → queda como cargo pendiente (servicios sueltos sin plan).
@@ -265,12 +279,32 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     return res.status(409).json({ error: 'Uno de los cargos seleccionados ya fue facturado, anulado o pertenece a otro paciente. Actualiza y vuelve a intentarlo.' });
   }
 
+  // Detalle de cada combo/paquete/servicio: sesiones y técnicas que incluye, para que
+  // el recibo diga QUÉ compró el paciente (hay combos con el mismo nombre y distinto
+  // contenido). Se guarda como snapshot por línea, así funciona con varios combos en
+  // una sola factura y no cambia aunque después se edite el combo.
+  const idsDetalle = [
+    ...idsCarrito,
+    ...charges.map((c) => c.catalogItemId).filter((x): x is string => !!x),
+  ];
+  const catForDetail = idsDetalle.length
+    ? await prisma.catalogItem.findMany({
+        where: { id: { in: idsDetalle } },
+        include: { incluye: { include: { service: { select: { name: true } } } } },
+      })
+    : [];
+  const detailDe = new Map<string, string>();
+  for (const it of catForDetail) {
+    const d = buildLineDetail(it);
+    if (d) detailDe.set(it.id, d);
+  }
+
   // Carrito unificado: los cargos pendientes (que la esteticista envió) y los
   // servicios/productos agregados en el cobro van JUNTOS en el mismo recibo, cada
   // uno detallado por separado. Así un paciente recurrente puede agregar otro
   // producto o servicio a lo que ya tenía pendiente, en una sola factura.
-  const chargeLines = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price }));
-  const cartLines = (b.items ?? []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty }));
+  const chargeLines = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price, detail: c.catalogItemId ? detailDe.get(c.catalogItemId) ?? null : null }));
+  const cartLines = (b.items ?? []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty, detail: it.catalogItemId ? detailDe.get(it.catalogItemId) ?? null : null }));
   const detalle = [...chargeLines, ...cartLines];
   const brutoDetalle = detalle.reduce((s, l) => s + l.total, 0);
 

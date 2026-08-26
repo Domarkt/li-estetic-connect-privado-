@@ -160,9 +160,12 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
             )}
             <div style={{ borderTop: '1px dashed #C8CCDA', borderBottom: '1px dashed #C8CCDA', padding: '12px 0', marginBottom: 12 }}>
               {receipt.items.map((it, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span>{it.qty > 1 ? `${it.qty}× ` : ''}{it.name}</span>
-                  <span style={{ fontWeight: 700 }}>{fmtRD(it.total)}</span>
+                <div key={i} style={{ marginBottom: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{it.qty > 1 ? `${it.qty}× ` : ''}{it.name}</span>
+                    <span style={{ fontWeight: 700 }}>{fmtRD(it.total)}</span>
+                  </div>
+                  {it.detail && <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, paddingRight: 60 }}>{it.detail}</div>}
                 </div>
               ))}
             </div>

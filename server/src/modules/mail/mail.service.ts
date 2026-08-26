@@ -151,7 +151,7 @@ export async function sendCampaignEmail(
 
 export interface ReceiptMail {
   id: string; ncf: string | null; date: string; patient: string;
-  items: { name: string; qty: number; total: number }[];
+  items: { name: string; qty: number; total: number; detail?: string | null }[];
   subtotal: number; itbis: number; total: number; method: string;
   payments?: { method: string; amount: number }[];
   branchName: string; branchPlace: string; branchAddress: string; branchPhone: string; rnc: string;
@@ -169,8 +169,8 @@ const rd = (n: number) => `RD$${n.toLocaleString('en-US')}`;
 export async function sendReceipt(to: string, r: ReceiptMail, replyTo?: string): Promise<MailResult> {
   const lineas = r.items
     .map((it) => `<tr>
-      <td style="padding:7px 0;border-bottom:1px solid #EFF1F7">${it.name}${it.qty > 1 ? ` <span style="color:#6A7089">x${it.qty}</span>` : ''}</td>
-      <td style="padding:7px 0;border-bottom:1px solid #EFF1F7;text-align:right;white-space:nowrap">${rd(it.total)}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #EFF1F7">${it.name}${it.qty > 1 ? ` <span style="color:#6A7089">x${it.qty}</span>` : ''}${it.detail ? `<br/><span style="color:#6A7089;font-size:12px">${it.detail}</span>` : ''}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #EFF1F7;text-align:right;white-space:nowrap;vertical-align:top">${rd(it.total)}</td>
     </tr>`)
     .join('');
 
