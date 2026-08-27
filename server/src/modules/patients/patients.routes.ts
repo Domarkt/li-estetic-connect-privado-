@@ -443,7 +443,7 @@ patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requi
     const msg = r.error === 'nocatalog' ? 'El combo elegido no existe'
       : r.error === 'notcombo' ? 'Solo se puede cambiar por un combo o paquete'
       : r.error === 'same' ? 'Ese ya es el combo actual del paciente'
-      : r.error === 'notgreater' ? 'El nuevo combo debe tener un valor mayor que el actual'
+      : r.error === 'lower' ? 'El nuevo combo no puede ser de menor valor que el actual'
       : 'Plan no encontrado';
     return res.status(400).json({ error: msg });
   }

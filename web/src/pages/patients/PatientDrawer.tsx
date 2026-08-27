@@ -634,8 +634,9 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
       .then((all) => setCombos(all.filter((c) =>
         (c.kind === 'COMBO' || c.kind === 'PAQUETE')
         && c.id !== pkg.catalogItemId
-        && c.name.trim().toLowerCase() !== pkg.name.trim().toLowerCase()
-        && c.price > pkg.price,
+        // Igual o mayor valor: una clienta puede cambiar por un combo DIFERENTE del mismo
+        // precio. No se excluye por nombre igual (hay combos distintos con el mismo nombre).
+        && c.price >= pkg.price,
       )))
       .catch(() => setCombos([]));
   }, []);
@@ -671,11 +672,11 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
         </div>
 
         <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
-          <div className="text-xs font-bold text-muted">Elige el nuevo combo (de mayor valor)</div>
+          <div className="text-xs font-bold text-muted">Elige el nuevo combo (de igual o mayor valor)</div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Buscar combo o paquete…"
             className="w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
           <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
-            {combos.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay otro combo de mayor valor disponible.</div>}
+            {combos.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay otro combo de igual o mayor valor disponible.</div>}
             {combos.length > 0 && lista.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Sin coincidencias.</div>}
             {lista.map((c) => {
               const on = sel?.id === c.id;
