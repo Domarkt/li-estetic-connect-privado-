@@ -77,3 +77,15 @@ node a-pdf.mjs          # 2. convierte todo a PDF en pdf/
 ```
 
 Los PDF quedan en `pdf/` (A4, listos para imprimir o enviar por WhatsApp).
+
+## Un solo PDF con todo (para WhatsApp)
+
+Para unir el índice + los 13 módulos en un único archivo:
+
+```bash
+node generar.mjs        # 1. genera los HTML en salida/
+node unir.mjs           # 2. arma salida/instructivo-completo.html (un módulo por página)
+# 3. imprime ese HTML a PDF con Chrome/Edge (Ctrl+P → Guardar como PDF, A4, con gráficos de fondo)
+```
+
+Queda `pdf/Li-Estetic-Connect-Instructivo-Completo.pdf`, listo para compartir por WhatsApp.
