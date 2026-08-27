@@ -272,13 +272,17 @@ export async function cambiarCombo(
   // Solo se bloquea cambiar por EXACTAMENTE el mismo combo. Dos combos distintos con el
   // mismo nombre (o el mismo precio) sí se permiten: cambian el contenido/áreas/técnicas.
   if (item.id === t.catalogItemId) return { error: 'same' as const };
+  // Solo se cambia AL INICIO: antes de la 3ra sesión (0, 1 o 2 sesiones hechas).
+  if (t.doneSessions >= 3) return { error: 'used' as const };
 
   const nuevoPrecio = item.price ?? 0;
   const precioAplicado = priceOverride ?? nuevoPrecio;
   // Se permite igual o mayor valor. Menor valor se bloquea (no manejamos reembolsos).
   if (precioAplicado < t.price) return { error: 'lower' as const };
-  // Diferencia a cobrar = precio del nuevo combo − precio del actual (0 si es igual).
-  const diferencia = precioAplicado - t.price;
+  // Dinero: lo que YA pagó se conserva; el nuevo saldo = precio del combo nuevo − lo pagado.
+  // Ej.: combo 6000 con 4000 pagados (debe 2000) → cambia a 9000 → debe 9000 − 4000 = 5000.
+  const pagado = Math.max(0, t.price - t.balance);
+  const nuevoBalance = Math.max(0, precioAplicado - pagado);
   // El total nunca baja de lo ya realizado (no se pierde el avance del paciente).
   const nuevoTotal = Math.max(t.doneSessions, item.sessions ?? 1);
   const oldName = t.name;
@@ -314,10 +318,10 @@ export async function cambiarCombo(
 
   await prisma.treatment.update({
     where: { id: t.id },
-    data: { name: item.name, catalogItemId: item.id, totalSessions: nuevoTotal, price: nuevoPrecio, active: true },
+    data: { name: item.name, catalogItemId: item.id, totalSessions: nuevoTotal, price: precioAplicado, balance: nuevoBalance, active: true },
   });
 
-  return { ok: true as const, diferencia, nuevoPrecio, nombre: item.name, oldName, totalSessions: nuevoTotal };
+  return { ok: true as const, nuevoBalance, pagado, precio: precioAplicado, nombre: item.name, oldName, totalSessions: nuevoTotal };
 }
 
 /**

@@ -311,10 +311,13 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                         </div>
                       )}
 
-                      {/* Cambio de combo: pasa a uno de mayor valor; solo se cobra la diferencia. */}
-                      <div className="mt-2.5 border-t border-line-2 pt-2.5">
-                        <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ Cambiar de combo (cobra solo la diferencia)</button>
-                      </div>
+                      {/* Cambio de combo: solo al inicio (antes de la 3ra sesión), a uno
+                          parecido con más técnicas/áreas e igual o mayor valor. */}
+                      {pk.done < 3 && (
+                        <div className="mt-2.5 border-t border-line-2 pt-2.5">
+                          <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ Cambiar de combo (antes de la 3ra sesión)</button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -644,7 +647,8 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
   const texto = q.trim().toLowerCase();
   const lista = combos.filter((c) => !texto || c.name.toLowerCase().includes(texto));
   const nuevoPrecio = precio !== '' ? Number(precio) : (sel?.price ?? 0);
-  const diferencia = Math.max(0, nuevoPrecio - pkg.price);
+  const yaPagado = Math.max(0, pkg.price - pkg.balance); // lo que la clienta ya pagó del plan
+  const nuevoSaldo = Math.max(0, nuevoPrecio - yaPagado); // queda debiendo: precio nuevo − lo pagado
 
   function elegir(c: CatalogItem) {
     setSel(c);
@@ -672,7 +676,7 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
         </div>
 
         <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
-          <div className="text-xs font-bold text-muted">Elige el nuevo combo (de igual o mayor valor)</div>
+          <div className="text-xs font-bold text-muted">Elige el nuevo combo <span className="font-semibold text-faint">(parecido, con más técnicas o áreas · igual o mayor valor)</span></div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Buscar combo o paquete…"
             className="w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
           <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">
@@ -703,14 +707,14 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
                 </div>
               </label>
               <div className="flex flex-col gap-1 rounded-[11px] border-2 border-magenta bg-magenta-soft px-4 py-3">
-                <div className="flex justify-between text-[12.5px]"><span className="text-muted">Combo actual</span><span className="font-bold">{fmtRD(pkg.price)}</span></div>
-                <div className="flex justify-between text-[12.5px]"><span className="text-muted">Nuevo combo</span><span className="font-bold">{fmtRD(nuevoPrecio)}</span></div>
-                <div className="mt-1 flex justify-between border-t border-magenta/30 pt-1.5 text-[15px] font-extrabold"><span>Diferencia a cobrar</span><span className="text-magenta">{fmtRD(diferencia)}</span></div>
+                <div className="flex justify-between text-[12.5px]"><span className="text-muted">Precio del combo nuevo</span><span className="font-bold">{fmtRD(nuevoPrecio)}</span></div>
+                <div className="flex justify-between text-[12.5px]"><span className="text-muted">Ya pagado</span><span className="font-bold">{fmtRD(yaPagado)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-magenta/30 pt-1.5 text-[15px] font-extrabold"><span>Saldo pendiente</span><span className="text-magenta">{fmtRD(nuevoSaldo)}</span></div>
               </div>
               <p className="text-[11px] text-faint">
-                {diferencia > 0
-                  ? 'La diferencia queda como cargo pendiente: recepción la factura desde “Cobrar / Facturar”. Se conserva el avance del paciente.'
-                  : 'El nuevo combo no cuesta más que el actual: se cambia sin cargo.'}
+                {nuevoSaldo > 0
+                  ? 'El saldo pendiente queda en su plan: recepción lo cobra desde “Cobrar / Facturar”. Se conserva el avance de la clienta.'
+                  : 'La clienta ya cubrió el valor del nuevo combo: queda sin saldo pendiente.'}
               </p>
             </>
           )}

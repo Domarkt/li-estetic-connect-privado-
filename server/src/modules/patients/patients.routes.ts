@@ -443,33 +443,24 @@ patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requi
     const msg = r.error === 'nocatalog' ? 'El combo elegido no existe'
       : r.error === 'notcombo' ? 'Solo se puede cambiar por un combo o paquete'
       : r.error === 'same' ? 'Ese ya es el combo actual del paciente'
+      : r.error === 'used' ? 'Solo se puede cambiar el combo antes de la 3ra sesión.'
       : r.error === 'lower' ? 'El nuevo combo no puede ser de menor valor que el actual'
       : 'Plan no encontrado';
     return res.status(400).json({ error: msg });
   }
 
-  // La diferencia se cobra como cargo pendiente (recepción lo factura). Si no hay
-  // diferencia (mismo precio o menor), solo se cambia el combo sin cargo.
-  if (r.diferencia > 0) {
-    await prisma.chargeItem.create({
-      data: {
-        branchId: t.patient.branchId, patientId: t.patientId, catalogItemId,
-        name: `Cambio de combo: ${r.oldName} → ${r.nombre}`,
-        price: r.diferencia, createdById: req.staff!.sub,
-      },
-    });
-  }
-
+  // El saldo pendiente queda en el PLAN (fuente única): precio del combo nuevo − lo ya
+  // pagado. Recepción lo cobra como el saldo de cualquier plan. No se crea cargo aparte.
   await audit(req, {
     action: 'TREATMENT_COMBO_CHANGE', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
-    summary: `Cambió el combo de ${t.patient.name}: ${r.oldName} → ${r.nombre}${r.diferencia > 0 ? ` · diferencia RD$${r.diferencia.toLocaleString('en-US')}` : ' (sin diferencia)'}`,
+    summary: `Cambió el combo de ${t.patient.name}: ${r.oldName} → ${r.nombre} · saldo pendiente RD$${r.nuevoBalance.toLocaleString('en-US')}`,
   });
 
   res.json({
-    ok: true, diferencia: r.diferencia, nombre: r.nombre,
-    message: r.diferencia > 0
-      ? `Combo cambiado a ${r.nombre} · RD$${r.diferencia.toLocaleString('en-US')} de diferencia pendiente de cobrar en recepción`
-      : `Combo cambiado a ${r.nombre} (sin diferencia a cobrar)`,
+    ok: true, nuevoBalance: r.nuevoBalance, nombre: r.nombre,
+    message: r.nuevoBalance > 0
+      ? `Combo cambiado a ${r.nombre} · saldo pendiente RD$${r.nuevoBalance.toLocaleString('en-US')} (cóbralo desde Facturación)`
+      : `Combo cambiado a ${r.nombre} · sin saldo pendiente`,
   });
 });
 
