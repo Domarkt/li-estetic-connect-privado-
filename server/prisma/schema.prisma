@@ -670,7 +670,7 @@ model CalendarConnection {
 
 model Invoice {
   id           String        @id @default(cuid())
-  number       String        @unique // F-2219
+  number       String        // F-2219 — único POR SUCURSAL (cada estética lleva su secuencia)
   branchId     String
   patientId    String?
   cashierId    String?
@@ -700,6 +700,7 @@ model Invoice {
   treatment Treatment?    @relation(fields: [treatmentId], references: [id])
   items     InvoiceItem[]
 
+  @@unique([branchId, number]) // el No. de recibo es único DENTRO de cada sucursal
   @@index([branchId, issuedAt])
 }
 
