@@ -166,7 +166,7 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
 // ── Áreas del cuerpo dentro de un combo ──
 // Recepción y esteticista pueden definirlas: a veces la clienta las pide en recepción
 // antes de pasar a cabina, y a veces se definen en la cabina misma.
-const areasRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'] as const;
+const areasRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA', 'COORDINADOR'] as const;
 
 const definirAreasSchema = z.object({
   areas: z.array(z.string().min(1)).min(1, 'Elige al menos un área').max(12),
@@ -245,7 +245,7 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
   const r = await registrarSesionAplicada(t.id, {
     techniques: b.techniques, areas: b.areas, notes: b.notes,
     signature: b.signature,
-    therapistId: req.staff!.role === 'ESTETICISTA' ? req.staff!.sub : null,
+    therapistId: (req.staff!.role === 'ESTETICISTA' || req.staff!.role === 'COORDINADOR') ? req.staff!.sub : null,
   });
   if (!r) return res.status(404).json({ error: 'Plan no encontrado' });
 
@@ -812,7 +812,7 @@ const clinicalSchema = z.object({
  * Pasos 2-4 — parte clínica (Esteticista). Puede completar la ficha.
  * Al completar (complete=true) => status COMPLETA y el paciente pasa a RECURRENTE.
  */
-patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', 'ESTETICISTA'), async (req, res) => {
+patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'COORDINADOR'), async (req, res) => {
   const body = clinicalSchema.parse(req.body);
   const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, include: { clinicalRecord: true } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
@@ -823,7 +823,7 @@ patientsRouter.patch('/:id/ficha/clinical', requireStaff, requireRole('ADMIN', '
     where: { patientId: patient.id },
     data: {
       ...encryptClinicalWrite(fields),
-      therapistId: req.staff!.role === 'ESTETICISTA' ? req.staff!.sub : patient.clinicalRecord?.therapistId,
+      therapistId: (req.staff!.role === 'ESTETICISTA' || req.staff!.role === 'COORDINADOR') ? req.staff!.sub : patient.clinicalRecord?.therapistId,
       ...(complete ? { status: 'COMPLETA', completedAt: new Date() } : {}),
     },
   });
@@ -892,7 +892,7 @@ patientsRouter.post('/:id/historical-treatment', requireStaff, requireRole('ADMI
 });
 
 /** Esteticista carga paquetes/combos a la ficha y los envía a recepción. */
-patientsRouter.post('/:id/charges', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA'), async (req, res) => {
+patientsRouter.post('/:id/charges', requireStaff, requireRole('ADMIN', 'ESTETICISTA', 'RECEPCIONISTA', 'COORDINADOR'), async (req, res) => {
   const { catalogItemIds } = chargeSchema.parse(req.body);
   const patient = await prisma.patient.findUnique({ where: { id: req.params.id } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });

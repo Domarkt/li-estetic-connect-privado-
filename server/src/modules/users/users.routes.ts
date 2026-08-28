@@ -14,10 +14,17 @@ const ROLE_LABEL: Record<string, string> = {
 };
 const AVATAR_COLORS = ['#B31C86', '#8E1268', '#2C7FB8', '#1F9D6B', '#245E85', '#C9880E', '#17805A'];
 
-/** Esteticistas disponibles (aisladas por sucursal) para asignar en la agenda. */
+/** Esteticistas disponibles (por sucursal) para asignar en la agenda. La COORDINADORA
+ *  atiende procesos puntuales en TODAS las estéticas, así que aparece en todas. */
 usersRouter.get('/therapists', requireStaff, branchScope, async (req, res) => {
   const therapists = await prisma.user.findMany({
-    where: { role: 'ESTETICISTA', active: true, ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}) },
+    where: {
+      active: true,
+      OR: [
+        { role: 'ESTETICISTA', ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}) },
+        { role: 'COORDINADOR' },
+      ],
+    },
     select: { id: true, name: true, branchId: true, avatarColor: true },
     orderBy: { name: 'asc' },
   });

@@ -38,9 +38,12 @@ export default function AgendaPage() {
   const canSchedule = staff?.role !== 'ESTETICISTA';
   const isMasa = staff?.role === 'ESTETICISTA';
   const isAdmin = staff?.role === 'ADMIN';
+  // "Atiende" en cabina: esteticista o coordinadora (la coordinadora atiende procesos
+  // puntuales en todas las estéticas: abre/cierra turno y registra en la ficha).
+  const atiende = isMasa || staff?.role === 'COORDINADOR';
   // Abrir/cerrar turno es exclusivo de la esteticista (y admin). Recepción cancela citas.
   // Abrir/cerrar turno: esteticista, admin y también recepción (respaldo en cabina).
-  const canOpenTurno = isMasa || isAdmin || staff?.role === 'RECEPCIONISTA';
+  const canOpenTurno = atiende || isAdmin || staff?.role === 'RECEPCIONISTA';
   const canCancel = staff?.role === 'RECEPCIONISTA' || isAdmin;
   // Asignar/cambiar la esteticista de una cita ya agendada: recepción y admin.
   const canAssign = staff?.role === 'RECEPCIONISTA' || isAdmin;
@@ -120,7 +123,7 @@ export default function AgendaPage() {
           </div>
         )}
         <div className="flex-1" />
-        {(staff?.role === 'ESTETICISTA' || staff?.role === 'ADMIN') && (
+        {(atiende || staff?.role === 'ADMIN') && (
           <button onClick={() => setCheckinOpen(true)} className="flex items-center gap-1.5 rounded-xl border border-line bg-card px-[18px] py-2 text-[13.5px] font-bold text-navy hover:border-magenta">
             🔓 Abrir turno
           </button>
@@ -252,7 +255,7 @@ export default function AgendaPage() {
             {a.finished && a.durationLabel && (
               <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }} title="Tiempo de atención (solo visible para administración)">⏱ {a.durationLabel}</span>
             )}
-            {isMasa && a.status !== 'CANCELADA' && (
+            {atiende && a.status !== 'CANCELADA' && (
               <button onClick={() => setFicha({ id: a.patientId, name: a.patient })}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold"
                 style={a.fichaComplete ? { background: 'var(--magenta)', color: '#fff' } : { background: 'var(--magenta-soft)', color: 'var(--magenta)' }}>
