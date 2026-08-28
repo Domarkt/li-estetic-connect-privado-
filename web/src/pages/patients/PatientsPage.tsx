@@ -54,7 +54,7 @@ export default function PatientsPage() {
   }, [q, branchQuery]);
 
   useEffect(() => { load(); }, [load, reloadKey]);
-  useAutoRefresh(load);
+  useAutoRefresh(load, 180000); // la lista de pacientes es grande y cambia lento: cada 3 min
 
   const canCreate = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
   const refresh = () => setReloadKey((k) => k + 1);

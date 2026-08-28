@@ -34,7 +34,7 @@ export default function CuentasPorCobrarPage() {
       .catch((e) => { setError(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   }, [branchQP]);
   useEffect(() => { load(); }, [load]);
-  useAutoRefresh(load);
+  useAutoRefresh(load, 120000); // cambia lento: cada 2 min
 
   if (cargando) return <Cargando texto="Cargando cuentas por cobrar…" />;
   if (error || !data) return <ErrorCarga mensaje={error ?? 'Error'} onRetry={load} />;

@@ -41,7 +41,7 @@ export default function ComprasPage() {
       .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   }, [month, branchQ]);
   useEffect(() => { load(); }, [load]);
-  useAutoRefresh(load);
+  useAutoRefresh(load, 180000); // compras/gastos cambian lento: cada 3 min
 
   function shiftMonth(n: number) {
     const d = new Date(month + '-01T00:00:00'); d.setMonth(d.getMonth() + n);

@@ -88,7 +88,7 @@ export default function SeguimientoPage() {
       .catch((e) => { setError(e instanceof Error ? e.message : 'Error'); setCargando(false); });
   }, [activeBranch, staff?.role]);
   useEffect(() => { load(); }, [load]);
-  useAutoRefresh(load);
+  useAutoRefresh(load, 180000); // el reporte carga muchos pacientes y cambia lento: cada 3 min
 
   async function campana(grupo: string) {
     const nombres: Record<string, string> = { cumpleanos: 'cumpleaños del mes', m3: 'inactivos 3+ meses', m6: 'inactivos 6+ meses', m12: 'inactivos +1 año' };
