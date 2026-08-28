@@ -40,6 +40,8 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const initials = (d?.name ?? '').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   const isMasa = staff?.role === 'ESTETICISTA';
   const canBill = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
+  // El cambio de combo lo valida/hace solo Administración o Coordinación.
+  const canCombo = staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR';
   const fichaComplete = d?.fichaStatus === 'COMPLETA';
   const fichaFilled = !!d?.fichaFilled; // el paciente ya completó su parte
   const paso1Done = d?.fichaStatus !== 'PENDIENTE';
@@ -111,7 +113,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
           <>
             <div className="sticky top-0 z-[2] flex items-center gap-3.5 border-b border-line bg-card px-6 py-5">
               <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full text-base font-extrabold text-white" style={{ background: d.avatarColor }}>{initials}</div>
-              <div className="flex-1"><div className="text-[17px] font-extrabold">{d.name}</div><div className="text-[12.5px] text-muted">{d.age ? `${d.age} años · ` : ''}{d.phone}</div></div>
+              <div className="flex-1"><div className="text-[17px] font-extrabold">{d.name}</div><div className="text-[12.5px] text-muted">{d.age ? `${d.age} años · ` : ''}{d.phone}{d.fichaNumber ? ` · Ficha #${d.fichaNumber}` : ''}</div></div>
               <button onClick={onClose} className="h-[34px] w-[34px] rounded-[9px] bg-bg text-lg text-muted">×</button>
             </div>
 
@@ -313,7 +315,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
 
                       {/* Cambio de combo: solo al inicio (antes de la 3ra sesión), a uno
                           parecido con más técnicas/áreas e igual o mayor valor. */}
-                      {pk.done < 3 && (
+                      {canCombo && pk.done < 3 && (
                         <div className="mt-2.5 border-t border-line-2 pt-2.5">
                           <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ Cambiar de combo (antes de la 3ra sesión)</button>
                         </div>

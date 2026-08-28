@@ -102,6 +102,9 @@ export default function SeguimientoPage() {
   if (cargando) return <Cargando texto="Cargando seguimiento…" />;
   if (error || !data) return <ErrorCarga mensaje={error ?? 'Error'} onRetry={load} />;
 
+  // Mes actual en palabras, para mostrar el cumpleaños como "15 de agosto".
+  const mesActual = new Date().toLocaleDateString('es-DO', { month: 'long' });
+
   return (
     <div className="animate-fade flex flex-col gap-4">
       <div className="rounded-base border border-line bg-card p-4 text-[12.5px] text-muted shadow-card">
@@ -120,7 +123,7 @@ export default function SeguimientoPage() {
 
       <Seccion titulo="Cumpleaños del mes 🎉" color="var(--magenta)"
         hint="Felicítalos y ofréceles un detalle en su próxima visita."
-        rows={data.cumpleanos} extra={(p) => `Cumple el día ${p.dia}`} {...campanaProps('cumpleanos')} />
+        rows={data.cumpleanos} extra={(p) => (p.dia ? `🎂 Cumple el ${p.dia} de ${mesActual}` : 'Cumple este mes')} {...campanaProps('cumpleanos')} />
 
       <Seccion titulo="Inactivos · 3+ meses" color="var(--warn)"
         hint="Sin volver hace 3 a 6 meses · reactívalos con una invitación."

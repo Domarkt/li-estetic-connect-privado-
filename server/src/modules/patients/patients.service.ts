@@ -22,7 +22,7 @@ export function ageFromBirth(birthDate: Date | null | undefined): number | null 
 // pasar un objeto más rico: ambos cumplen esta forma (subtipado estructural).
 interface PatientListShape {
   id: string; name: string; phone: string; sex: string | null;
-  birthDate: Date | null; age: number | null; branchId: string; avatarColor: string; type: string;
+  birthDate: Date | null; age: number | null; branchId: string; avatarColor: string; type: string; fromImport?: boolean;
   branch: { name: string };
   clinicalRecord: { status: string; patientFilledAt: Date | null; sentToPatientAt: Date | null; therapistId: string | null } | null;
   treatments: { id: string; name: string; totalSessions: number; doneSessions: number; price: number; balance: number; active: boolean }[];
@@ -66,7 +66,9 @@ export function serializePatient(p: PatientListShape) {
     branchId: p.branchId,
     branchName: p.branch.name,
     avatarColor: p.avatarColor,
-    type: p.type, // NUEVO | RECURRENTE
+    // NUEVO solo si fue creado desde cero, sin paquetes y no importado; en cualquier
+    // otro caso se muestra RECURRENTE (aunque el tipo guardado aún no se haya sincronizado).
+    type: (p.type === 'NUEVO' && !p.fromImport && activos.length === 0) ? 'NUEVO' : 'RECURRENTE',
     fichaStatus: p.clinicalRecord?.status ?? 'PENDIENTE',
     fichaLabel: p.clinicalRecord?.patientFilledAt && p.clinicalRecord.status !== 'COMPLETA'
       ? 'Recibida · validar con esteticista'
@@ -127,8 +129,16 @@ export const patientListInclude = {
  * ficha COMPLETA => RECURRENTE; en otro caso => NUEVO.
  */
 export async function syncPatientType(patientId: string) {
-  const record = await prisma.clinicalRecord.findUnique({ where: { patientId } });
-  const type = record?.status === 'COMPLETA' ? 'RECURRENTE' : 'NUEVO';
+  // "NUEVO" = cliente creado desde cero, SIN paquetes anteriores y NO cargado de la base
+  // anterior. Si tiene ficha completa, o tiene algún tratamiento/paquete, o vino por
+  // importación, es RECURRENTE (no es un cliente nuevo).
+  const [patient, record, treatmentCount] = await Promise.all([
+    prisma.patient.findUnique({ where: { id: patientId }, select: { fromImport: true } }),
+    prisma.clinicalRecord.findUnique({ where: { patientId }, select: { status: true } }),
+    prisma.treatment.count({ where: { patientId } }),
+  ]);
+  const esRecurrente = record?.status === 'COMPLETA' || treatmentCount > 0 || !!patient?.fromImport;
+  const type = esRecurrente ? 'RECURRENTE' : 'NUEVO';
   await prisma.patient.update({ where: { id: patientId }, data: { type } });
   return type;
 }

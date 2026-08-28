@@ -57,7 +57,7 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
     motivo: cr?.motivos ?? [],
     therapistName: cr?.therapist?.name ?? null,
     // De dónde nos visita (segmentado): se ve en el expediente.
-    sector: patient.sector, province: patient.province,
+    sector: patient.sector, province: patient.province, fichaNumber: patient.fichaNumber,
     // Historial clínico (antecedentes) para ver en el drawer
     clinical: {
       antecedentes: truthyKeys(cr?.antecedentes),
@@ -432,7 +432,7 @@ const cambioComboSchema = z.object({
  * Conserva el avance y crea un cargo pendiente por la DIFERENCIA de precio, que recepción
  * factura como cualquier otro cargo. Simplifica el "me cambiaron el combo en cabina".
  */
-patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requireRole(...areasRoles), async (req, res) => {
+patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requireRole('ADMIN', 'COORDINADOR'), async (req, res) => {
   const { catalogItemId, price } = cambioComboSchema.parse(req.body);
   const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
   if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
@@ -544,7 +544,8 @@ patientsRouter.post('/import', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA
         branchId, name, phone, email, sex, birthDate,
         age: ageFromBirth(birthDate),
         ...encryptPatientWrite({ cedula, address: null }),
-        type: 'NUEVO',
+        // Importado desde la base anterior: NO es un cliente "nuevo".
+        type: 'RECURRENTE', fromImport: true,
         avatarColor: colors[Math.floor(Math.random() * colors.length)],
         clinicalRecord: { create: { status: 'PENDIENTE' } },
       },
@@ -617,7 +618,7 @@ patientsRouter.get('/:id/ficha', requireStaff, branchScope, async (req, res) => 
       age: ageFromBirth(patient.birthDate) ?? patient.age, email: patient.email,
       sex: patient.sex,
       birthDate: patient.birthDate, occupation: patient.occupation,
-      sector: patient.sector, province: patient.province,
+      sector: patient.sector, province: patient.province, fichaNumber: patient.fichaNumber,
       address: patient.address != null ? decrypt(patient.address) : patient.address,
       cedula: patient.cedula != null ? decrypt(patient.cedula) : patient.cedula,
     },
@@ -638,6 +639,7 @@ const step1Schema = z.object({
   address: z.string().optional(), // calle y número (cifrado)
   sector: z.string().optional(),
   province: z.string().optional(),
+  fichaNumber: z.string().optional(), // número de la ficha física (papel)
   motivos: z.array(z.string()).default([]),
 });
 
@@ -666,6 +668,7 @@ patientsRouter.patch('/:id/ficha/step1', requireStaff, requireRole('ADMIN', 'REC
       occupation: body.occupation ?? patient.occupation,
       sector: body.sector ?? patient.sector,
       province: body.province ?? patient.province,
+      fichaNumber: body.fichaNumber ?? patient.fichaNumber,
       // Cédula y dirección son PII: se guardan cifradas.
       ...encryptPatientWrite({
         ...(body.address !== undefined ? { address: body.address } : {}),

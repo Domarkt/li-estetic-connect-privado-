@@ -64,7 +64,7 @@ assetsRouter.get('/', requireStaff, branchScope, async (req, res) => {
     assets: assets.map((a) => ({
       id: a.id, code: a.code, kind: a.kind, name: a.name, category: a.category,
       status: a.status, statusLabel: STATUS_LABEL[a.status] ?? a.status,
-      serial: a.serial, notes: a.notes,
+      serial: a.serial, notes: a.notes, imageUrl: a.imageUrl,
       branch: a.branch.name, branchId: a.branchId,
       assignedTo: a.assignedTo ? { id: a.assignedTo.id, name: a.assignedTo.name } : null,
     })),
@@ -80,6 +80,7 @@ const createSchema = z.object({
   assignedToId: z.string().optional(),
   serial: z.string().optional(),
   notes: z.string().optional(),
+  imageUrl: z.string().optional(), // foto del equipo (data URI)
 });
 
 /** Alta de activo (solo Admin). Registra una ENTRADA en el historial. */
@@ -92,6 +93,7 @@ assetsRouter.post('/', requireStaff, requireRole(...GESTORES), branchScope, asyn
     data: {
       code: await nextCode(b.kind), kind: b.kind, name: b.name, category: b.category ?? null,
       branchId, assignedToId: b.assignedToId ?? null, serial: b.serial ?? null, notes: b.notes ?? null,
+      imageUrl: b.imageUrl ?? null,
       events: { create: { type: 'ENTRADA', note: 'Alta en inventario', reportedById: req.staff!.sub } },
     },
   });
@@ -109,7 +111,7 @@ assetsRouter.patch('/:id', requireStaff, requireRole(...GESTORES), async (req, r
   if (!asset) return res.status(404).json({ error: 'Activo no encontrado' });
 
   const data: Record<string, unknown> = {};
-  for (const k of ['name', 'category', 'branchId', 'serial', 'notes', 'status'] as const) {
+  for (const k of ['name', 'category', 'branchId', 'serial', 'notes', 'status', 'imageUrl'] as const) {
     if (b[k] !== undefined) data[k] = b[k];
   }
   if ('assignedToId' in b) data.assignedToId = b.assignedToId ?? null;

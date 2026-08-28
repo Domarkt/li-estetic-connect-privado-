@@ -14,6 +14,7 @@ type Kind = 'EQUIPO' | 'SUMINISTRO';
 interface Asset {
   id: string; code: string; kind: Kind; name: string; category: string | null;
   status: string; statusLabel: string; serial: string | null; notes: string | null;
+  imageUrl: string | null;
   branch: string; branchId: string; assignedTo: { id: string; name: string } | null;
 }
 interface UserLite { id: string; name: string; role: string; branchId: string | null }
@@ -74,6 +75,7 @@ export default function AssetsPanel({ kind, canManage, branchQ, mine }: { kind: 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {assets.map((a) => (
           <div key={a.id} className="rounded-base border border-line bg-card p-4 shadow-card">
+            {a.imageUrl && <img src={a.imageUrl} alt={a.name} className="mb-3 h-32 w-full rounded-[10px] border border-line object-cover" />}
             <div className="mb-2 flex items-start justify-between gap-2">
               <div>
                 <div className="text-[11px] font-bold text-faint">{a.code}</div>
@@ -127,7 +129,27 @@ function AssetModal({ kind, asset, users, branches, defaultBranchId, onClose, on
   const [serial, setSerial] = useState(asset?.serial ?? '');
   const [notes, setNotes] = useState(asset?.notes ?? '');
   const [status, setStatus] = useState(asset?.status ?? 'OPERATIVO');
+  const [imageUrl, setImageUrl] = useState<string | null>(asset?.imageUrl ?? null);
   const [busy, setBusy] = useState(false);
+
+  // Comprime la foto del equipo a ~900px JPEG para no engordar la base.
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const lector = new FileReader();
+    lector.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 900; const escala = Math.min(1, MAX / img.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+        c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+        setImageUrl(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = String(lector.result);
+    };
+    lector.readAsDataURL(file);
+  }
 
   // Personal elegible para asignar (por sucursal seleccionada; admin puede en cualquiera).
   const staff = users.filter((u) => u.role !== 'ADMIN' && (!branchId || u.branchId === branchId));
@@ -150,7 +172,8 @@ function AssetModal({ kind, asset, users, branches, defaultBranchId, onClose, on
     const payload = {
       kind, name: name.trim(), category: category.trim() || undefined, branchId: effBranch,
       assignedToId: assignedToId || undefined, serial: serial.trim() || undefined,
-      notes: notes.trim() || undefined, ...(asset ? { status } : {}),
+      notes: notes.trim() || undefined, imageUrl: imageUrl ?? undefined,
+      ...(asset ? { status } : {}),
     };
     try {
       if (asset) await api.patch(`/assets/${asset.id}`, payload);
@@ -210,6 +233,18 @@ function AssetModal({ kind, asset, users, branches, defaultBranchId, onClose, on
             </select></Field>}
           </div>
           <Field label="Notas"><input className="inp" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="opcional" /></Field>
+
+          {/* Foto del equipo, para identificarlo de un vistazo. */}
+          <Field label="Foto del equipo (opcional)">
+            {imageUrl ? (
+              <div className="relative">
+                <img src={imageUrl} alt="" className="h-36 w-full rounded-[10px] border border-line object-cover" />
+                <button type="button" onClick={() => setImageUrl(null)} className="absolute right-2 top-2 rounded-md bg-card px-2 py-1 text-[11px] font-bold text-danger shadow">Quitar</button>
+              </div>
+            ) : (
+              <input type="file" accept="image/*" onChange={onFile} className="text-[12px]" />
+            )}
+          </Field>
         </div>
         <div className="flex gap-2.5 border-t border-line px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>

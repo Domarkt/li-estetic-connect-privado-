@@ -91,6 +91,7 @@ export interface PatientDetail extends PatientRow {
   therapistName: string | null;
   sector?: string | null;
   province?: string | null;
+  fichaNumber?: string | null;
   clinical: {
     antecedentes: string[];
     medicamentos: string[];

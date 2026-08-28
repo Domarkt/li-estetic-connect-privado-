@@ -278,6 +278,8 @@ model Patient {
   address     String? // calle y número (cifrado, PII)
   sector      String? // sector/barrio
   province    String? // provincia (La Romana, Santiago…): para saber de dónde visitan
+  fichaNumber String? // número de la ficha FÍSICA (papel) — numeración manual del expediente
+  fromImport  Boolean     @default(false) // se cargó desde la base anterior (no es cliente "nuevo")
   type        PatientType @default(NUEVO)
   avatarColor String      @default("#B31C86")
   createdAt   DateTime    @default(now())
@@ -511,6 +513,7 @@ model Asset {
   assignedToId String? // usuario al que se le entregó (suministros del personal)
   status       String   @default("OPERATIVO") // OPERATIVO | MANTENIMIENTO | AVERIADO | BAJA
   serial       String?
+  imageUrl     String? // foto del equipo (data URI) — para identificarlo de un vistazo
   notes        String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())

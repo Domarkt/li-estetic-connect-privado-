@@ -25,7 +25,7 @@ interface Props {
   onSaved: () => void;
 }
 
-interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; occupation?: string | null; address?: string | null; sector?: string | null; province?: string | null; birthDate?: string | null }
+interface FichaPatient { name?: string; phone?: string; email?: string | null; sex?: string | null; age?: number | null; occupation?: string | null; address?: string | null; sector?: string | null; province?: string | null; fichaNumber?: string | null; birthDate?: string | null }
 interface FichaData {
   consultDate?: string | null; motivos?: string[];
   antecedentes?: unknown; ginecoObst?: unknown; quirurgicos?: unknown; medicamentos?: unknown;
@@ -70,7 +70,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
   const [busy, setBusy] = useState(false);
 
   // Estado del formulario
-  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', occupation: '', address: '', sector: '', province: '', consultDate: '' });
+  const [datos, setDatos] = useState({ name: patientName, sex: '', age: '', birthDate: '', phone: '', email: '', occupation: '', address: '', sector: '', province: '', fichaNumber: '', consultDate: '' });
   const [motivos, setMotivos] = useState<Set<string>>(new Set());
   const [antecedentes, setAntecedentes] = useState<Record<string, boolean>>({});
   const [gineco, setGineco] = useState({ embarazos: '', partos: '', abortos: '', cesareas: '', lactancia: false });
@@ -99,6 +99,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
           email: patient.email ?? d.email,
           age: patient.age != null ? String(patient.age) : d.age,
           occupation: patient.occupation ?? d.occupation,
+          fichaNumber: patient.fichaNumber ?? d.fichaNumber,
           address: patient.address ?? d.address,
           sector: patient.sector ?? d.sector,
           province: patient.province ?? d.province,
@@ -142,6 +143,7 @@ export default function FichaWizard({ patientId, patientName, startStep, treatme
   async function saveStep1() {
     await api.patch(`/patients/${patientId}/ficha/step1`, {
       consultDate: datos.consultDate || undefined,
+      fichaNumber: datos.fichaNumber || undefined,
       name: datos.name || undefined,
       sex: datos.sex || undefined,
       age: datos.age ? Number(datos.age) : undefined,
@@ -274,7 +276,7 @@ function ageFromISO(iso: string): string {
   return a >= 0 && a < 130 ? String(a) : '';
 }
 
-type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; sector: string; province: string; consultDate: string };
+type Datos = { name: string; sex: string; age: string; birthDate: string; phone: string; email: string; occupation: string; address: string; sector: string; province: string; fichaNumber: string; consultDate: string };
 
 function Step1({ datos, setDatos }: {
   datos: Datos; setDatos: React.Dispatch<React.SetStateAction<Datos>>;
@@ -283,6 +285,7 @@ function Step1({ datos, setDatos }: {
   return (
     <div className="animate-fade">
       <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <label className="flex flex-col gap-1.5"><span className={lblCls}>N° de ficha física <span className="font-semibold text-faint">(papel)</span></span><input className={inputCls} value={datos.fichaNumber} onChange={(e) => set('fichaNumber', e.target.value)} placeholder="Ej. 0142" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Fecha de consulta</span><input type="date" className={inputCls} value={datos.consultDate} onChange={(e) => set('consultDate', e.target.value)} /></label>
         <label className="col-span-2 flex flex-col gap-1.5"><span className={lblCls}>Nombre completo</span><input className={inputCls} value={datos.name} onChange={(e) => set('name', e.target.value)} placeholder="Nombre y apellidos" /></label>
         <label className="flex flex-col gap-1.5"><span className={lblCls}>Edad <span className="font-semibold text-faint">(automática)</span></span><input className={inputCls + ' bg-bg text-muted'} value={datos.age} readOnly placeholder="—" title="Se calcula de la fecha de nacimiento" /></label>
