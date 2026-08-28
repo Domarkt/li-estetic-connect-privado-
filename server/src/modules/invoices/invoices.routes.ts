@@ -69,6 +69,51 @@ invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, asyn
   });
 });
 
+/**
+ * Relación de CUENTAS POR COBRAR (Recepción/Admin): todo lo pendiente de pago, con su
+ * monto y la fecha en que se generó. Reúne los SALDOS de planes (abonos sin terminar de
+ * pagar) y los CARGOS pendientes de facturar. Cada fila trae un WhatsApp ya escrito para
+ * invitar a la clienta a saldar. Aislado por sucursal.
+ */
+invoicesRouter.get('/receivables', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  const branchId = req.scopeBranchId ?? null;
+  const [treatments, charges] = await Promise.all([
+    prisma.treatment.findMany({
+      where: { balance: { gt: 0 }, ...(branchId ? { patient: { branchId } } : {}) },
+      include: { patient: { select: { id: true, name: true, phone: true, sex: true, branch: { select: { name: true } } } } },
+    }),
+    prisma.chargeItem.findMany({
+      where: { status: 'PENDIENTE_FACTURAR', ...(branchId ? { branchId } : {}) },
+      include: { patient: { select: { id: true, name: true, phone: true, sex: true, branch: { select: { name: true } } } } },
+    }),
+  ]);
+
+  const NEGOCIO = 'Li Estetic Center';
+  const waLink = (phone: string, name: string, sex: string | null, monto: number) => {
+    const p = normalizePhone(phone);
+    const texto = `Hola ${tratoFormal(name, sex)} 💜 Le saludamos de ${NEGOCIO}. Tiene un saldo pendiente de RD$${monto.toLocaleString('en-US')}. Puede pasar a saldarlo cuando guste; con gusto le agendamos su próxima cita. 💜`;
+    return p ? `https://wa.me/${p}?text=${encodeURIComponent(texto)}` : null;
+  };
+  const fmtFecha = (d: Date) => d.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const rows = [
+    ...treatments.filter((t) => t.patient).map((t) => ({
+      id: `t_${t.id}`, patientId: t.patient!.id, patientName: t.patient!.name, phone: t.patient!.phone,
+      branch: t.patient!.branch?.name ?? '—', concept: `Saldo de plan · ${t.name}`, tipo: 'Saldo de plan',
+      monto: t.balance, fecha: fmtFecha(t.createdAt), at: t.createdAt.toISOString(),
+      wa: waLink(t.patient!.phone, t.patient!.name, t.patient!.sex, t.balance),
+    })),
+    ...charges.filter((c) => c.patient).map((c) => ({
+      id: `c_${c.id}`, patientId: c.patient!.id, patientName: c.patient!.name, phone: c.patient!.phone,
+      branch: c.patient!.branch?.name ?? '—', concept: c.name, tipo: 'Cargo pendiente',
+      monto: c.price, fecha: fmtFecha(c.createdAt), at: c.createdAt.toISOString(),
+      wa: waLink(c.patient!.phone, c.patient!.name, c.patient!.sex, c.price),
+    })),
+  ].sort((a, b) => b.at.localeCompare(a.at)); // más recientes primero
+
+  res.json({ rows, total: rows.reduce((s, r) => s + r.monto, 0), count: rows.length });
+});
+
 /** Pacientes para el listado del cobro (con plan, saldo y cargos pendientes). */
 invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
   const patients = await prisma.patient.findMany({

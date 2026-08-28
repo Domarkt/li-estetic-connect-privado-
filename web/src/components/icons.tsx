@@ -59,6 +59,7 @@ export const NAV_ICON: Record<string, string> = {
   mensajes: 'chat',
   chat: 'chat',
   facturacion: 'money',
+  'cuentas-por-cobrar': 'money',
   catalogo: 'box',
   inventario: 'boxes',
   equipos: 'wrench',

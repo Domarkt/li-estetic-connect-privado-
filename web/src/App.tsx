@@ -18,6 +18,7 @@ const PatientsPage = lazy(() => import('./pages/patients/PatientsPage'));
 const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage'));
 const BillingPage = lazy(() => import('./pages/billing/BillingPage'));
+const CuentasPorCobrarPage = lazy(() => import('./pages/billing/CuentasPorCobrarPage'));
 const MessagesPage = lazy(() => import('./pages/messaging/MessagesPage'));
 const PipelinePage = lazy(() => import('./pages/messaging/PipelinePage'));
 const PointsPage = lazy(() => import('./pages/points/PointsPage'));
@@ -82,6 +83,7 @@ export default function App() {
             <Route path="agenda" element={<AgendaPage />} />
             <Route path="mensajes" element={<MessagesPage />} />
             <Route path="facturacion" element={<BillingPage />} />
+            <Route path="cuentas-por-cobrar" element={<CuentasPorCobrarPage />} />
             <Route path="catalogo" element={<CatalogPage />} />
             <Route path="portal" element={<PortalAdminPage />} />
             <Route path="inventario" element={<InventarioPage />} />
