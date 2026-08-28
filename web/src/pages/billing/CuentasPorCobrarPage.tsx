@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAutoRefresh } from '../../lib/useAutoRefresh';
+import { useAuth } from '../../auth/AuthContext';
+import { useBranch } from '../../layout/BranchContext';
 import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { fmtRD } from '../../lib/types';
 
@@ -17,6 +19,9 @@ interface Data { rows: Row[]; total: number; count: number }
  */
 export default function CuentasPorCobrarPage() {
   const navigate = useNavigate();
+  const { staff } = useAuth();
+  const { activeBranch } = useBranch();
+  const branchQP = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
   const [data, setData] = useState<Data | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +29,10 @@ export default function CuentasPorCobrarPage() {
 
   const load = useCallback(() => {
     setCargando(true); setError(null);
-    api.get<Data>('/invoices/receivables')
+    api.get<Data>(`/invoices/receivables${branchQP}`)
       .then((r) => { setData(r); setCargando(false); })
       .catch((e) => { setError(e instanceof Error ? e.message : 'Error'); setCargando(false); });
-  }, []);
+  }, [branchQP]);
   useEffect(() => { load(); }, [load]);
   useAutoRefresh(load);
 

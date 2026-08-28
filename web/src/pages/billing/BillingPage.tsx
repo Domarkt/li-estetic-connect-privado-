@@ -45,7 +45,8 @@ export default function BillingPage() {
       .then((r) => { setData(r); setCargando(false); })
       .catch((e) => { setErrorCarga(e instanceof Error ? e.message : 'Error'); setCargando(false); });
     // Lista "por cobrar": pacientes con cargos pendientes, saldo o servicio agendado.
-    api.get<BillPatient[]>('/invoices/patients')
+    // OJO: hay que pasar la sucursal activa (para admin), o se mezclan pacientes de otras estéticas.
+    api.get<BillPatient[]>(`/invoices/patients${branchQ ? '?' + branchQ.slice(1) : ''}`)
       .then((ps) => setPorCobrar(ps.filter((p) => p.pendingCharges.length > 0 || (p.treatmentsConSaldo ?? []).length > 0 || !!p.scheduled)))
       .catch(() => setPorCobrar([]));
   }, [date, branchQ]);

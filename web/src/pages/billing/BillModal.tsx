@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
+import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type BillPatient, type CatalogItem, type PaymentMethod, type Receipt } from '../../lib/types';
@@ -25,6 +27,11 @@ let lineSeq = 0;
 
 export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const toast = useToast();
+  const { staff } = useAuth();
+  const { activeBranch } = useBranch();
+  // El admin cobra en la sucursal ACTIVA: los pacientes se filtran por ella (si no, se
+  // mezclan clientas de otras estéticas). Recepción ya queda scopeada a la suya.
+  const branchQP = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
   const [patients, setPatients] = useState<BillPatient[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [selected, setSelected] = useState<string | null>(preselectId ?? null);
@@ -78,7 +85,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   function loadPatients() {
     setLoadingP(true); setErrP(false);
-    api.get<BillPatient[]>('/invoices/patients').then((ps) => {
+    api.get<BillPatient[]>(`/invoices/patients${branchQP}`).then((ps) => {
       setPatients(ps); setLoadingP(false);
       if (preselectId) applyPatient(ps.find((p) => p.id === preselectId));
     }).catch(() => { setLoadingP(false); setErrP(true); });
