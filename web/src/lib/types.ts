@@ -316,7 +316,7 @@ export interface PortalPackages {
 
 // ── Equipo ──
 export interface TeamCollaborator { id: string; name: string; role: string; branch: string; avatarColor: string; points: number; sales: number; commission: number; attendance: string }
-export interface SystemUser { id: string; name: string; email: string; role: string; roleKey: Role; branch: string; branchId: string | null; avatarColor: string; active: boolean; protected?: boolean; canManageCatalog?: boolean; allowedModules?: CoordinatorModule[] }
+export interface SystemUser { id: string; name: string; email: string; role: string; roleKey: Role; branch: string; branchId: string | null; avatarColor: string; active: boolean; protected?: boolean; canManageCatalog?: boolean; atiendeCitas?: boolean; allowedModules?: CoordinatorModule[] }
 export interface TeamResponse { collaborators: TeamCollaborator[]; systemUsers: SystemUser[] }
 
 // ── Notificaciones ──

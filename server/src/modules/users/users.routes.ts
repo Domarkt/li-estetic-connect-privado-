@@ -22,7 +22,8 @@ usersRouter.get('/therapists', requireStaff, branchScope, async (req, res) => {
       active: true,
       OR: [
         { role: 'ESTETICISTA', ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}) },
-        { role: 'COORDINADOR' },
+        // Admin/Coordinadora marcada como "atiende citas": aparece en TODAS las estéticas.
+        { atiendeCitas: true },
       ],
     },
     select: { id: true, name: true, branchId: true, avatarColor: true },
@@ -55,7 +56,7 @@ usersRouter.get('/team', requireStaff, requireRole('ADMIN'), branchScope, async 
   const systemUsers = users.map((u) => ({
     id: u.id, name: u.name, email: u.email, role: ROLE_LABEL[u.role], roleKey: u.role,
     branch: u.branch?.name ?? 'Todas', branchId: u.branchId, avatarColor: u.avatarColor, active: u.active,
-    canManageCatalog: u.canManageCatalog, allowedModules: u.allowedModules,
+    canManageCatalog: u.canManageCatalog, atiendeCitas: u.atiendeCitas, allowedModules: u.allowedModules,
     // Correo base de Domarkt: no se puede eliminar ni desactivar desde aquí.
     protected: isBaseAdmin(u.email),
   }));
@@ -70,6 +71,7 @@ const createSchema = z.object({
   role: z.enum(['ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA']),
   branchId: z.string().nullish(),
   canManageCatalog: z.boolean().optional(),
+  atiendeCitas: z.boolean().optional(),
   allowedModules: z.array(z.enum(COORDINATOR_MODULES)).default([]),
 });
 
@@ -91,9 +93,12 @@ usersRouter.post('/', requireStaff, requireRole('ADMIN'), async (req, res) => {
     data: {
       name: b.name, email, passwordHash: await hashPassword(b.password), role: b.role, branchId,
       canManageCatalog: b.canManageCatalog ?? false,
+      // Solo Admin/Coordinadora pueden "atender citas" (las esteticistas ya atienden).
+      atiendeCitas: (b.role === 'ADMIN' || b.role === 'COORDINADOR') ? (b.atiendeCitas ?? false) : false,
       allowedModules: b.role === 'COORDINADOR' ? b.allowedModules : [],
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-      ...(b.role === 'ESTETICISTA' ? { therapistProfile: { create: {} } } : {}),
+      // Da perfil de esteticista a quien atiende (esteticista, o admin/coord marcada).
+      ...((b.role === 'ESTETICISTA' || b.atiendeCitas) ? { therapistProfile: { create: {} } } : {}),
     },
     include: { branch: true },
   });
@@ -112,6 +117,7 @@ const updateSchema = z.object({
   branchId: z.string().nullish(),
   active: z.boolean().optional(),
   canManageCatalog: z.boolean().optional(),
+  atiendeCitas: z.boolean().optional(),
   allowedModules: z.array(z.enum(COORDINATOR_MODULES)).optional(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
 });
@@ -156,8 +162,11 @@ usersRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) =
     data.branchId = branchId;
   }
   if (role !== 'COORDINADOR') data.allowedModules = [];
-  // Al volverse esteticista se crea su perfil de desempeño si aún no existe.
-  if (role === 'ESTETICISTA' && !current.therapistProfile) {
+  // "Atiende citas" solo aplica a Admin/Coordinadora; el resto siempre en false.
+  const atiende = role === 'ADMIN' || role === 'COORDINADOR' ? (b.atiendeCitas ?? current.atiendeCitas) : false;
+  if (b.atiendeCitas !== undefined || b.role !== undefined) data.atiendeCitas = atiende;
+  // Al volverse esteticista, o al marcarse "atiende citas", se crea su perfil de desempeño.
+  if ((role === 'ESTETICISTA' || atiende) && !current.therapistProfile) {
     data.therapistProfile = { create: {} };
   }
 

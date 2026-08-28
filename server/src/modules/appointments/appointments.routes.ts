@@ -619,11 +619,12 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
       return res.status(403).json({ error: 'Solo recepción o administración puede asignar la esteticista' });
     }
     if (nuevoTherapistId) {
-      // Una esteticista activa de la MISMA sucursal, o la COORDINADORA (atiende en todas).
+      // Una esteticista activa de la MISMA sucursal, o quien esté marcado "atiende citas"
+      // (Admin/Coordinadora que atiende procesos en todas las estéticas).
       const t = await prisma.user.findFirst({
         where: {
           id: nuevoTherapistId, active: true,
-          OR: [{ role: 'ESTETICISTA', branchId: appt.branchId }, { role: 'COORDINADOR' }],
+          OR: [{ role: 'ESTETICISTA', branchId: appt.branchId }, { atiendeCitas: true }],
         },
       });
       if (!t) return res.status(400).json({ error: 'Esa persona no está disponible para atender en esta sucursal' });

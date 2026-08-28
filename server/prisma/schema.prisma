@@ -211,6 +211,9 @@ model User {
   active           Boolean  @default(true)
   // Permiso extra: gestionar el catálogo (servicios/productos) sin ser admin.
   canManageCatalog Boolean  @default(false)
+  // Atiende citas: aparece como asignable en la agenda (para Admin/Coordinadora que
+  // también atienden procesos en cabina, ej. la directora o la coordinadora).
+  atiendeCitas     Boolean  @default(false)
   // Módulos operativos habilitados por Admin. Solo se usa para COORDINADOR.
   allowedModules   String[] @default([])
   avatarColor      String   @default("#B31C86")
