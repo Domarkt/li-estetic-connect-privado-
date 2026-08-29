@@ -6,6 +6,7 @@ import { Cargando, ErrorCarga } from '../components/EstadoCarga';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/Toast';
 import { Overlay, stop } from '../components/Modal';
+import ImportCatalogPanel from './ImportCatalogPanel';
 import { fmtRD, type CatalogItem, type CatalogKind } from '../lib/types';
 
 const TABS: { key: CatalogKind; label: string }[] = [
@@ -33,6 +34,7 @@ export default function CatalogPage() {
   const [reload, setReload] = useState(0);
   const [q, setQ] = useState('');
   const [view, setView] = useViewMode('catalogo');
+  const [showImport, setShowImport] = useState(false); // panel descargar/subir catálogo
 
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -98,10 +100,23 @@ export default function CatalogPage() {
             </button>
           )}
           {isAdmin && (
+            <button onClick={() => setShowImport((v) => !v)}
+              className="rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-[12.5px] font-bold text-navy hover:border-magenta">
+              {showImport ? '✕ Cerrar' : '⬇⬆ Descargar / Subir'}
+            </button>
+          )}
+          {isAdmin && (
             <button onClick={() => setModal({ mode: 'add' })} className="flex items-center gap-1.5 rounded-[10px] bg-magenta px-[18px] py-2.5 text-[13.5px] font-bold text-white"><span className="text-base">+</span> Agregar</button>
           )}
         </div>
       </div>
+
+      {/* Panel para descargar el catálogo, editarlo en Excel y volverlo a subir. */}
+      {isAdmin && showImport && (
+        <div className="mb-4">
+          <ImportCatalogPanel />
+        </div>
+      )}
 
       {/* Buscador: imprescindible cuando el catálogo crece. */}
       <div className="mb-3.5 flex items-center gap-2.5 rounded-[10px] border border-line bg-card px-3.5 py-2.5">

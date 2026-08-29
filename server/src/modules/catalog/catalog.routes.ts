@@ -116,6 +116,71 @@ catalogRouter.post('/', requireStaff, requireCatalogManager, async (req, res) =>
   res.status(201).json(serialize(item));
 });
 
+// Importar/actualizar el catálogo desde Excel. Coincide por CÓDIGO: si el código ya
+// existe, ACTUALIZA; si no, CREA (con el código dado o uno automático). Admin/permiso.
+const KIND_ALIAS: Record<string, string> = {
+  servicio: 'SERVICIO', servicios: 'SERVICIO', service: 'SERVICIO',
+  paquete: 'PAQUETE', paquetes: 'PAQUETE', oferta: 'PAQUETE', ofertapaquete: 'PAQUETE',
+  combo: 'COMBO', combos: 'COMBO',
+  producto: 'PRODUCTO', productos: 'PRODUCTO', product: 'PRODUCTO',
+  insumo: 'INSUMO', insumos: 'INSUMO', suministro: 'INSUMO',
+};
+const catalogImportSchema = z.object({
+  rows: z.array(z.record(z.string(), z.unknown())).max(1000),
+  dryRun: z.boolean().optional(),
+});
+
+catalogRouter.post('/import', requireStaff, requireCatalogManager, async (req, res) => {
+  const { rows, dryRun } = catalogImportSchema.parse(req.body);
+  const errors: { line: number; name: string; reason: string }[] = [];
+  let created = 0; let updated = 0;
+
+  const val = (r: Record<string, unknown>, keys: string[]) => {
+    for (const k of Object.keys(r)) {
+      if (keys.includes(k.trim().toLowerCase().replace(/\s+/g, '').replace(/[áéíóú]/g, (m) => ({ á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u' } as Record<string, string>)[m]))) {
+        return String(r[k] ?? '').trim();
+      }
+    }
+    return '';
+  };
+  const num = (s: string) => parseInt((s || '').replace(/\D/g, ''), 10) || 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const line = Number(r.__line) || i + 2;
+    const name = val(r, ['nombre', 'name']);
+    if (!name) { errors.push({ line, name: '(sin nombre)', reason: 'Falta el nombre' }); continue; }
+    const kind = KIND_ALIAS[val(r, ['tipo', 'kind']).toLowerCase().replace(/\s+/g, '')] ?? 'SERVICIO';
+    const priceStr = val(r, ['precio', 'price']);
+    const sessStr = val(r, ['sesiones', 'sessions']);
+    const data = {
+      kind: kind as never, name,
+      category: val(r, ['categoria', 'category']) || null,
+      price: priceStr ? num(priceStr) : 0,
+      sessions: sessStr ? Math.max(1, num(sessStr)) : 1,
+      unit: val(r, ['unidad', 'unit']) || null,
+    };
+    const code = val(r, ['codigo', 'code']);
+    if (dryRun) {
+      const ex = code ? await prisma.catalogItem.findFirst({ where: { code }, select: { id: true } }) : null;
+      if (ex) updated++; else created++;
+      continue;
+    }
+    try {
+      const ex = code ? await prisma.catalogItem.findFirst({ where: { code }, select: { id: true } }) : null;
+      if (ex) { await prisma.catalogItem.update({ where: { id: ex.id }, data }); updated++; }
+      else { await prisma.catalogItem.create({ data: { ...data, code: code || await siguienteCodigo(kind) } }); created++; }
+    } catch (e) { errors.push({ line, name, reason: e instanceof Error ? e.message : 'Error' }); }
+  }
+
+  res.json({
+    ok: true, created, updated, errors, dryRun: !!dryRun,
+    message: dryRun
+      ? `Simulación: ${created} nuevos · ${updated} a actualizar · ${errors.length} con error`
+      : `${created} creados · ${updated} actualizados · ${errors.length} con error`,
+  });
+});
+
 const updateSchema = catalogSchema.partial();
 
 /** Editar un ítem del catálogo (Admin o quien tenga permiso de catálogo). */
