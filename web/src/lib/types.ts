@@ -203,6 +203,8 @@ export interface BillPatient {
   treatmentsConSaldo?: BillTreatment[];
   pendingCharges: { id: string; name: string; price: number }[];
   pendingTotal: number;
+  /** Tiene un pendiente creado en las últimas 24h (lo viejo va a Cuentas por cobrar). */
+  recentPending?: boolean;
   /** Servicio por el que el paciente agendó: el cobro lo precarga. */
   scheduled?: { catalogItemId: string; name: string; price: number; kind: string; fecha: string } | null;
 }

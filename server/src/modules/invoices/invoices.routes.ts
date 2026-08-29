@@ -154,8 +154,16 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
       const t = p.treatments.find((x) => x.active) ?? p.treatments[0] ?? null;
       const pendingTotal = p.chargeItems.reduce((s, c) => s + c.price, 0);
       const remaining = t ? Math.max(0, t.totalSessions - t.doneSessions) : 0;
+      // ¿Tiene un pendiente RECIENTE (creado en las últimas 24h)? La lista "Por cobrar"
+      // de Facturación solo muestra lo reciente; lo que pasa de 24h vive en Cuentas por
+      // cobrar (para no acumular cobros viejos en la pantalla del día).
+      const AHORA = Date.now(); const DIA = 24 * 3_600_000;
+      const recentPending =
+        p.chargeItems.some((c) => AHORA - c.createdAt.getTime() <= DIA) ||
+        p.treatments.some((x) => x.active && x.balance > 0 && AHORA - x.createdAt.getTime() <= DIA);
       return {
         id: p.id, name: p.name, phone: p.phone, avatarColor: p.avatarColor,
+        recentPending,
         plan: t?.name ?? 'Sin paquete', balance: t?.balance ?? 0,
         treatment: t ? {
           id: t.id, name: t.name, price: t.price, balance: t.balance,

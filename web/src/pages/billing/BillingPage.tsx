@@ -47,7 +47,9 @@ export default function BillingPage() {
     // Lista "por cobrar": pacientes con cargos pendientes, saldo o servicio agendado.
     // OJO: hay que pasar la sucursal activa (para admin), o se mezclan pacientes de otras estéticas.
     api.get<BillPatient[]>(`/invoices/patients${branchQ ? '?' + branchQ.slice(1) : ''}`)
-      .then((ps) => setPorCobrar(ps.filter((p) => p.pendingCharges.length > 0 || (p.treatmentsConSaldo ?? []).length > 0 || !!p.scheduled)))
+      // Solo lo RECIENTE (pendiente de las últimas 24h) o lo que agendó hoy. Lo que pasa
+      // de 24h ya no se muestra aquí: vive en "Cuentas por cobrar" (evita que se acumulen).
+      .then((ps) => setPorCobrar(ps.filter((p) => p.recentPending || !!p.scheduled)))
       .catch(() => setPorCobrar([]));
   }, [date, branchQ]);
   useEffect(() => { load(); }, [load]);
