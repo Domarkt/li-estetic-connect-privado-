@@ -93,8 +93,9 @@ usersRouter.post('/', requireStaff, requireRole('ADMIN'), async (req, res) => {
     data: {
       name: b.name, email, passwordHash: await hashPassword(b.password), role: b.role, branchId,
       canManageCatalog: b.canManageCatalog ?? false,
-      // Solo Admin/Coordinadora pueden "atender citas" (las esteticistas ya atienden).
-      atiendeCitas: (b.role === 'ADMIN' || b.role === 'COORDINADOR') ? (b.atiendeCitas ?? false) : false,
+      // "Disponible en todas las estéticas": Admin/Coordinadora que atienden, o una
+      // esteticista que cubre otras sucursales. Recepción no aplica.
+      atiendeCitas: b.role !== 'RECEPCIONISTA' ? (b.atiendeCitas ?? false) : false,
       allowedModules: b.role === 'COORDINADOR' ? b.allowedModules : [],
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
       // Da perfil de esteticista a quien atiende (esteticista, o admin/coord marcada).
@@ -162,8 +163,8 @@ usersRouter.patch('/:id', requireStaff, requireRole('ADMIN'), async (req, res) =
     data.branchId = branchId;
   }
   if (role !== 'COORDINADOR') data.allowedModules = [];
-  // "Atiende citas" solo aplica a Admin/Coordinadora; el resto siempre en false.
-  const atiende = role === 'ADMIN' || role === 'COORDINADOR' ? (b.atiendeCitas ?? current.atiendeCitas) : false;
+  // "Disponible en todas las estéticas": Admin/Coordinadora/Esteticista; Recepción no.
+  const atiende = role !== 'RECEPCIONISTA' ? (b.atiendeCitas ?? current.atiendeCitas) : false;
   if (b.atiendeCitas !== undefined || b.role !== undefined) data.atiendeCitas = atiende;
   // Al volverse esteticista, o al marcarse "atiende citas", se crea su perfil de desempeño.
   if ((role === 'ESTETICISTA' || atiende) && !current.therapistProfile) {

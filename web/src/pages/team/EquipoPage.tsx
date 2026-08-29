@@ -109,7 +109,7 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
       if (isEdit) {
         const r = await api.patch<{ message: string }>(`/users/${user!.id}`, {
           name: name.trim(), email: email.trim(), role, active, canManageCatalog: canCatalog,
-          atiendeCitas: role === 'ADMIN' || role === 'COORDINADOR' ? atiendeCitas : false,
+          atiendeCitas: role !== 'RECEPCIONISTA' ? atiendeCitas : false,
           branchId: role === 'ADMIN' || role === 'COORDINADOR' ? null : branchId,
           allowedModules: role === 'COORDINADOR' ? allowedModules : [],
           ...(password.trim() ? { password } : {}),
@@ -118,7 +118,7 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
       } else {
         const r = await api.post<{ message: string }>('/users', {
           name: name.trim(), email: email.trim(), password, role, canManageCatalog: canCatalog,
-          atiendeCitas: role === 'ADMIN' || role === 'COORDINADOR' ? atiendeCitas : false,
+          atiendeCitas: role !== 'RECEPCIONISTA' ? atiendeCitas : false,
           branchId: role === 'ADMIN' || role === 'COORDINADOR' ? undefined : branchId,
           allowedModules: role === 'COORDINADOR' ? allowedModules : [],
         });
@@ -170,12 +170,12 @@ function CollaboratorModal({ user, onClose, onSaved }: { user?: SystemUser; onCl
               </span>
             </label>
           )}
-          {(role === 'ADMIN' || role === 'COORDINADOR') && (
+          {role !== 'RECEPCIONISTA' && (
             <label className="flex items-start gap-2.5 rounded-[9px] border border-line px-3.5 py-3">
               <input type="checkbox" checked={atiendeCitas} onChange={(e) => setAtiendeCitas(e.target.checked)} className="mt-0.5 h-4 w-4 accent-magenta" />
               <span className="text-[13px]">
-                <b className="font-semibold">Atiende citas</b>
-                <span className="block text-[11.5px] text-muted">Aparece como asignable en la agenda de todas las estéticas: puede recibir citas, abrir/cerrar turno y registrar procesos (ej. la directora o la coordinadora).</span>
+                <b className="font-semibold">Disponible en todas las estéticas</b>
+                <span className="block text-[11.5px] text-muted">Aparece para asignarle citas en la agenda de TODAS las sucursales: útil para una esteticista que cubre otra estética, o para la directora/coordinadora que atiende procesos.</span>
               </span>
             </label>
           )}
