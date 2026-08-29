@@ -62,6 +62,17 @@ export default function CatalogPage() {
   const shown = items.filter((i) => i.kind === tab && (!texto || i.name.toLowerCase().includes(texto) || (i.code ?? '').toLowerCase().includes(texto)));
   const refresh = () => setReload((r) => r + 1);
 
+  // Agrupa lo mostrado por CATEGORÍA (Faciales, Depilación…). "Sin categoría" al final.
+  const gruposMap = new Map<string, CatalogItem[]>();
+  for (const it of shown) {
+    const c = (it.category ?? '').trim() || 'Sin categoría';
+    const arr = gruposMap.get(c);
+    if (arr) arr.push(it); else gruposMap.set(c, [it]);
+  }
+  const grupos = [...gruposMap.entries()].sort((a, b) =>
+    a[0] === 'Sin categoría' ? 1 : b[0] === 'Sin categoría' ? -1 : a[0].localeCompare(b[0], 'es'),
+  );
+
   return (
     <div className="animate-fade">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -106,7 +117,10 @@ export default function CatalogPage() {
             <div className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] gap-3 border-b border-line px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-muted">
               <div>Nombre</div><div>Detalle</div><div>Precio</div><div className="w-[130px]" />
             </div>
-            {shown.map((it) => (
+            {grupos.map(([cat, itemsCat]) => (
+              <div key={cat}>
+                <div className="border-b border-line-2 bg-bg px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-magenta">{cat} · {itemsCat.length}</div>
+                {itemsCat.map((it) => (
               <div key={it.id} className="grid grid-cols-[2.4fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line-2 px-4 py-2.5 hover:bg-bg">
                 <div className="flex min-w-0 items-center gap-2.5">
                   {it.imageUrl
@@ -131,13 +145,19 @@ export default function CatalogPage() {
                   )}
                 </div>
               </div>
+                ))}
+              </div>
             ))}
             {shown.length === 0 && <div className="py-10 text-center text-sm text-muted">Sin ítems en esta categoría.</div>}
           </div>
         </div>
       ) : (
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-        {shown.map((it) => (
+      <div className="flex flex-col gap-5">
+        {grupos.map(([cat, itemsCat]) => (
+          <div key={cat}>
+            <div className="mb-2.5 text-[12px] font-extrabold uppercase tracking-wide text-magenta">{cat} · {itemsCat.length}</div>
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+              {itemsCat.map((it) => (
           <div key={it.id} className="group relative rounded-base border border-line bg-card p-[18px] shadow-card">
             {/* Foto arriba: se muestra COMPLETA (sin recortar) para que el personal
                 vea toda la promo. object-contain + fondo para el espacio sobrante. */}
@@ -163,8 +183,11 @@ export default function CatalogPage() {
               </div>
             )}
           </div>
+              ))}
+            </div>
+          </div>
         ))}
-        {shown.length === 0 && <div className="col-span-full py-10 text-center text-sm text-muted">Sin ítems en esta categoría.</div>}
+        {shown.length === 0 && <div className="py-10 text-center text-sm text-muted">Sin ítems en esta categoría.</div>}
       </div>
       )}
 
@@ -239,6 +262,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   const [price, setPrice] = useState(item?.price != null ? String(item.price) : '');
   const [sessions, setSessions] = useState(item?.sessions ? String(item.sessions) : '1');
   const [unit, setUnit] = useState(item?.unit ?? '');
+  const [category, setCategory] = useState(item?.category ?? ''); // categoría del servicio (Faciales, Depilación…)
   // Al crear, el portal arranca APAGADO: la admin decide explícitamente qué combo/
   // paquete se publica al paciente (evita exponer todo sin querer). En edición respeta
   // lo guardado.
@@ -297,6 +321,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
     const payload = {
       kind, name: name.trim(),
       code: code.trim() || undefined,
+      category: category.trim() || null,
       ...(componible ? { showInPortal } : {}),
       price: Number(price) || 0,
       sessions: Number(sessions) || 1,
@@ -359,6 +384,12 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
             )}
           </div>
           {stockable && <p className="text-[11.5px] text-faint">El stock se controla por sucursal en la pestaña <b>Inventario</b>.</p>}
+
+          {/* Categoría: agrupa el catálogo (Faciales, Depilación, Corporal…). */}
+          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Categoría <span className="font-semibold text-faint">(para agrupar · opcional)</span></span>
+            <input list="cat-catalogo" className="rounded-[9px] border border-line px-3.5 py-3 text-[13.5px] outline-none focus:border-magenta" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Ej. Faciales, Depilación, Corporal…" />
+            <datalist id="cat-catalogo">{['Faciales', 'Depilación', 'Corporal', 'Reductor', 'Masajes', 'Láser', 'Post-quirúrgico', 'Uñas', 'Pestañas y cejas', 'Cabello'].map((c) => <option key={c} value={c} />)}</datalist>
+          </label>
 
           {/* Foto: se ve en el catálogo (más visual para el personal) y en el portal. */}
           {kind !== 'INSUMO' && (

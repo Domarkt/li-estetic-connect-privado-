@@ -86,7 +86,7 @@ const catalogSchema = z.object({
   // Precio opcional: la directora crea combos a diario y define el monto al cobrar. 0 = sin precio.
   price: z.number().int().nonnegative().optional().default(0),
   sessions: z.number().int().positive().default(1),
-  category: z.string().optional(),
+  category: z.string().nullish(),
   unit: z.string().optional(),
   tag: z.string().optional(),
   // Vencimiento de una oferta/paquete/combo (opcional). Acepta "YYYY-MM-DD".
