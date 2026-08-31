@@ -323,8 +323,11 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const charges = b.chargeItemIds?.length
     ? await prisma.chargeItem.findMany({
         where: {
-          id: { in: b.chargeItemIds }, branchId, status: 'PENDIENTE_FACTURAR',
-          ...(b.patientId ? { patientId: b.patientId } : {}),
+          id: { in: b.chargeItemIds }, status: 'PENDIENTE_FACTURAR',
+          // Si hay paciente, se busca por paciente (no por sucursal): así se puede cobrar
+          // un cargo creado en OTRA estética tras transferir a la clienta. Sin paciente,
+          // se acota a la sucursal del cobro.
+          ...(b.patientId ? { patientId: b.patientId } : { branchId }),
         },
       })
     : [];
@@ -410,7 +413,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   // Marca como facturados los cargos cobrados.
   if (charges.length) {
     await prisma.chargeItem.updateMany({
-      where: { id: { in: b.chargeItemIds! }, branchId },
+      // Se marcan EXACTAMENTE los cargos cobrados (por id), no por sucursal: así también
+      // se cierra el cargo creado en otra estética cuando la clienta fue transferida.
+      where: { id: { in: charges.map((c) => c.id) } },
       data: { status: 'FACTURADO' },
     });
     // Descuenta del inventario los productos vendidos (por sucursal).

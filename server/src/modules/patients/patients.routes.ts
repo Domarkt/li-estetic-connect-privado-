@@ -581,6 +581,19 @@ patientsRouter.post('/:id/transfer', requireStaff, requireRole('ADMIN'), async (
 
   await prisma.patient.update({ where: { id: patient.id }, data: { branchId } });
 
+  // El paciente se lleva consigo lo que aún está pendiente a la sucursal destino:
+  //  · cargos por facturar (su saldo), para poder cobrarlos allá, y
+  //  · citas futuras no canceladas (aparecen en la agenda de la nueva estética).
+  // El historial (recibos ya emitidos) se queda en la sucursal donde ocurrió.
+  await prisma.chargeItem.updateMany({
+    where: { patientId: patient.id, status: 'PENDIENTE_FACTURAR' },
+    data: { branchId },
+  });
+  await prisma.appointment.updateMany({
+    where: { patientId: patient.id, status: { notIn: ['CANCELADA', 'COMPLETADA'] }, startsAt: { gte: new Date() } },
+    data: { branchId, therapistId: null },
+  });
+
   // Nota + aviso en el chat de la sucursal destino (etiquetando al paciente).
   const body = note?.trim() || `Paciente transferido a esta sucursal. Revisa su ficha e historial.`;
   await prisma.teamMessage.create({
