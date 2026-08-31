@@ -31,6 +31,7 @@ export default function BillingPage() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [estadoFiltro, setEstadoFiltro] = useState<'todas' | 'pagadas' | 'anuladas'>('todas');
 
   const isToday = date === todayISO();
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -38,6 +39,10 @@ export default function BillingPage() {
   // Solo el administrador ve los montos (totales del día, monto por recibo). Recepción solo cobra.
   const showMoney = staff?.role === 'ADMIN';
   const gridCols = showMoney ? 'grid-cols-[.9fr_1.6fr_2fr_1fr_1.1fr_.9fr]' : 'grid-cols-[.9fr_1.6fr_2fr_1fr_.9fr]';
+  // Filtro por estado (para poder ver solo las anuladas o solo las pagadas del día).
+  const anuladasCount = data.invoices.filter((i) => i.status === 'Anulada').length;
+  const invoicesShown = data.invoices.filter((i) =>
+    estadoFiltro === 'todas' ? true : estadoFiltro === 'anuladas' ? i.status === 'Anulada' : i.status === 'Pagada');
 
   const load = useCallback(() => {
     setCargando(true); setErrorCarga(null);
@@ -160,13 +165,27 @@ export default function BillingPage() {
       {showMoney && !cargando && errorCarga && <ErrorCarga mensaje={errorCarga} onRetry={load} />}
 
       {showMoney && !cargando && !errorCarga && (
+      <div className="flex flex-col gap-2.5">
+        {/* Filtro por estado: Todas · Pagadas · Anuladas. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([['todas', 'Todas'], ['pagadas', 'Pagadas'], ['anuladas', 'Anuladas']] as const).map(([k, lbl]) => {
+            const on = estadoFiltro === k;
+            return (
+              <button key={k} onClick={() => setEstadoFiltro(k)}
+                className="rounded-full px-3.5 py-1.5 text-[12px] font-bold"
+                style={{ background: on ? 'var(--magenta)' : 'var(--card)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
+                {lbl}{k === 'anuladas' && anuladasCount > 0 ? ` (${anuladasCount})` : ''}
+              </button>
+            );
+          })}
+        </div>
       <div className="overflow-x-auto rounded-base border border-line bg-card shadow-card">
         <div className="min-w-[640px]">
         <div className={`grid ${gridCols} gap-3 border-b border-line px-5 py-3 text-[11.5px] font-bold uppercase tracking-wide text-muted`}>
           <div>Recibo</div><div>Paciente</div><div>Concepto</div><div>Método</div>{showMoney && <div>Monto</div>}<div>Estado</div>
         </div>
-        {data.invoices.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">No se emitieron recibos en esta fecha.</div>}
-        {data.invoices.map((i) => {
+        {invoicesShown.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">{estadoFiltro === 'anuladas' ? 'No hay facturas anuladas en esta fecha.' : 'No se emitieron recibos en esta fecha.'}</div>}
+        {invoicesShown.map((i) => {
           const chip = METHOD_CHIP[i.method] ?? METHOD_CHIP.Azul;
           return (
             <button key={i.id} type="button" onClick={() => reprint(i.id)}
@@ -189,6 +208,7 @@ export default function BillingPage() {
           );
         })}
         </div>
+      </div>
       </div>
       )}
 
