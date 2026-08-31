@@ -116,8 +116,7 @@ export default function CashCloseRecepcion() {
             <div className="mt-3 flex justify-between border-t border-line-2 pt-3 text-[14px] font-extrabold"><span>Total tarjetas</span><span className="text-magenta">{fmtRD(cardTotal)}</span></div>
           </div>
           <div className="rounded-base border border-line bg-card p-5 shadow-card">
-            <label className="mb-2.5 block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Transferencias (total)</span><input disabled={locked} value={transfer} onChange={(e) => setTransfer(e.target.value)} placeholder="0" className="w-full rounded-[9px] border border-line px-3 py-2 text-[13px] disabled:opacity-60" /></label>
-            <label className="block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Azul (total)</span><input disabled={locked} value={azul} onChange={(e) => setAzul(e.target.value)} placeholder="0" className="w-full rounded-[9px] border border-line px-3 py-2 text-[13px] disabled:opacity-60" /></label>
+            <label className="block"><span className="mb-1 block text-[11.5px] font-bold text-muted">Transferencias (total)</span><input disabled={locked} value={transfer} onChange={(e) => setTransfer(e.target.value)} placeholder="0" className="w-full rounded-[9px] border border-line px-3 py-2 text-[13px] disabled:opacity-60" /></label>
           </div>
         </div>
       </div>

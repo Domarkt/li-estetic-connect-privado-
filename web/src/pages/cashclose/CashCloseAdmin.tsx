@@ -107,7 +107,10 @@ export default function CashCloseAdmin() {
                 <div className="grid grid-cols-[1.1fr_1.1fr_1fr_1.1fr] gap-2 bg-navy-soft px-3 py-2 text-[11px] font-bold uppercase text-navy">
                   <div>Método</div><div className="text-right">Sistema</div><div className="text-right">Contado</div><div className="text-right">Diferencia</div>
                 </div>
-                {b.methods.map((m) => {
+                {b.methods
+                  // Azul ya no se usa: solo se muestra si tuviera un monto histórico.
+                  .filter((m) => m.method !== 'AZUL' || expOf(b.branchId, m.method) > 0 || (m.counted ?? 0) > 0)
+                  .map((m) => {
                   const exp = expOf(b.branchId, m.method);
                   const diff = m.counted == null ? null : m.counted - exp;
                   return (
