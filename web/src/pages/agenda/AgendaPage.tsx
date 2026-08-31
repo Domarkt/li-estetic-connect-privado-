@@ -209,29 +209,27 @@ export default function AgendaPage() {
               )}
               {a.balance > 0 && (
                 <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
-                  ⚠ Saldo {fmtRD(a.balance)} · cobrar antes de atender
+                  ⚠ Saldo pendiente {fmtRD(a.balance)} · recuérdale el cobro
+                </div>
+              )}
+              {/* Cliente nuevo aún sin pagar: se puede atender igual (paga luego); solo queda el aviso. */}
+              {a.patientType === 'NUEVO' && !a.paid && a.balance <= 0 && a.status !== 'CANCELADA' && !a.finished && (
+                <div className="mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: 'var(--warn-soft)', color: '#7A5A12' }}>
+                  ⚠ Pendiente de cobro · puede pagar en una próxima visita
                 </div>
               )}
             </div>
             </div>
             <div className="flex flex-wrap gap-2 sm:flex-none sm:justify-end">
             {canOpenTurno && !a.checkedIn && a.status !== 'CANCELADA' && (
-              // El turno con código se abre DESPUÉS de que el paciente paga. Un
-              // cliente nuevo sin pagar todavía no tiene servicio activo: se le
-              // pide cobrar primero (el código se le entrega al pagar en recepción).
-              a.patientType === 'NUEVO' && !a.paid ? (
-                <span title="El turno con código se abre cuando el paciente paga en recepción."
-                  className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
-                  style={{ borderColor: 'var(--warn)', color: 'var(--warn)', background: 'var(--warn-soft)' }}>
-                  🔒 Cobra primero
-                </span>
-              ) : (
-                <button onClick={() => setCheckinFor(a)}
-                  className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
-                  style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
-                  🔓 Abrir turno
-                </button>
-              )
+              // Se puede abrir el turno aunque no haya pagado: hay clientas que pagan
+              // en su 3ra o 4ta visita. Queda el aviso de "pendiente de cobro" (arriba)
+              // para que recepción lo cobre cuando corresponda.
+              <button onClick={() => setCheckinFor(a)}
+                className="rounded-[9px] border px-3.5 py-2.5 text-[12.5px] font-bold"
+                style={{ borderColor: 'var(--ok)', color: 'var(--ok)', background: 'var(--ok-soft)' }}>
+                🔓 Abrir turno
+              </button>
             )}
             {canOpenTurno && a.inService && (
               <button onClick={() => finishService(a)}
@@ -452,9 +450,9 @@ function CheckinModal({ appt, onClose, onDone, onAbierto }: {
   onAbierto: (p: { id: string; name: string; treatmentId: string | null }) => void;
 }) {
   const toast = useToast();
-  // La cita ya tiene un código. Precargarlo resuelve también las citas antiguas de
-  // pacientes importados que no lo recibieron en su confirmación.
-  const [code, setCode] = useState(appt?.paid ? (appt.code ?? '') : '');
+  // La cita ya tiene un código: se precarga para que el personal pueda abrir el turno
+  // aunque la clienta no haya pagado todavía (hay quienes pagan en una visita posterior).
+  const [code, setCode] = useState(appt?.code ?? '');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   // Tras validar, el turno ya está abierto: el botón no debe seguir disponible.
