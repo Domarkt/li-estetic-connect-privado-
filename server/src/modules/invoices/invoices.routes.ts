@@ -253,6 +253,9 @@ const billSchema = z.object({
   // No todos los servicios estéticos llevan ITBIS: recepción lo decide al cobrar.
   itbisApplied: z.boolean().default(true),
   fullAmount: z.number().int().positive().optional(), // precio total del combo/compra (para abono a concepto libre)
+  // Descuento aplicado por recepción/admin (monto en RD$ ya calculado). Tope: 20% del bruto.
+  discount: z.number().int().nonnegative().optional(),
+  discountReason: z.string().trim().max(160).nullish(),
   // "Solo registrar el ingreso": el paciente YA tiene estos servicios en su ficha
   // (plan cargado/usado). Emite el recibo pero NO crea/duplica el plan. Úsalo para
   // regularizar un cobro que faltaba de un plan que ya existe.
@@ -362,6 +365,21 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const chargeLines = charges.map((c) => ({ name: c.name, qty: 1, unitPrice: c.price, total: c.price, detail: c.catalogItemId ? detailDe.get(c.catalogItemId) ?? null : null }));
   const cartLines = (b.items ?? []).map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.price, total: it.price * it.qty, detail: it.catalogItemId ? detailDe.get(it.catalogItemId) ?? null : null }));
   const detalle = [...chargeLines, ...cartLines];
+
+  // Descuento (recepción/admin): tope 20% del bruto. Entra como línea NEGATIVA para que
+  // el total cuadre solo, la caja concilie y el recibo lo muestre. No aplica al cobro de
+  // un saldo de plan (ahí el precio ya está fijado).
+  const MAX_DISCOUNT_PCT = Number(process.env.DISCOUNT_MAX_PCT || 20); // configurable sin código
+  const brutoAntesDesc = detalle.reduce((s, l) => s + l.total, 0);
+  let descuento = 0;
+  if (!b.treatmentId && detalle.length > 0 && (b.discount ?? 0) > 0) {
+    descuento = Math.round(b.discount!);
+    const tope = Math.floor(brutoAntesDesc * (MAX_DISCOUNT_PCT / 100));
+    if (descuento > tope) return res.status(400).json({ error: `El descuento no puede superar el ${MAX_DISCOUNT_PCT}% (RD$${tope.toLocaleString('en-US')})` });
+    if (descuento >= brutoAntesDesc) return res.status(400).json({ error: 'El descuento no puede ser igual o mayor que el total' });
+    const motivo = b.discountReason?.trim();
+    detalle.push({ name: `Descuento${motivo ? ` · ${motivo}` : ''}`, qty: 1, unitPrice: -descuento, total: -descuento, detail: null });
+  }
   const brutoDetalle = detalle.reduce((s, l) => s + l.total, 0);
 
   // Invariante contable: el dinero recibido debe coincidir con las líneas. Esta
@@ -401,6 +419,7 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       number, ncf, branchId, patientId: b.patientId ?? null, cashierId: req.staff!.sub,
       treatmentId: b.treatmentId ?? null, paymentKind: b.paymentKind,
       concept: b.concept, subtotal, itbis, total: amount, method: dominant,
+      discount: descuento, discountReason: descuento > 0 ? (b.discountReason?.trim() || null) : null,
       ncfType: b.ncfType, itbisApplied: b.itbisApplied,
       clientRnc: b.ncfType === 'B01' ? formatRnc(b.clientRnc!) : null,
       clientName: b.ncfType === 'B01' ? b.clientName!.trim() : null,

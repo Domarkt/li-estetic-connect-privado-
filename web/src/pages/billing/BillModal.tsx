@@ -46,6 +46,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [splitOn, setSplitOn] = useState(false);
   const [split, setSplit] = useState<Record<Metodo, string>>({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
 
+  // Descuento (recepción/admin): por monto RD$ o por %. Tope 20% del subtotal.
+  const canDiscount = staff?.role === 'RECEPCIONISTA' || staff?.role === 'ADMIN';
+  const MAX_DISCOUNT_PCT = 20; // tope; el backend lo valida también (DISCOUNT_MAX_PCT)
+  const [descOn, setDescOn] = useState(false);
+  const [descMode, setDescMode] = useState<'RD' | 'PCT'>('RD');
+  const [descVal, setDescVal] = useState('');
+  const [descReason, setDescReason] = useState('');
+
   // Fecha de la cita de la que se precargó el servicio (para avisarlo en pantalla).
   const [desdeAgenda, setDesdeAgenda] = useState<string | null>(null);
 
@@ -160,8 +168,17 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const chargesTotal = hasCharges
     ? (current?.pendingCharges ?? []).filter((c) => chargeIds.includes(c.id)).reduce((s, c) => s + c.price, 0)
     : 0;
-  // Total de lo que se cobra cuando NO es saldo: cargos pendientes + carrito.
-  const lineasTotal = chargesTotal + cartTotal;
+  // Subtotal de lo que se cobra cuando NO es saldo: cargos pendientes + carrito.
+  const preTotal = chargesTotal + cartTotal;
+  // Descuento: por % (tope 20) o por monto RD$ (no puede superar el 20% del subtotal).
+  const capAmount = Math.floor((preTotal * MAX_DISCOUNT_PCT) / 100);
+  const descRaw = descOn && !payingSaldo
+    ? (descMode === 'PCT' ? Math.round((preTotal * Math.min(MAX_DISCOUNT_PCT, num(descVal))) / 100) : num(descVal))
+    : 0;
+  const descAmount = Math.max(0, Math.min(descRaw, capAmount));
+  const descCapExceeded = descRaw > capAmount;
+  // Total NETO a cobrar (subtotal − descuento).
+  const lineasTotal = Math.max(0, preTotal - descAmount);
   // Monto a cobrar según el caso:
   const amt = payingSaldo
     ? num(amount)
@@ -217,6 +234,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
         items: cartOn && cart.length ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty, catalogItemId: c.catalogId })) : undefined,
         fullAmount: freeAbono ? lineasTotal : undefined,
+        discount: descAmount > 0 ? descAmount : undefined,
+        discountReason: descAmount > 0 && descReason.trim() ? descReason.trim() : undefined,
         itbisApplied: conItbis,
         skipPlan: (!payingSaldo && cartOn && skipPlan) ? true : undefined,
         ncfType,
@@ -360,7 +379,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
                   {/* Total de lo que se cobra (cargos + agregados) */}
                   {(hasCharges || cart.length > 0) && (
-                    <div className="mb-2 flex justify-between rounded-[9px] bg-bg px-3 py-2 text-[13px]"><span className="font-bold text-muted">Total</span><span className="font-extrabold text-magenta">{fmtRD(lineasTotal)}</span></div>
+                    <div className="mb-2 flex justify-between rounded-[9px] bg-bg px-3 py-2 text-[13px]"><span className="font-bold text-muted">{descAmount > 0 ? 'Subtotal' : 'Total'}</span><span className="font-extrabold text-magenta">{fmtRD(preTotal)}</span></div>
                   )}
 
                   {/* Catálogo en forma de ETIQUETAS: se toca para agregar al recibo. */}
@@ -384,6 +403,46 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 </>
               )}
             </div>
+
+            {/* 2b · Descuento (recepción/admin) — solo en ventas con líneas, no en saldo */}
+            {canDiscount && !payingSaldo && (hasCharges || cart.length > 0) && (
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted">Descuento <span className="font-semibold text-faint">(opcional · máx {MAX_DISCOUNT_PCT}%)</span></span>
+                  {!descOn
+                    ? <button onClick={() => setDescOn(true)} className="text-[11.5px] font-bold text-magenta">+ Aplicar descuento</button>
+                    : <button onClick={() => { setDescOn(false); setDescVal(''); setDescReason(''); }} className="text-[11.5px] font-bold text-muted">Quitar</button>}
+                </div>
+                {descOn && (
+                  <div className="flex flex-col gap-2 rounded-[11px] border border-line-2 p-2.5">
+                    <div className="flex gap-2">
+                      <div className="flex flex-none overflow-hidden rounded-[9px] border border-line">
+                        {(['RD', 'PCT'] as const).map((m) => {
+                          const on = descMode === m;
+                          return (
+                            <button key={m} onClick={() => { setDescMode(m); setDescVal(''); }}
+                              className="px-3.5 py-2 text-[13px] font-bold"
+                              style={{ background: on ? 'var(--magenta)' : 'var(--card)', color: on ? '#fff' : 'var(--muted)' }}>{m === 'RD' ? 'RD$' : '%'}</button>
+                          );
+                        })}
+                      </div>
+                      <input value={descVal} onChange={(e) => setDescVal(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric"
+                        placeholder={descMode === 'RD' ? 'Monto en RD$' : `% (máx ${MAX_DISCOUNT_PCT})`}
+                        className="flex-1 rounded-[9px] border border-line px-3 py-2 text-[13.5px] outline-none focus:border-magenta" />
+                    </div>
+                    <input value={descReason} onChange={(e) => setDescReason(e.target.value)} placeholder="Motivo (opcional): promo, cliente frecuente…"
+                      className="rounded-[9px] border border-line px-3 py-2 text-[12.5px] outline-none focus:border-magenta" />
+                    {descAmount > 0 && (
+                      <div className="flex justify-between rounded-[9px] bg-bg px-3 py-2 text-[13px]">
+                        <span className="font-bold text-muted">Descuento</span>
+                        <span className="font-extrabold text-danger">−{fmtRD(descAmount)}{descMode === 'PCT' ? ` (${Math.min(MAX_DISCOUNT_PCT, num(descVal))}%)` : ''}</span>
+                      </div>
+                    )}
+                    {descCapExceeded && <div className="text-[11px] font-semibold text-danger">El máximo es {MAX_DISCOUNT_PCT}% ({fmtRD(capAmount)}). Se aplicará el tope.</div>}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 3 · Tipo de pago */}
             {selected && (payingSaldo || hasCharges || cart.length > 0) && (
@@ -556,6 +615,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                     <div key={c.id} className="flex justify-between py-0.5 text-[13px]"><span>{c.name}</span><span className="font-bold">{fmtRD(c.price)}</span></div>
                   ))}
                   {cart.map((c) => <div key={c.lineId} className="flex justify-between py-0.5 text-[13px]"><span>{c.qty > 1 ? `${c.qty}× ` : ''}{c.name}</span><span className="font-bold">{fmtRD(c.price * c.qty)}</span></div>)}
+                  {descAmount > 0 && (
+                    <div className="mt-1 flex justify-between border-t border-line-2 pt-1 text-[13px]"><span className="text-muted">Descuento{descReason.trim() ? ` · ${descReason.trim()}` : ''}</span><span className="font-bold text-danger">−{fmtRD(descAmount)}</span></div>
+                  )}
                 </>
               )}
               {freeAbono && <div className="mt-1 flex justify-between border-t border-line-2 pt-1 text-[12px] text-muted"><span>Saldo pendiente</span><span className="font-bold text-danger">{fmtRD(freePending)}</span></div>}

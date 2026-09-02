@@ -40,8 +40,9 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const initials = (d?.name ?? '').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   const isMasa = staff?.role === 'ESTETICISTA';
   const canBill = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
-  // El cambio de combo lo valida/hace solo Administración o Coordinación.
-  const canCombo = staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR';
+  // El cambio de combo lo hace Administración, Coordinación o Recepción
+  // (mismas reglas: solo antes de la 3ra sesión y a combo de igual o mayor valor).
+  const canCombo = staff?.role === 'ADMIN' || staff?.role === 'COORDINADOR' || staff?.role === 'RECEPCIONISTA';
   const fichaComplete = d?.fichaStatus === 'COMPLETA';
   const fichaFilled = !!d?.fichaFilled; // el paciente ya completó su parte
   const paso1Done = d?.fichaStatus !== 'PENDIENTE';

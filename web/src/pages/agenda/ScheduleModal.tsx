@@ -11,6 +11,7 @@ interface Props { branchQuery: string; onClose: () => void; onSaved: () => void 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 // Mismas etiquetas que en el cobro, para que el equipo vea siempre el mismo formato.
 const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
+type Step = 'cliente' | 'servicio' | 'fecha';
 const DEFAULT_HOURS: BusinessHours = {
   weekdays: { open: '09:00', close: '19:00', closed: false },
   saturday: { open: '09:00', close: '15:00', closed: false },
@@ -60,6 +61,10 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [serieSlots, setSerieSlots] = useState<{ date: string; time: string }[]>([{ date: '', time: '10:00' }]);
   // Tras agendar: pantalla de confirmación con el botón de WhatsApp precargado.
   const [done, setDone] = useState<{ whatsappUrl: string | null; patientName: string; emailSent: boolean } | null>(null);
+  // Asistente paso a paso: Cliente → Servicio → Fecha y hora.
+  const [step, setStep] = useState<Step>('cliente');
+  const steps: Step[] = ['cliente', 'servicio', 'fecha'];
+  const stepNo = steps.indexOf(step) + 1;
 
   function loadPatients() {
     setLoadingP(true); setErrP(false);
@@ -190,6 +195,22 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
     }
   }
 
+  // Avanza de paso validando lo mínimo de cada pantalla (mismos requisitos de antes).
+  function goNext() {
+    if (step === 'cliente') {
+      if (isNew) {
+        if (!newName.trim() || !newPhone.trim()) { toast('Nombre y celular del paciente nuevo requeridos'); return; }
+        if (!newSex) { toast('Selecciona el sexo del paciente'); return; }
+      } else if (!patientId) { toast('Selecciona un paciente'); return; }
+      setStep('servicio'); return;
+    }
+    if (step === 'servicio') {
+      if (!isNew && !treatmentId && !followUp && serviceIds.length === 0) { toast('Elige su paquete ya pagado o uno o varios servicios'); return; }
+      if (isNew && !followUp && serviceIds.length === 0) { toast('Agrega al menos un servicio para el paciente nuevo'); return; }
+      setStep('fecha'); return;
+    }
+  }
+
   // Pantalla de confirmación: la cita ya se creó; ofrece enviar el WhatsApp al paciente.
   if (done) {
     return (
@@ -224,8 +245,13 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
     // solo con la ✕ o Cancelar.
     <Overlay onClose={() => {}} z={110}>
       <div onClick={stop} className="w-[460px] max-w-full overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
-        <div className="flex items-center border-b border-line px-4 sm:px-6 py-5"><div className="flex-1 text-base font-extrabold">Agendar cita</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
-        <div className="flex flex-col gap-3.5 px-4 sm:px-6 py-5">
+        <div className="flex-none border-b border-line px-4 sm:px-6 py-4">
+          <div className="flex items-center"><div className="flex-1 text-base font-extrabold">Agendar cita</div><div className="mr-2 text-[11.5px] font-bold text-muted">Paso {stepNo} de {steps.length}</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+          <div className="mt-3 flex gap-1.5">{steps.map((s, i) => <span key={s} className="h-1.5 flex-1 rounded-full transition-colors" style={{ background: i < stepNo ? 'var(--magenta)' : 'var(--line)' }} />)}</div>
+          <div className="mt-2 text-[12px] text-muted">{step === 'cliente' ? 'Datos del cliente' : step === 'servicio' ? '¿A qué viene? · servicios' : 'Fecha, hora y esteticista'}</div>
+        </div>
+        <div className="flex max-h-[68vh] flex-col gap-3.5 overflow-y-auto px-4 sm:px-6 py-5">
+          {step === 'cliente' && (<>
           <div>
             <span className="mb-1.5 block text-xs font-bold text-muted">Tipo de cliente</span>
             <div className="flex gap-2">
@@ -291,7 +317,13 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
                 {patients.filter((p) => { const q = pQuery.trim().toLowerCase(); return !q || p.name.toLowerCase().includes(q) || (p.phone ?? '').includes(q); }).map((p) => {
                   const on = patientId === p.id;
                   return (
-                    <div key={p.id} onClick={() => { setPatientId(p.id); setTreatmentId(''); setServiceIds([]); setFollowUp(false); }} className="flex cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-2 text-[13px]" style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
+                    <div key={p.id} onClick={() => {
+                      setPatientId(p.id); setServiceIds([]); setFollowUp(false);
+                      // Si tiene UN solo plan/combo activo, queda preseleccionado (un toque menos
+                      // y evita agendar desde el catálogo cobrándole de nuevo). Con varios, elige.
+                      const activos = (p.packages ?? []).filter((t) => t.remaining > 0);
+                      setTreatmentId(activos.length === 1 ? activos[0].id : '');
+                    }} className="flex cursor-pointer items-center gap-2 rounded-[8px] px-2.5 py-2 text-[13px]" style={{ background: on ? 'var(--magenta-soft)' : 'transparent' }}>
                       <span className="flex-1 font-semibold">{p.name}</span>
                       <span className="text-[11.5px] text-muted">{p.phone}</span>
                       {on && <span className="font-extrabold text-magenta">✓</span>}
@@ -301,7 +333,9 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
               </div>
             </div>
           )}
+          </>)}
 
+          {step === 'servicio' && (<>
           {/* PLANES YA PAGADOS — van primero y a la vista.
               Si el paciente compró un combo, agendar su próxima sesión NO debe pasar
               por el catálogo: buscar ahí el mismo servicio termina cobrándolo otra vez. */}
@@ -409,7 +443,9 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
               ↻ Solo se agenda la próxima sesión del tratamiento actual. No se carga ningún servicio nuevo.
             </div>
           )}
+          </>)}
 
+          {step === 'fecha' && (<>
           <div className="flex gap-3">
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Fecha</span><input type="date" className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={date} onChange={(e) => setDate(e.target.value)} /></label>
             <label className="flex flex-1 flex-col gap-1.5"><span className="text-xs font-bold text-muted">Hora</span><input type="time" min={dayHours.open} max={latestStart} className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={time} onChange={(e) => setTime(e.target.value)} /></label>
@@ -498,10 +534,15 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
               {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
+          </>)}
         </div>
         <div className="flex gap-2.5 border-t border-line px-4 sm:px-6 py-4">
-          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-          <button onClick={save} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Agendar y confirmar</button>
+          {step === 'cliente'
+            ? <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+            : <button onClick={() => setStep(step === 'fecha' ? 'servicio' : 'cliente')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Atrás</button>}
+          {step === 'fecha'
+            ? <button onClick={save} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Agendar y confirmar</button>
+            : <button onClick={goNext} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">Siguiente →</button>}
         </div>
       </div>
     </Overlay>

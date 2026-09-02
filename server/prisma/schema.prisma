@@ -684,6 +684,8 @@ model Invoice {
   clientRnc    String? // RNC o cedula del cliente (obligatorio en credito fiscal)
   clientName   String? // razon social a la que se emite
   itbisApplied Boolean       @default(true) // si no aplica, subtotal = total e itbis = 0
+  discount     Int           @default(0) // descuento aplicado en RD$ (recepción/admin, tope 20%)
+  discountReason String? // motivo opcional del descuento (promo, cliente frecuente…)
   total        Int
   method       PaymentMethod // método dominante (para filtros/listado)
   payments     Json? // desglose de pago dividido: [{ method, amount }]

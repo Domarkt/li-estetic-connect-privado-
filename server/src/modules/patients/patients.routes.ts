@@ -432,7 +432,7 @@ const cambioComboSchema = z.object({
  * Conserva el avance y crea un cargo pendiente por la DIFERENCIA de precio, que recepción
  * factura como cualquier otro cargo. Simplifica el "me cambiaron el combo en cabina".
  */
-patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requireRole('ADMIN', 'COORDINADOR'), async (req, res) => {
+patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requireRole('ADMIN', 'COORDINADOR', 'RECEPCIONISTA'), async (req, res) => {
   const { catalogItemId, price } = cambioComboSchema.parse(req.body);
   const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
   if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
