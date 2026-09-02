@@ -45,6 +45,9 @@ export function serializeConversation(
     lastMessage: c.lastMessage ?? '',
     time: relTime(c.lastAt),
     branchName: c.branch.name,
+    botEnabled: c.botEnabled,
+    needsHuman: c.needsHuman,
+    handoffReason: c.handoffReason ?? null,
   };
 }
 
@@ -53,6 +56,7 @@ export function serializeMessage(m: Prisma.MessageGetPayload<object>) {
     id: m.id,
     fromMe: m.fromMe,
     body: m.body,
+    viaBot: m.viaBot,
     time: m.sentAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
   };
 }

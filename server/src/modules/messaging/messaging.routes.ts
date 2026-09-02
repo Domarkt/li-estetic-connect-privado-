@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { serializeConversation, serializeMessage } from './messaging.service.js';
+import { sendToChannel } from './meta.send.js';
 
 export const messagingRouter = Router();
 
@@ -57,9 +58,31 @@ messagingRouter.post('/conversations/:id/messages', requireStaff, requireRole(..
   if (req.staff!.role !== 'ADMIN' && req.staff!.role !== 'COORDINADOR' && conv.channel !== 'WHATSAPP') return res.status(403).json({ error: 'Este canal lo gestiona la administración' });
 
   const msg = await prisma.message.create({ data: { conversationId: conv.id, fromMe: true, body } });
-  await prisma.conversation.update({ where: { id: conv.id }, data: { lastMessage: body, lastAt: new Date(), unread: 0 } });
-  // En producción aquí se llama a la API del canal (Meta Graph / WhatsApp Cloud / TikTok).
+  // Una persona toma el hilo: se limpia el pendiente de atención humana.
+  await prisma.conversation.update({ where: { id: conv.id }, data: { lastMessage: body, lastAt: new Date(), unread: 0, needsHuman: false, handoffReason: null } });
+  // Envío real por el canal (WhatsApp Cloud / Messenger / Instagram) si hay externalId + credenciales.
+  if (conv.externalId) {
+    const r = await sendToChannel(conv.channel, conv.externalId, body, conv.branchId);
+    if (!r.sent && r.mode === 'live') console.error('[messaging] no se pudo enviar por', conv.channel, ':', r.error);
+  }
   res.status(201).json(serializeMessage(msg));
+});
+
+const botSchema = z.object({ enabled: z.boolean() });
+
+/** Activa/desactiva a Sofía (asistente IA) en una conversación. Al activarla, limpia el pendiente. */
+messagingRouter.patch('/conversations/:id/bot', requireStaff, requireRole(...inboxRoles), branchScope, async (req, res) => {
+  const { enabled } = botSchema.parse(req.body);
+  const conv = await prisma.conversation.findUnique({ where: { id: req.params.id }, include: { branch: true } });
+  if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
+  if (!assertBranchAccess(req, conv.branchId)) return res.status(403).json({ error: 'Conversación de otra sucursal' });
+
+  const updated = await prisma.conversation.update({
+    where: { id: conv.id },
+    data: enabled ? { botEnabled: true, needsHuman: false, handoffReason: null } : { botEnabled: false },
+    include: { branch: true },
+  });
+  res.json(serializeConversation(updated));
 });
 
 const webhookSchema = z.object({

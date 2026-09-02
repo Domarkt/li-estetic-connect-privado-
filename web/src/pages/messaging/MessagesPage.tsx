@@ -52,6 +52,14 @@ export default function MessagesPage() {
     loadConvs();
   }
 
+  async function toggleBot(enabled: boolean) {
+    if (!currentId) return;
+    const updated = await api.patch<Conversation>(`/messaging/conversations/${currentId}/bot`, { enabled }).catch(() => null);
+    if (!updated) return;
+    setCurrent(updated);
+    setConvs((cs) => cs.map((c) => (c.id === currentId ? updated : c)));
+  }
+
   return (
     <div className="animate-fade">
       {/* Pestañas: mensajes de clientes vs chat interno del equipo */}
@@ -96,6 +104,7 @@ export default function MessagesPage() {
                   <div className="flex justify-between gap-1.5"><span className="truncate text-[13.5px] font-bold">{c.contactName}</span><span className="flex-none text-[11px] text-faint">{c.time}</span></div>
                   <div className="truncate text-[12.5px] text-muted">{c.lastMessage}</div>
                 </div>
+                {c.needsHuman && <span title={c.handoffReason ?? 'Requiere atención'} className="flex-none self-center rounded-full px-1.5 py-0.5 text-[9.5px] font-extrabold text-white" style={{ background: '#C9880E' }}>Atender</span>}
                 {c.unread > 0 && <span className="flex-none self-center rounded-full bg-magenta px-1.5 py-0.5 text-[10.5px] font-bold text-white">{c.unread}</span>}
               </div>
             );
@@ -113,14 +122,27 @@ export default function MessagesPage() {
                 {current.contactName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
               </div>
               <div className="flex-1"><div className="text-[15px] font-extrabold">{current.contactName}</div><div className="text-xs text-muted">vía {current.channelLabel}</div></div>
+              {/* Toggle de Sofía (asistente IA) */}
+              <button
+                onClick={() => toggleBot(!current.botEnabled)}
+                title={current.botEnabled ? 'Sofía está respondiendo sola. Desactívala para responder tú.' : 'Sofía está desactivada en este hilo. Actívala para que responda sola.'}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition"
+                style={current.botEnabled ? { background: 'var(--magenta-soft)', color: 'var(--magenta)', border: '1px solid var(--magenta)' } : { background: 'var(--bg)', color: 'var(--muted)', border: '1px solid var(--line)' }}>
+                <span>✨ Sofía</span><span>{current.botEnabled ? 'ON' : 'OFF'}</span>
+              </button>
               <span className="rounded-md px-2.5 py-1 text-[11px] font-extrabold text-white" style={{ background: current.channelColor }}>{current.channelBadge}</span>
             </div>
+            {current.needsHuman && (
+              <div className="border-b border-line px-[18px] py-2 text-[12px] font-semibold" style={{ background: '#FBF0DC', color: '#8A5D08' }}>
+                👤 Sofía escaló este mensaje para atención humana{current.handoffReason ? ` — ${current.handoffReason}` : ''}. Al responder, el pendiente se limpia.
+              </div>
+            )}
             <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-5" style={{ background: 'var(--bg)' }}>
               {messages.map((m) => (
                 <div key={m.id} className="flex" style={{ justifyContent: m.fromMe ? 'flex-end' : 'flex-start' }}>
                   <div>
                     <div className="max-w-[420px] rounded-2xl px-3.5 py-2.5 text-[13.5px]" style={m.fromMe ? { background: 'var(--magenta)', color: '#fff', borderBottomRightRadius: 4 } : { background: '#fff', border: '1px solid var(--line)', borderBottomLeftRadius: 4 }}>{m.body}</div>
-                    <div className="mt-1 text-[10.5px] text-faint" style={{ textAlign: m.fromMe ? 'right' : 'left' }}>{m.time}</div>
+                    <div className="mt-1 text-[10.5px] text-faint" style={{ textAlign: m.fromMe ? 'right' : 'left' }}>{m.viaBot ? '✨ Sofía · ' : ''}{m.time}</div>
                   </div>
                 </div>
               ))}

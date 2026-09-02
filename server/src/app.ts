@@ -16,6 +16,7 @@ import { calendarRouter } from './modules/calendar/calendar.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { invoicesRouter } from './modules/invoices/invoices.routes.js';
 import { messagingRouter } from './modules/messaging/messaging.routes.js';
+import { metaWebhookRouter } from './modules/messaging/meta.webhook.js';
 import { pipelineRouter } from './modules/messaging/pipeline.routes.js';
 import { pointsRouter } from './modules/points/points.routes.js';
 import { configRouter } from './modules/config/config.routes.js';
@@ -44,7 +45,8 @@ export function createApp() {
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   // El chat de equipo permite adjuntos (base64) → límite mayor SOLO en esa ruta.
   app.use('/api/team-chat', express.json({ limit: '15mb' }));
-  app.use(express.json({ limit: '1mb' }));
+  // Guardamos el cuerpo crudo para validar la firma del webhook de Meta (X-Hub-Signature-256).
+  app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { (req as unknown as { rawBody: Buffer }).rawBody = buf; } }));
   app.use(cookieParser());
 
   // Anti fuerza-bruta en autenticación: 10 intentos por IP cada 15 min.
@@ -66,6 +68,10 @@ export function createApp() {
   });
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'li-estetic-connect' }));
+
+  // Webhook de Meta (WhatsApp/Instagram/Messenger): PÚBLICO, sin auth ni rate-limit
+  // (lo llama Meta). Debe ir ANTES del limiter y de las rutas protegidas.
+  app.use('/api/webhooks/meta', metaWebhookRouter);
 
   app.use('/api', apiLimiter);
   app.use('/api/auth/staff/login', authLimiter);

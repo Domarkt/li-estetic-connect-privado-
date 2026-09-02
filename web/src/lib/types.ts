@@ -230,8 +230,9 @@ export type Channel = 'INSTAGRAM' | 'WHATSAPP' | 'MESSENGER' | 'TIKTOK';
 export interface Conversation {
   id: string; channel: Channel; channelLabel: string; channelColor: string; channelBadge: string;
   contactName: string; avatarColor: string; unread: number; lastMessage: string; time: string; branchName: string;
+  botEnabled: boolean; needsHuman: boolean; handoffReason: string | null;
 }
-export interface ChatMessage { id: string; fromMe: boolean; body: string; time: string }
+export interface ChatMessage { id: string; fromMe: boolean; body: string; time: string; viaBot?: boolean }
 
 export type PipelineStage = 'NUEVO_MENSAJE' | 'EN_CONVERSACION' | 'COTIZADO' | 'CITA_AGENDADA' | 'VENDIDO';
 export interface PipelineLead {

@@ -761,6 +761,10 @@ model Conversation {
   unread        Int      @default(0)
   lastMessage   String?
   lastAt        DateTime @default(now())
+  // Sofia (asistente IA) — modo híbrido:
+  botEnabled    Boolean  @default(true) // Sofia responde sola en este hilo (toggle del staff)
+  needsHuman    Boolean  @default(false) // escaló: requiere atención de una persona
+  handoffReason String? // motivo interno de la escalación (no se muestra al cliente)
   createdAt     DateTime @default(now())
 
   branch   Branch    @relation(fields: [branchId], references: [id])
@@ -775,6 +779,7 @@ model Message {
   fromMe         Boolean
   body           String
   externalId     String?
+  viaBot         Boolean  @default(false) // lo envió Sofia (asistente IA), no el staff
   sentAt         DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
