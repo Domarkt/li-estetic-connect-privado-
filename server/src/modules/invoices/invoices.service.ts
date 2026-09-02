@@ -106,6 +106,8 @@ export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeo
     method: lines.length > 1 ? 'Mixto' : lines[0].method,
     payments: lines,
     total: i.total,
+    discount: i.discount,
+    discountReason: i.discountReason,
     status: i.status === 'PAGADA' ? 'Pagada' : i.status === 'ANULADA' ? 'Anulada' : 'Pendiente',
   };
 }

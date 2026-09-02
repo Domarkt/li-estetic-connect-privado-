@@ -188,6 +188,7 @@ export interface InvoiceRow {
   id: string; number: string; patient: string; date: string; branchName: string;
   concept: string; method: string; total: number; status: string;
   payments?: { method: string; amount: number }[];
+  discount?: number; discountReason?: string | null;
 }
 export interface BillingResponse {
   date?: string;

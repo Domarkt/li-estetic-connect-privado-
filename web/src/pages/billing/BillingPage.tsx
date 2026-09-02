@@ -31,7 +31,7 @@ export default function BillingPage() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const [estadoFiltro, setEstadoFiltro] = useState<'todas' | 'pagadas' | 'anuladas'>('todas');
+  const [estadoFiltro, setEstadoFiltro] = useState<'todas' | 'pagadas' | 'anuladas' | 'descuento'>('todas');
 
   const isToday = date === todayISO();
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-DO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -41,8 +41,12 @@ export default function BillingPage() {
   const gridCols = showMoney ? 'grid-cols-[.9fr_1.6fr_2fr_1fr_1.1fr_.9fr]' : 'grid-cols-[.9fr_1.6fr_2fr_1fr_.9fr]';
   // Filtro por estado (para poder ver solo las anuladas o solo las pagadas del día).
   const anuladasCount = data.invoices.filter((i) => i.status === 'Anulada').length;
+  const descuentoCount = data.invoices.filter((i) => (i.discount ?? 0) > 0).length;
   const invoicesShown = data.invoices.filter((i) =>
-    estadoFiltro === 'todas' ? true : estadoFiltro === 'anuladas' ? i.status === 'Anulada' : i.status === 'Pagada');
+    estadoFiltro === 'todas' ? true
+      : estadoFiltro === 'anuladas' ? i.status === 'Anulada'
+      : estadoFiltro === 'descuento' ? (i.discount ?? 0) > 0
+      : i.status === 'Pagada');
 
   const load = useCallback(() => {
     setCargando(true); setErrorCarga(null);
@@ -166,15 +170,16 @@ export default function BillingPage() {
 
       {showMoney && !cargando && !errorCarga && (
       <div className="flex flex-col gap-2.5">
-        {/* Filtro por estado: Todas · Pagadas · Anuladas. */}
+        {/* Filtro por estado: Todas · Pagadas · Anuladas · Con descuento. */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {([['todas', 'Todas'], ['pagadas', 'Pagadas'], ['anuladas', 'Anuladas']] as const).map(([k, lbl]) => {
+          {([['todas', 'Todas'], ['pagadas', 'Pagadas'], ['anuladas', 'Anuladas'], ['descuento', 'Con descuento']] as const).map(([k, lbl]) => {
             const on = estadoFiltro === k;
+            const count = k === 'anuladas' ? anuladasCount : k === 'descuento' ? descuentoCount : 0;
             return (
               <button key={k} onClick={() => setEstadoFiltro(k)}
                 className="rounded-full px-3.5 py-1.5 text-[12px] font-bold"
                 style={{ background: on ? 'var(--magenta)' : 'var(--card)', color: on ? '#fff' : 'var(--muted)', border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}` }}>
-                {lbl}{k === 'anuladas' && anuladasCount > 0 ? ` (${anuladasCount})` : ''}
+                {lbl}{(k === 'anuladas' || k === 'descuento') && count > 0 ? ` (${count})` : ''}
               </button>
             );
           })}
@@ -193,7 +198,15 @@ export default function BillingPage() {
               className={`grid w-full cursor-pointer ${gridCols} items-center gap-3 border-b border-line-2 px-5 py-3.5 text-left hover:bg-bg focus-visible:bg-bg`}>
               <div className="text-[13px] font-bold text-magenta">{i.number}</div>
               <div><div className="text-[13px] font-semibold">{i.patient}</div><div className="text-[11.5px] text-faint">{i.date} · {i.branchName}</div></div>
-              <div className="text-[13px]">{i.concept}</div>
+              <div className="text-[13px]">
+                {i.concept}
+                {(i.discount ?? 0) > 0 && (
+                  <div className="mt-1 inline-flex flex-wrap items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: '#FBF0DC', color: '#8A5D08' }}>
+                    <span>🏷️ Descuento{showMoney ? ` −${fmtRD(i.discount!)}` : ''}</span>
+                    {i.discountReason ? <span className="font-semibold opacity-80">· {i.discountReason}</span> : null}
+                  </div>
+                )}
+              </div>
               <div>
                 <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: chip.bg, color: chip.fg }}>{i.method}</span>
                 {i.method === 'Mixto' && i.payments && (
