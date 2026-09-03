@@ -442,8 +442,18 @@ type Ses = { id: string; fecha: string; techniques: string[]; areas: string[]; e
  */
 function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClose: () => void; onChanged: () => void }) {
   const toast = useToast();
+  const { staff } = useAuth();
+  const isAdmin = staff?.role === 'ADMIN';
   const [sesiones, setSesiones] = useState<Ses[] | null>(null);
   const [busy, setBusy] = useState('');
+  // "+ Agregar sesión (corrección)": registra una sesión hacia atrás para cuadrar el conteo.
+  const [addOpen, setAddOpen] = useState(false);
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [aSel, setASel] = useState<Set<string>>(new Set());
+  const [tSel, setTSel] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const areasDisp = (pkg.areas ?? []).filter((a) => a.remaining > 0);
+  const tecnicasDisp = (pkg.services ?? []).filter((s) => (s.remaining ?? ((s.total ?? 0) - (s.done ?? 0))) > 0);
 
   function cargar() {
     api.get<{ sesiones: Ses[] }>(`/patients/treatments/${pkg.id}/sessions`)
@@ -462,6 +472,21 @@ function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClo
     finally { setBusy(''); }
   }
 
+  async function agregarRetro() {
+    if (!aSel.size && !tSel.size) { toast('Marca al menos un área o técnica aplicada'); return; }
+    setSaving(true);
+    try {
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/session/retro`, {
+        areas: [...aSel], techniques: [...tSel], date: fecha,
+      });
+      toast(r.message); setAddOpen(false); setASel(new Set()); setTSel(new Set());
+      cargar(); onChanged();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo registrar la sesión'); }
+    finally { setSaving(false); }
+  }
+
+  const chip = (on: boolean) => ({ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' });
+
   return (
     <Overlay onClose={onClose} z={140}>
       <div onClick={stop} className="flex max-h-[85vh] w-[440px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
@@ -471,6 +496,50 @@ function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClo
         </div>
         <div className="flex flex-col gap-2 overflow-y-auto px-6 py-5">
           <div className="rounded-[9px] bg-bg px-3.5 py-3 text-[12px] text-muted">Elimina una sesión registrada por error. Se devuelve el cupo al plan y el avance de sus áreas/técnicas.</div>
+
+          {/* Corrección: registrar una sesión hacia atrás (se hizo pero no se registró). */}
+          {isAdmin && (
+            <div className="rounded-[10px] border border-line-2 p-3">
+              {!addOpen ? (
+                <button onClick={() => setAddOpen(true)} className="text-[12.5px] font-bold text-magenta">+ Agregar sesión (corrección)</button>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <div className="text-[12px] font-bold text-navy">Registrar una sesión que se hizo pero no se registró</div>
+                  <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Fecha en que se aplicó</span>
+                    <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} max={new Date().toISOString().slice(0, 10)} className="rounded-[9px] border border-line bg-card px-3 py-2 text-[13px]" /></label>
+                  {areasDisp.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-[11px] font-bold text-muted">Áreas trabajadas</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {areasDisp.map((a) => {
+                          const on = aSel.has(a.area);
+                          return <button key={a.area} onClick={() => { const n = new Set(aSel); n.has(a.area) ? n.delete(a.area) : n.add(a.area); setASel(n); }}
+                            className="rounded-full border px-3 py-1.5 text-[12px] font-bold" style={chip(on)}>{on ? '✓ ' : ''}{a.label ?? a.area} <span className="font-normal text-faint">({a.remaining})</span></button>;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {tecnicasDisp.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-[11px] font-bold text-muted">Técnicas aplicadas</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tecnicasDisp.map((s) => {
+                          const on = tSel.has(s.name);
+                          return <button key={s.id} onClick={() => { const n = new Set(tSel); n.has(s.name) ? n.delete(s.name) : n.add(s.name); setTSel(n); }}
+                            className="rounded-full border px-3 py-1.5 text-[12px] font-bold" style={chip(on)}>{on ? '✓ ' : ''}{s.name}</button>;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-[10.5px] text-faint">El plan consume 1 sesión por cada área marcada (o 1 si no marcas área). Sin firma; queda en auditoría.</div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setAddOpen(false); setASel(new Set()); setTSel(new Set()); }} className="rounded-[9px] border border-line px-3 py-2 text-[12px] font-bold text-muted">Cancelar</button>
+                    <button onClick={agregarRetro} disabled={saving || (!aSel.size && !tSel.size)} className="rounded-[9px] bg-magenta px-3 py-2 text-[12px] font-bold text-white disabled:opacity-50">{saving ? 'Registrando…' : 'Registrar sesión'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {sesiones === null && <div className="py-6 text-center text-[12.5px] text-muted">Cargando…</div>}
           {sesiones !== null && sesiones.length === 0 && <div className="py-6 text-center text-[12.5px] text-muted">No hay sesiones registradas.</div>}
           {(sesiones ?? []).map((s) => (

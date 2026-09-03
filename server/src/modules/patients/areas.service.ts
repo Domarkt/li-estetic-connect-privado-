@@ -341,7 +341,7 @@ export async function cambiarCombo(
  */
 export async function registrarSesionAplicada(
   treatmentId: string,
-  datos: { techniques: string[]; areas: string[]; therapistId?: string | null; signature?: string | null; notes?: string | null },
+  datos: { techniques: string[]; areas: string[]; therapistId?: string | null; signature?: string | null; notes?: string | null; at?: Date | null },
 ) {
   const t = await prisma.treatment.findUnique({
     where: { id: treatmentId },
@@ -378,6 +378,7 @@ export async function registrarSesionAplicada(
       areas: areas.map((a) => a.area),
       signature: datos.signature ?? null,
       notes: datos.notes ?? null,
+      ...(datos.at ? { at: datos.at } : {}), // corrección: sesión registrada con fecha pasada
     },
   });
 

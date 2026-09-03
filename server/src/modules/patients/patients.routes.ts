@@ -264,6 +264,42 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
 });
 
 /**
+ * Registrar una sesión HACIA ATRÁS (corrección de Admin): una sesión que SÍ se hizo
+ * pero no se registró, para cuadrar el conteo del combo. Sin firma; con fecha real.
+ * Descuenta técnicas, áreas y la sesión igual que el registro normal.
+ */
+const retroSesionSchema = z.object({
+  techniques: z.array(z.string()).default([]),
+  areas: z.array(z.string()).default([]),
+  date: z.string().optional(), // YYYY-MM-DD (día real en que se aplicó)
+  notes: z.string().max(300).nullish(),
+});
+patientsRouter.post('/treatments/:treatmentId/session/retro', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const b = retroSesionSchema.parse(req.body ?? {});
+  if (!b.techniques.length && !b.areas.length) return res.status(400).json({ error: 'Marca al menos una técnica o un área aplicada' });
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const at = b.date ? new Date(`${b.date}T12:00:00`) : undefined;
+  const r = await registrarSesionAplicada(t.id, {
+    techniques: b.techniques, areas: b.areas, notes: b.notes ?? null, signature: null, therapistId: null, at,
+  });
+  if (!r) return res.status(404).json({ error: 'Plan no encontrado' });
+
+  const labels = await getAreaLabelMap();
+  await audit(req, {
+    action: 'TREATMENT_SESSION', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
+    summary: `[Corrección] Sesión registrada hacia atrás en ${t.name} (${t.patient.name}): ${r.sesion.techniques.join(', ') || 'sin técnicas'} · ${b.date ?? 'hoy'}`,
+  });
+  res.status(201).json({
+    ok: true, done: r.done, restantes: r.restantes, total: r.total,
+    sesiones: await listarSesiones(t.id, labels),
+    message: `Sesión ${r.done} de ${r.total} registrada (corrección)`,
+  });
+});
+
+/**
  * Rectificar una sesión ya registrada: agregar un área o técnica que se trabajó
  * pero no se marcó ("faltó un área y no se podía editar"). No re-firma; es una
  * corrección de la misma visita. No quita lo ya registrado, solo añade.
