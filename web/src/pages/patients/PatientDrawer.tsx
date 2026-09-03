@@ -32,6 +32,7 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [cambioFor, setCambioFor] = useState<PatientPackage | null>(null); // combo que se va a cambiar por uno de mayor valor
   const [saldoFor, setSaldoFor] = useState<PatientPackage | null>(null);
   const [sesionesFor, setSesionesFor] = useState<PatientPackage | null>(null); // deshacer sesiones registradas por error
+  const [tecnicasFor, setTecnicasFor] = useState<PatientPackage | null>(null); // corregir el conteo por técnica
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -311,6 +312,9 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                               </div>
                             ))}
                           </div>
+                          {staff?.role === 'ADMIN' && (
+                            <button onClick={() => setTecnicasFor(pk)} className="mt-1.5 text-[11.5px] font-bold text-magenta">Corregir técnicas</button>
+                          )}
                         </div>
                       )}
 
@@ -388,6 +392,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
       {sesionesFor && (
         <SesionesModal pkg={sesionesFor} onClose={() => setSesionesFor(null)}
           onChanged={() => api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {})} />
+      )}
+      {tecnicasFor && (
+        <TecnicasModal pkg={tecnicasFor} onClose={() => setTecnicasFor(null)}
+          onSaved={() => { setTecnicasFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
       )}
     </div>
     </Portal>
@@ -559,6 +567,61 @@ function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClo
         </div>
         <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">
           <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13px] font-bold text-muted">Cerrar</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+/**
+ * Corregir el conteo por técnica (hecho/total) de un combo. Solo Admin. Ajuste directo
+ * para cuadrar casos como "la técnica ya se consumió completa pero marca 1/2".
+ */
+function TecnicasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const svcs = pkg.services ?? [];
+  const [done, setDone] = useState<Record<string, number>>(() => Object.fromEntries(svcs.map((s) => [s.name, s.done ?? 0])));
+  const [busy, setBusy] = useState(false);
+  const set = (name: string, val: number, max: number) => setDone((d) => ({ ...d, [name]: Math.max(0, Math.min(max, val)) }));
+
+  async function guardar() {
+    setBusy(true);
+    try {
+      const r = await api.patch<{ message: string }>(`/patients/treatments/${pkg.id}/techniques`, {
+        techniques: svcs.map((s) => ({ name: s.name, done: done[s.name] ?? 0 })),
+      });
+      toast(r.message); onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo corregir'); } finally { setBusy(false); }
+  }
+
+  return (
+    <Overlay onClose={onClose} z={140}>
+      <div onClick={stop} className="flex max-h-[85vh] w-[420px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex flex-none items-center border-b border-line px-6 py-5">
+          <div className="flex-1"><div className="text-base font-extrabold">Corregir técnicas</div><div className="mt-0.5 text-xs text-muted">{pkg.name}</div></div>
+          <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
+        </div>
+        <div className="flex flex-col gap-2.5 overflow-y-auto px-6 py-5">
+          <div className="rounded-[9px] bg-bg px-3.5 py-3 text-[12px] text-muted">Ajusta cuántas veces se aplicó cada técnica (hecho / total). Úsalo solo para corregir el conteo. Queda en auditoría.</div>
+          {svcs.length === 0 && <div className="py-6 text-center text-[12.5px] text-muted">Este combo no tiene técnicas.</div>}
+          {svcs.map((s) => {
+            const max = s.total ?? 0;
+            const val = done[s.name] ?? 0;
+            return (
+              <div key={s.id} className="flex items-center gap-3 rounded-[10px] border border-line-2 px-3 py-2.5">
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{s.name}</span>
+                <div className="flex items-center rounded-[8px] border border-line bg-card">
+                  <button onClick={() => set(s.name, val - 1, max)} className="px-2.5 py-1 text-[15px] font-bold text-muted">−</button>
+                  <span className="w-12 text-center text-[13px] font-bold">{val}/{max}</span>
+                  <button onClick={() => set(s.name, val + 1, max)} className="px-2.5 py-1 text-[15px] font-bold text-muted">+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex flex-none gap-2.5 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13px] font-bold text-muted">Cancelar</button>
+          <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13px] font-bold text-white disabled:opacity-60">{busy ? 'Guardando…' : 'Guardar'}</button>
         </div>
       </div>
     </Overlay>

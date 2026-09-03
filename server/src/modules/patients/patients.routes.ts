@@ -264,6 +264,34 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
 });
 
 /**
+ * Corregir el conteo por TÉCNICA de un combo (solo Admin): ajusta el "hecho" de cada
+ * técnica (0..total). Para cuadrar casos como "ya se consumió completa pero marca 1/2".
+ */
+const corregirTecnicasSchema = z.object({
+  techniques: z.array(z.object({ name: z.string(), done: z.number().int().nonnegative() })).min(1),
+});
+patientsRouter.patch('/treatments/:treatmentId/techniques', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const b = corregirTecnicasSchema.parse(req.body);
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true, techniques: true } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const byName = new Map(t.techniques.map((x) => [x.name, x]));
+  for (const item of b.techniques) {
+    const tech = byName.get(item.name);
+    if (!tech) continue;
+    const done = Math.min(item.done, tech.total); // nunca por encima del total incluido
+    if (done !== tech.done) await prisma.treatmentTechnique.update({ where: { id: tech.id }, data: { done } });
+  }
+  const updated = await prisma.treatment.findUnique({ where: { id: t.id }, include: { techniques: true } });
+  await audit(req, {
+    action: 'TREATMENT_SESSION', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
+    summary: `[Corrección] Ajuste de técnicas de ${t.name} (${t.patient.name})`,
+  });
+  res.json({ ok: true, services: serializeTechniques(updated?.techniques ?? []), message: 'Técnicas corregidas' });
+});
+
+/**
  * Registrar una sesión HACIA ATRÁS (corrección de Admin): una sesión que SÍ se hizo
  * pero no se registró, para cuadrar el conteo del combo. Sin firma; con fecha real.
  * Descuenta técnicas, áreas y la sesión igual que el registro normal.
