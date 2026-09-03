@@ -211,11 +211,14 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
 
   /** ¿Choca con esta cita? Se respeta la separación mínima entre pacientes distintos. */
   const choca = (a: (typeof cercanas)[number]) => {
+    // Un turno YA cerrado (proceso terminado o cita COMPLETADA) libera el horario:
+    // la esteticista quedó disponible de verdad, así que NO bloquea una cita nueva a
+    // esa misma hora. Solo estorban las citas abiertas/pendientes.
+    if (a.serviceEndedAt || a.status === 'COMPLETADA') return false;
     const { ini, fin } = ventanaReal(a);
-    // La separación es un colchón por si la cita se alarga. No aplica cuando:
-    //  · es el mismo paciente (puede encadenar sesiones), o
-    //  · el turno YA se cerró: ahí no hay nada que estimar, quedó libre de verdad.
-    const margen = (a.patientId === patient.id || a.serviceEndedAt) ? 0 : margenMs;
+    // La separación es un colchón por si la cita se alarga. No aplica al mismo paciente
+    // (puede encadenar varias sesiones/servicios en la misma cabina y horario).
+    const margen = a.patientId === patient.id ? 0 : margenMs;
     return nuevoInicio < fin + margen && ini < nuevoFin + margen;
   };
 
@@ -637,9 +640,11 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
           startsAt: { gt: new Date(ini - 8 * 3_600_000), lt: new Date(fin + 8 * 3_600_000) } },
       });
       const conflict = otras.find((a) => {
-        // Misma regla que al agendar: una cita ya cerrada libera a la esteticista.
+        // Misma regla que al agendar: un turno ya cerrado (terminado o COMPLETADA)
+        // libera a la esteticista y no bloquea.
+        if (a.serviceEndedAt || a.status === 'COMPLETADA') return false;
         const { ini: aIni, fin: aFin } = ventanaReal(a);
-        const m = (a.patientId === appt.patientId || a.serviceEndedAt) ? 0 : margen;
+        const m = a.patientId === appt.patientId ? 0 : margen;
         return ini < aFin + m && aIni < fin + m;
       });
       if (conflict) {
