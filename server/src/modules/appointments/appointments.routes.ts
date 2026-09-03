@@ -490,17 +490,27 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
 
   let sessionMsg = '';
   if (target) {
+    // CANDADO: no se puede cerrar el turno de un combo sin haber registrado en la
+    // ficha las TÉCNICAS aplicadas hoy (con la firma del paciente). Registrar es lo
+    // que descuenta la sesión; sin esto el paquete queda descuadrado y quedan
+    // bitácoras "sin técnicas". La esteticista debe registrar antes de cerrar.
+    const inicioDelDia = new Date(endedAt); inicioDelDia.setHours(0, 0, 0, 0);
+    const sesionesHoy = await prisma.treatmentSession.findMany({
+      where: { treatmentId: target.id, at: { gte: inicioDelDia } },
+      select: { techniques: true },
+    });
+    const registrada = sesionesHoy.some((s) => s.techniques.length > 0);
+    if (!registrada) {
+      return res.status(409).json({
+        error: `Antes de cerrar el turno, registra en la ficha las técnicas aplicadas de "${target.name}" y pide la firma del paciente.`,
+        needsSession: true, patientId: appt.patientId, treatmentId: target.id,
+      });
+    }
     await prisma.appointment.update({
       where: { id: appt.id },
       data: { treatmentId: target.id, ...(b.areas?.length ? { areas: b.areas } : {}) },
     });
-    const inicioDelDia = new Date(endedAt); inicioDelDia.setHours(0, 0, 0, 0);
-    const yaFirmada = await prisma.treatmentSession.count({
-      where: { treatmentId: target.id, at: { gte: inicioDelDia } },
-    });
-    sessionMsg = yaFirmada > 0
-      ? ` · ${target.name}: sesión del día ya registrada y firmada`
-      : ` · Recuerda registrar en la ficha lo aplicado de "${target.name}" y pedir la firma del paciente`;
+    sessionMsg = ` · ${target.name}: sesión del día registrada y firmada`;
   }
 
   await prisma.appointment.update({

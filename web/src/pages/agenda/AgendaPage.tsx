@@ -737,9 +737,17 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
 
           <div className="flex gap-2.5 border-t border-line px-6 py-4">
             <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-            <button onClick={cerrar} disabled={busy || cargando} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--navy)' }}>
-              {busy ? 'Cerrando…' : '✓ Cerrar turno'}
-            </button>
+            {/* CANDADO: si es un turno de combo y no se ha registrado la sesión con
+                técnicas, no deja cerrar (el backend también lo valida). */}
+            {!!appt.treatmentId && registradaHoy === false ? (
+              <button disabled title="Registra primero las técnicas aplicadas en la ficha" className="flex-[2] cursor-not-allowed rounded-[10px] py-3 text-[13.5px] font-bold text-white opacity-60" style={{ background: 'var(--warn)' }}>
+                🔒 Registra lo aplicado primero
+              </button>
+            ) : (
+              <button onClick={cerrar} disabled={busy || cargando} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--navy)' }}>
+                {busy ? 'Cerrando…' : '✓ Cerrar turno'}
+              </button>
+            )}
           </div>
         </div>
       </div>
