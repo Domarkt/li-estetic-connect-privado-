@@ -27,6 +27,7 @@ const PortalAdminPage = lazy(() => import('./pages/portal/PortalAdminPage'));
 const EquipoPage = lazy(() => import('./pages/team/EquipoPage'));
 const CashClosePage = lazy(() => import('./pages/cashclose/CashClosePage'));
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'));
+const AuditoriaPage = lazy(() => import('./pages/reports/AuditoriaPage'));
 const SucursalesPage = lazy(() => import('./pages/SucursalesPage'));
 const InventarioPage = lazy(() => import('./pages/inventory/InventarioPage'));
 const EquiposPage = lazy(() => import('./pages/inventory/EquiposPage'));
@@ -97,6 +98,7 @@ export default function App() {
             <Route path="seguimiento" element={<PipelinePage />} />
             <Route path="cierre" element={<CashClosePage />} />
             <Route path="reportes" element={<ReportsPage />} />
+            <Route path="auditoria" element={<AuditoriaPage />} />
           </Route>
 
           {/* Portal del paciente (externo) */}

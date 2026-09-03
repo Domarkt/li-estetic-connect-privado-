@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole } from '../../middleware/auth.js';
 import { ageFromBirth } from '../patients/patients.service.js';
@@ -238,4 +239,75 @@ reportsRouter.get('/patients', async (req, res) => {
   }
 
   res.json({ count: rows.length, bySex, byAge, patients: rows });
+});
+
+/**
+ * Auditoría de sesiones (solo Admin): calidad del diligenciamiento de bitácoras y
+ * combos, por estética y esteticista. Agregados en SQL (sin traer firmas ni filas
+ * masivas) para no disparar el egress. ?branch=<id> acota a una sucursal.
+ */
+reportsRouter.get('/audit', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const branch = req.query.branch as string | undefined;
+  const scope = branch && branch !== 'all' ? branch : null;
+  const bfP = scope ? Prisma.sql`AND p."branchId" = ${scope}` : Prisma.empty; // vía Patient p
+  const bfA = scope ? Prisma.sql`AND a."branchId" = ${scope}` : Prisma.empty; // vía Appointment a
+
+  const [resumen] = await prisma.$queryRaw<Array<Record<string, number>>>`
+    SELECT COUNT(*)::int total,
+      COUNT(*) FILTER (WHERE array_length(ts.techniques,1) IS NULL)::int "sinTecnicas",
+      COUNT(*) FILTER (WHERE array_length(ts.areas,1) IS NULL)::int "sinAreas",
+      COUNT(*) FILTER (WHERE ts.signature IS NULL)::int "sinFirma",
+      COUNT(*) FILTER (WHERE ts.notes IS NULL OR btrim(ts.notes)='')::int "sinNotas"
+    FROM "TreatmentSession" ts
+    JOIN "Treatment" t ON t.id=ts."treatmentId"
+    JOIN "Patient" p ON p.id=t."patientId"
+    WHERE 1=1 ${bfP}`;
+
+  const porEsteticista = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT b.name branch, COALESCE(u.name,'(sin esteticista)') therapist, COUNT(*)::int total,
+      COUNT(*) FILTER (WHERE array_length(ts.techniques,1) IS NULL)::int "sinTecnicas",
+      COUNT(*) FILTER (WHERE array_length(ts.areas,1) IS NULL)::int "sinAreas",
+      COUNT(*) FILTER (WHERE ts.notes IS NULL OR btrim(ts.notes)='')::int "sinNotas"
+    FROM "TreatmentSession" ts
+    JOIN "Treatment" t ON t.id=ts."treatmentId"
+    JOIN "Patient" p ON p.id=t."patientId"
+    JOIN "Branch" b ON b.id=p."branchId"
+    LEFT JOIN "User" u ON u.id=ts."therapistId"
+    WHERE 1=1 ${bfP}
+    GROUP BY b.name, u.name ORDER BY "sinTecnicas" DESC, "sinAreas" DESC, total DESC`;
+
+  const detalle = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT b.name branch, COALESCE(u.name,'(sin esteticista)') therapist, t.name combo,
+      to_char(ts.at,'DD/MM/YYYY') fecha,
+      (array_length(ts.techniques,1) IS NULL) "faltaTecnica",
+      (array_length(ts.areas,1) IS NULL) "faltaArea"
+    FROM "TreatmentSession" ts
+    JOIN "Treatment" t ON t.id=ts."treatmentId"
+    JOIN "Patient" p ON p.id=t."patientId"
+    JOIN "Branch" b ON b.id=p."branchId"
+    LEFT JOIN "User" u ON u.id=ts."therapistId"
+    WHERE (array_length(ts.techniques,1) IS NULL OR array_length(ts.areas,1) IS NULL) ${bfP}
+    ORDER BY ts.at DESC LIMIT 100`;
+
+  const [combos] = await prisma.$queryRaw<Array<Record<string, number>>>`
+    SELECT
+      COUNT(*) FILTER (WHERE t."doneSessions">0
+        AND EXISTS (SELECT 1 FROM "TreatmentTechnique" tt WHERE tt."treatmentId"=t.id)
+        AND COALESCE((SELECT SUM(tt.done) FROM "TreatmentTechnique" tt WHERE tt."treatmentId"=t.id),0)=0)::int "avanceSinTecnicas",
+      COUNT(*) FILTER (WHERE t."doneSessions">0
+        AND NOT EXISTS (SELECT 1 FROM "TreatmentSession" ts WHERE ts."treatmentId"=t.id))::int "avanceSinBitacora"
+    FROM "Treatment" t
+    JOIN "Patient" p ON p.id=t."patientId"
+    WHERE 1=1 ${bfP}`;
+
+  const atencion = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT b.name branch,
+      COUNT(*) FILTER (WHERE a."codeUsedAt" IS NOT NULL)::int abiertos,
+      COUNT(*) FILTER (WHERE a.status='COMPLETADA' OR a."serviceEndedAt" IS NOT NULL)::int cerrados,
+      COUNT(*) FILTER (WHERE a.status='CANCELADA')::int cancelados
+    FROM "Appointment" a JOIN "Branch" b ON b.id=a."branchId"
+    WHERE 1=1 ${bfA}
+    GROUP BY b.name ORDER BY b.name`;
+
+  res.json({ resumen, porEsteticista, detalle, combos, atencion });
 });

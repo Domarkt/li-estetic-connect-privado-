@@ -66,6 +66,7 @@ export const NAV_ICON: Record<string, string> = {
   puntos: 'star',
   equipo: 'chart',
   reportes: 'chart',
+  auditoria: 'chart',
   seguimiento: 'funnel',
   cierre: 'money',
   configuracion: 'settings',
