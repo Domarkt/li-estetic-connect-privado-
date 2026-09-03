@@ -576,7 +576,17 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
   const toggle = (k: string) => { const n = new Set(sel); n.has(k) ? n.delete(k) : n.add(k); setSel(n); };
   const toggleTec = (k: string) => { const n = new Set(tec); n.has(k) ? n.delete(k) : n.add(k); setTec(n); };
 
+  function irAFichaTratamiento() {
+    onRegistrar({ id: appt.patientId, name: appt.patient, treatmentId: appt.treatmentId ?? null });
+  }
+
   async function cerrar() {
+    // Protección también en la función: si la comprobación del servidor indica que
+    // falta la sesión, nunca intentamos cerrar. Abrimos directamente Tratamiento.
+    if (appt.treatmentId && registradaHoy !== true) {
+      irAFichaTratamiento();
+      return;
+    }
     setBusy(true);
     try {
       const r = await api.post<{ message: string }>(`/appointments/${appt.id}/finish`, { areas: [...sel], techniques: [...tec] });
@@ -609,7 +619,7 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
                 <div className="mb-2.5 text-[11.5px]" style={{ color: '#7A5A12' }}>
                   Si cierras sin registrar, <b>no se descuenta la sesión</b> y el paquete queda igual.
                 </div>
-                <button onClick={() => onRegistrar({ id: appt.patientId, name: appt.patient, treatmentId: appt.treatmentId ?? null })}
+                <button onClick={irAFichaTratamiento}
                   className="w-full rounded-[9px] py-2.5 text-[12.5px] font-bold text-white" style={{ background: 'var(--magenta)' }}>
                   Registrar lo aplicado y firmar →
                 </button>
@@ -737,11 +747,11 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
 
           <div className="flex gap-2.5 border-t border-line px-6 py-4">
             <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-            {/* CANDADO: si es un turno de combo y no se ha registrado la sesión con
-                técnicas, no deja cerrar (el backend también lo valida). */}
-            {!!appt.treatmentId && registradaHoy === false ? (
-              <button disabled title="Registra primero las técnicas aplicadas en la ficha" className="flex-[2] cursor-not-allowed rounded-[10px] py-3 text-[13.5px] font-bold text-white opacity-60" style={{ background: 'var(--warn)' }}>
-                🔒 Registra lo aplicado primero
+            {/* Si falta el registro, la acción principal conduce a Tratamiento en vez
+                de dejar un botón bloqueado o provocar el error 409 del servidor. */}
+            {!!appt.treatmentId && registradaHoy !== true ? (
+              <button onClick={irAFichaTratamiento} disabled={cargando} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--magenta)' }}>
+                {cargando ? 'Verificando ficha…' : '→ Ir a ficha y registrar'}
               </button>
             ) : (
               <button onClick={cerrar} disabled={busy || cargando} className="flex-[2] rounded-[10px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60" style={{ background: 'var(--navy)' }}>
