@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { fmtRD } from '../../lib/types';
+import { Cartera, ComboPasivo, Esteticistas, Descuentos } from './managerial';
 
 // ── Tipos del reporte ──
 interface Overview {
@@ -32,7 +33,7 @@ interface Campaign {
   patients: { id: string; name: string; phone: string; email: string | null; sex: string | null; age: number | null; branch: string; type: string; motivos: string[]; treatment: string | null }[];
 }
 
-type Tab = 'ventas' | 'operacion' | 'equipo' | 'campanas';
+type Tab = 'ventas' | 'operacion' | 'equipo' | 'campanas' | 'cartera' | 'combos' | 'esteticistas' | 'descuentos';
 const firstOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -52,6 +53,8 @@ export default function ReportsPage() {
   const TABS: { key: Tab; label: string }[] = [
     { key: 'ventas', label: 'Ventas' }, { key: 'operacion', label: 'Operación' },
     { key: 'equipo', label: 'Equipo' }, { key: 'campanas', label: 'Campañas' },
+    { key: 'cartera', label: 'Cartera' }, { key: 'combos', label: 'Pasivo combos' },
+    { key: 'esteticistas', label: 'Esteticistas' }, { key: 'descuentos', label: 'Descuentos' },
   ];
 
   return (
@@ -72,14 +75,14 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {!d ? <div className="py-10 text-center text-sm text-muted">Cargando…</div> : (
-        <>
-          {tab === 'ventas' && <Ventas s={d.sales} />}
-          {tab === 'operacion' && <Operacion o={d.operations} />}
-          {tab === 'equipo' && <Equipo t={d.team} />}
-          {tab === 'campanas' && <Campanas branchQ={branchQ} />}
-        </>
-      )}
+      {tab === 'ventas' && (d ? <Ventas s={d.sales} /> : <Loading />)}
+      {tab === 'operacion' && (d ? <Operacion o={d.operations} /> : <Loading />)}
+      {tab === 'equipo' && (d ? <Equipo t={d.team} /> : <Loading />)}
+      {tab === 'campanas' && <Campanas branchQ={branchQ} />}
+      {tab === 'cartera' && <Cartera branchQ={branchQ} />}
+      {tab === 'combos' && <ComboPasivo branchQ={branchQ} />}
+      {tab === 'esteticistas' && <Esteticistas from={from} to={to} branchQ={branchQ} />}
+      {tab === 'descuentos' && <Descuentos from={from} to={to} branchQ={branchQ} />}
     </div>
   );
 }
@@ -284,3 +287,5 @@ function Campanas({ branchQ }: { branchQ: string }) {
 function Empty({ text = 'Sin datos en el período.' }: { text?: string }) {
   return <div className="py-6 text-center text-[12.5px] text-muted">{text}</div>;
 }
+
+function Loading() { return <div className="py-10 text-center text-sm text-muted">Cargando…</div>; }

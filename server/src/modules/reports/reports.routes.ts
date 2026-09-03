@@ -311,3 +311,116 @@ reportsRouter.get('/audit', requireStaff, requireRole('ADMIN'), async (req, res)
 
   res.json({ resumen, porEsteticista, detalle, combos, atencion });
 });
+
+// ─────────────────────────────────────────────────────────────
+// REPORTES GERENCIALES (solo Admin — el router ya exige ADMIN arriba)
+// Todo por agregados SQL para no disparar el egress. Cedula/direccion van
+// cifradas; nombre y telefono son texto plano (sirven para gestionar cobros).
+// ─────────────────────────────────────────────────────────────
+
+/** 1) CARTERA — saldos de planes pendientes de pago, por antigüedad (aging). Punto en el tiempo. */
+reportsRouter.get('/aging', async (req, res) => {
+  const branch = req.query.branch as string | undefined;
+  const scope = branch && branch !== 'all' ? branch : null;
+  const bf = scope ? Prisma.sql`AND p."branchId" = ${scope}` : Prisma.empty;
+  const porSucursal = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT b.name branch, COUNT(*)::int cuentas, COALESCE(SUM(t.balance),0)::int total,
+      COALESCE(SUM(t.balance) FILTER (WHERE (now()::date - t."createdAt"::date) <= 30),0)::int d0,
+      COALESCE(SUM(t.balance) FILTER (WHERE (now()::date - t."createdAt"::date) BETWEEN 31 AND 60),0)::int d31,
+      COALESCE(SUM(t.balance) FILTER (WHERE (now()::date - t."createdAt"::date) BETWEEN 61 AND 90),0)::int d61,
+      COALESCE(SUM(t.balance) FILTER (WHERE (now()::date - t."createdAt"::date) > 90),0)::int d90
+    FROM "Treatment" t JOIN "Patient" p ON p.id=t."patientId" JOIN "Branch" b ON b.id=p."branchId"
+    WHERE t.balance > 0 AND t.active = true ${bf}
+    GROUP BY b.name ORDER BY total DESC`;
+  const top = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT p.name paciente, p.phone, b.name branch, t.name plan, t.balance::int balance,
+      (now()::date - t."createdAt"::date)::int dias
+    FROM "Treatment" t JOIN "Patient" p ON p.id=t."patientId" JOIN "Branch" b ON b.id=p."branchId"
+    WHERE t.balance > 0 AND t.active = true ${bf}
+    ORDER BY t.balance DESC LIMIT 30`;
+  res.json({ porSucursal, top });
+});
+
+/** 2) PASIVO DE COMBOS — sesiones prepagadas aún NO consumidas (servicio que se debe). Punto en el tiempo. */
+reportsRouter.get('/combo-liability', async (req, res) => {
+  const branch = req.query.branch as string | undefined;
+  const scope = branch && branch !== 'all' ? branch : null;
+  const bf = scope ? Prisma.sql`AND p."branchId" = ${scope}` : Prisma.empty;
+  const porSucursal = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT b.name branch, COUNT(*)::int planes,
+      COALESCE(SUM(t."totalSessions" - t."doneSessions"),0)::int "sesionesPend",
+      COALESCE(SUM((t."totalSessions" - t."doneSessions") * (t.price::numeric / NULLIF(t."totalSessions",0))),0)::int "valorEstimado"
+    FROM "Treatment" t JOIN "Patient" p ON p.id=t."patientId" JOIN "Branch" b ON b.id=p."branchId"
+    WHERE t.active = true AND t."totalSessions" > t."doneSessions" ${bf}
+    GROUP BY b.name ORDER BY "sesionesPend" DESC`;
+  const porVencer = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT p.name paciente, b.name branch, t.name plan,
+      (t."totalSessions" - t."doneSessions")::int pend, to_char(t."expiresAt",'DD/MM/YYYY') vence,
+      (t."expiresAt"::date - now()::date)::int dias
+    FROM "Treatment" t JOIN "Patient" p ON p.id=t."patientId" JOIN "Branch" b ON b.id=p."branchId"
+    WHERE t.active = true AND t."totalSessions" > t."doneSessions" AND t."expiresAt" IS NOT NULL
+      AND t."expiresAt" <= now() + interval '30 days' ${bf}
+    ORDER BY t."expiresAt" ASC LIMIT 50`;
+  res.json({ porSucursal, porVencer });
+});
+
+/** 3) DESEMPEÑO POR ESTETICISTA — ventas atribuidas, servicios, rating y tiempo real. Por rango. */
+reportsRouter.get('/staff-performance', async (req, res) => {
+  const { from, to } = range(req.query as Record<string, unknown>);
+  const branch = req.query.branch as string | undefined;
+  const scope = branch && branch !== 'all' ? branch : null;
+  const bfI = scope ? Prisma.sql`AND i."branchId" = ${scope}` : Prisma.empty;
+  const bfA = scope ? Prisma.sql`AND a."branchId" = ${scope}` : Prisma.empty;
+  const ventas = await prisma.$queryRaw<Array<{ tid: string; ventas: number; recibos: number }>>`
+    SELECT i."therapistId" tid, COALESCE(SUM(i.total),0)::int ventas, COUNT(*)::int recibos
+    FROM "Invoice" i
+    WHERE i.status='PAGADA' AND i."therapistId" IS NOT NULL AND i."issuedAt" BETWEEN ${from} AND ${to} ${bfI}
+    GROUP BY i."therapistId"`;
+  const citas = await prisma.$queryRaw<Array<{ tid: string; atendidas: number; rating: number | null; avgMin: number | null }>>`
+    SELECT a."therapistId" tid,
+      COUNT(*) FILTER (WHERE a.status='COMPLETADA' OR a."serviceEndedAt" IS NOT NULL)::int atendidas,
+      ROUND(AVG(a.rating) FILTER (WHERE a.rating IS NOT NULL),1)::float rating,
+      ROUND(AVG(a."serviceDurationSec") FILTER (WHERE a."serviceDurationSec" IS NOT NULL)/60.0)::int "avgMin"
+    FROM "Appointment" a
+    WHERE a."therapistId" IS NOT NULL AND a."startsAt" BETWEEN ${from} AND ${to} ${bfA}
+    GROUP BY a."therapistId"`;
+  const ids = [...new Set([...ventas.map((v) => v.tid), ...citas.map((c) => c.tid)])];
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, branch: { select: { name: true } } } }) : [];
+  const vMap = new Map(ventas.map((v) => [v.tid, v]));
+  const cMap = new Map(citas.map((c) => [c.tid, c]));
+  const rows = users.map((u) => ({
+    therapist: u.name, branch: u.branch?.name ?? '—',
+    ventas: vMap.get(u.id)?.ventas ?? 0, recibos: vMap.get(u.id)?.recibos ?? 0,
+    atendidas: cMap.get(u.id)?.atendidas ?? 0,
+    rating: cMap.get(u.id)?.rating ?? null, avgMin: cMap.get(u.id)?.avgMin ?? null,
+  })).sort((a, b) => b.ventas - a.ventas);
+  res.json({ rows });
+});
+
+/** 4) DESCUENTOS — control de rebajas por sucursal y recepcionista/cajero. Por rango. */
+reportsRouter.get('/discounts', async (req, res) => {
+  const { from, to } = range(req.query as Record<string, unknown>);
+  const branch = req.query.branch as string | undefined;
+  const scope = branch && branch !== 'all' ? branch : null;
+  const bfI = scope ? Prisma.sql`AND i."branchId" = ${scope}` : Prisma.empty;
+  const [resumen] = await prisma.$queryRaw<Array<Record<string, number>>>`
+    SELECT COALESCE(SUM(i.discount),0)::int "totalDesc",
+      COUNT(*) FILTER (WHERE i.discount>0)::int "facturasConDesc",
+      COALESCE(SUM(i.total),0)::int ventas
+    FROM "Invoice" i WHERE i.status='PAGADA' AND i."issuedAt" BETWEEN ${from} AND ${to} ${bfI}`;
+  const porCajero = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT COALESCE(u.name,'(sin cajero)') cajero, b.name branch,
+      COALESCE(SUM(i.discount),0)::int "totalDesc", COUNT(*)::int facturas
+    FROM "Invoice" i JOIN "Branch" b ON b.id=i."branchId" LEFT JOIN "User" u ON u.id=i."cashierId"
+    WHERE i.status='PAGADA' AND i.discount>0 AND i."issuedAt" BETWEEN ${from} AND ${to} ${bfI}
+    GROUP BY u.name, b.name ORDER BY "totalDesc" DESC`;
+  const lista = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT i.number, to_char(i."issuedAt",'DD/MM/YYYY') fecha, b.name branch,
+      COALESCE(u.name,'—') cajero, COALESCE(p.name,'Cliente') paciente,
+      i.discount::int descuento, i."discountReason" motivo, i.total::int total
+    FROM "Invoice" i JOIN "Branch" b ON b.id=i."branchId"
+    LEFT JOIN "User" u ON u.id=i."cashierId" LEFT JOIN "Patient" p ON p.id=i."patientId"
+    WHERE i.status='PAGADA' AND i.discount>0 AND i."issuedAt" BETWEEN ${from} AND ${to} ${bfI}
+    ORDER BY i."issuedAt" DESC LIMIT 100`;
+  res.json({ resumen, porCajero, lista });
+});
