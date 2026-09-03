@@ -268,7 +268,11 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
  * técnica (0..total). Para cuadrar casos como "ya se consumió completa pero marca 1/2".
  */
 const corregirTecnicasSchema = z.object({
-  techniques: z.array(z.object({ name: z.string(), done: z.number().int().nonnegative() })).min(1),
+  techniques: z.array(z.object({
+    name: z.string(),
+    done: z.number().int().nonnegative(),
+    total: z.number().int().min(1).max(999).optional(), // permite corregir también el total incluido
+  })).min(1),
 });
 patientsRouter.patch('/treatments/:treatmentId/techniques', requireStaff, requireRole('ADMIN'), async (req, res) => {
   const b = corregirTecnicasSchema.parse(req.body);
@@ -280,8 +284,11 @@ patientsRouter.patch('/treatments/:treatmentId/techniques', requireStaff, requir
   for (const item of b.techniques) {
     const tech = byName.get(item.name);
     if (!tech) continue;
-    const done = Math.min(item.done, tech.total); // nunca por encima del total incluido
-    if (done !== tech.done) await prisma.treatmentTechnique.update({ where: { id: tech.id }, data: { done } });
+    const total = item.total != null ? item.total : tech.total;
+    const done = Math.min(item.done, total); // el hecho nunca supera el total
+    if (done !== tech.done || total !== tech.total) {
+      await prisma.treatmentTechnique.update({ where: { id: tech.id }, data: { done, total } });
+    }
   }
   const updated = await prisma.treatment.findUnique({ where: { id: t.id }, include: { techniques: true } });
   await audit(req, {
