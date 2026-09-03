@@ -253,11 +253,11 @@ export default function AgendaPage() {
             {a.finished && a.durationLabel && (
               <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: 'var(--navy-soft)', color: 'var(--navy)' }} title="Tiempo de atención (solo visible para administración)">⏱ {a.durationLabel}</span>
             )}
-            {atiende && a.status !== 'CANCELADA' && (
+            {(atiende || (a.inService && canOpenTurno)) && a.status !== 'CANCELADA' && (
               <button onClick={() => setFicha({ id: a.patientId, name: a.patient })}
                 className="rounded-[9px] px-3.5 py-2.5 text-[12.5px] font-bold"
                 style={a.fichaComplete ? { background: 'var(--magenta)', color: '#fff' } : { background: 'var(--magenta-soft)', color: 'var(--magenta)' }}>
-                {a.fichaComplete ? 'Abrir ficha' : 'Llenar ficha'}
+                {a.inService ? '↩ Volver a ficha' : (a.fichaComplete ? 'Abrir ficha' : 'Llenar ficha')}
               </button>
             )}
             {/* Recordar la cita es control de recepción/admin: la esteticista no lo ve.

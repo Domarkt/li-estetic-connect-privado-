@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
@@ -47,6 +47,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [date, setDate] = useState(todayStr());
   const [time, setTime] = useState('10:00');
   const [busy, setBusy] = useState(false);
+  const submittingRef = useRef(false);
   const [loadingP, setLoadingP] = useState(true);
   const [errP, setErrP] = useState(false);
   const [pQuery, setPQuery] = useState('');
@@ -113,6 +114,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   });
 
   async function save() {
+    if (submittingRef.current) return;
     if (dayHours.closed) { toast('La sucursal está cerrada ese día. Administración puede modificarlo en Configuración.'); return; }
     if (time < dayHours.open || time > latestStart) {
       toast(`Para ${durationMin} minutos, elige una hora entre ${dayHours.open} y ${latestStart}`);
@@ -128,6 +130,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
       toast('Agrega al menos un servicio para el paciente nuevo');
       return;
     }
+    submittingRef.current = true;
     setBusy(true);
     try {
       // Sesión de un plan YA PAGADO: se agenda contra el tratamiento, sin ítem del
@@ -191,6 +194,7 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error al agendar');
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   }

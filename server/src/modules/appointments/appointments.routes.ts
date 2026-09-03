@@ -40,6 +40,16 @@ function ventanaReal(a: {
   return { ini, fin };
 }
 
+const ACTIVE_APPOINTMENT_STATUSES = ['SIN_CONFIRMAR', 'CONFIRMADA', 'REAGENDADA'] as const;
+
+/** Evita repetir exactamente una misma visita activa. */
+function exactActiveAppointment(branchId: string, patientId: string, startsAt: Date, serviceName: string) {
+  return prisma.appointment.findFirst({
+    where: { branchId, patientId, startsAt, serviceName, status: { in: [...ACTIVE_APPOINTMENT_STATUSES] } },
+    include: apptInclude,
+  });
+}
+
 /** Agenda del día (aislada por sucursal) + contadores. */
 appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
   const { start, end } = dayRange(req.query.date as string | undefined);
@@ -189,6 +199,14 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
   const hoursError = businessHoursError(branchHours?.businessHours, startsAt, b.durationMin);
   if (hoursError) return res.status(400).json({ error: hoursError });
 
+  const yaAgendada = await exactActiveAppointment(patient.branchId, patient.id, startsAt, serviceName);
+  if (yaAgendada) {
+    return res.json({
+      ...serializeAppt(yaAgendada), emailSent: false, whatsappUrl: null, patientName: patient.name,
+      message: 'La cita ya estaba agendada; no se creó otra copia.', duplicatePrevented: true,
+    });
+  }
+
   // Disponibilidad. Cada cita dura lo que recepción indique (un proceso puede pasar de
   // una hora), así que el choque se calcula con la duración REAL de cada cita, no con
   // una ventana fija. Entre pacientes se deja una separación mínima de 30 minutos.
@@ -249,14 +267,24 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     }
   }
 
-  const appt = await prisma.appointment.create({
-    data: {
-      branchId: patient.branchId, patientId: patient.id, therapistId: b.therapistId ?? null,
-      serviceName, catalogItemId, treatmentId: b.treatmentId ?? null, code: genApptCode(),
-      startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
-    },
-    include: apptInclude,
-  });
+  let appt;
+  try {
+    appt = await prisma.appointment.create({
+      data: {
+        branchId: patient.branchId, patientId: patient.id, therapistId: b.therapistId ?? null,
+        serviceName, catalogItemId, treatmentId: b.treatmentId ?? null, code: genApptCode(),
+        startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
+      },
+      include: apptInclude,
+    });
+  } catch (error) {
+    const existente = await exactActiveAppointment(patient.branchId, patient.id, startsAt, serviceName);
+    if (!existente) throw error;
+    return res.json({
+      ...serializeAppt(existente), emailSent: false, whatsappUrl: null, patientName: patient.name,
+      message: 'La cita ya estaba agendada; no se creó otra copia.', duplicatePrevented: true,
+    });
+  }
   // Un paciente importado puede seguir marcado como NUEVO porque su ficha clínica
   // está pendiente. Si ya tiene un combo activo, no debe pasar por caja otra vez.
   const codeEnabled = hasUsableTreatment(appt.patient.treatments);
@@ -395,7 +423,7 @@ appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONI
   const branchHours = await prisma.branch.findUnique({ where: { id: patient.branchId }, select: { businessHours: true } });
   const fuera = fechas.find((d) => businessHoursError(branchHours?.businessHours, d, b.durationMin));
   if (fuera) return res.status(400).json({ error: businessHoursError(branchHours?.businessHours, fuera, b.durationMin)! });
-  await prisma.appointment.createMany({
+  const creadas = await prisma.appointment.createMany({
     data: fechas.map((startsAt) => ({
       patientId: patient.id, branchId: patient.branchId,
       therapistId: b.therapistId || null,
@@ -403,10 +431,11 @@ appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONI
       treatmentId: b.treatmentId || null, code: genApptCode(),
       startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
     })),
+    skipDuplicates: true,
   });
   const desde = fechas[0].toLocaleDateString('es-DO', { day: '2-digit', month: 'short' });
   const hasta = fechas[fechas.length - 1].toLocaleDateString('es-DO', { day: '2-digit', month: 'short' });
-  res.status(201).json({ ok: true, count: fechas.length, message: `${fechas.length} citas agendadas (${desde} → ${hasta})` });
+  res.status(201).json({ ok: true, count: creadas.count, message: `${creadas.count} citas agendadas (${desde} → ${hasta})${creadas.count < fechas.length ? ' · se omitieron fechas que ya existían' : ''}` });
 });
 
 const checkinSchema = z.object({ code: z.string().min(4) });

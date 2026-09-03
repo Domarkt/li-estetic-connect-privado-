@@ -371,12 +371,28 @@ portalRouter.post('/appointments', async (req, res) => {
   const patient = await prisma.patient.findUnique({ where: { id: req.patient!.patientId } });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
 
-  const created = await prisma.appointment.create({
-    data: {
-      branchId: patient.branchId, patientId: patient.id, serviceName: b.serviceName, code: genApptCode(),
-      startsAt: new Date(`${b.date}T${b.time}:00`), patientType: patient.type, status: 'SIN_CONFIRMAR',
-    },
+  const startsAt = new Date(`${b.date}T${b.time}:00`);
+  const activeStatuses = ['SIN_CONFIRMAR', 'CONFIRMADA', 'REAGENDADA'] as const;
+  const existing = await prisma.appointment.findFirst({
+    where: { branchId: patient.branchId, patientId: patient.id, startsAt, serviceName: b.serviceName, status: { in: [...activeStatuses] } },
   });
+  if (existing) return res.json({ ok: true, code: existing.code, message: 'Esta solicitud ya estaba registrada; no se creó otra copia.' });
+
+  let created;
+  try {
+    created = await prisma.appointment.create({
+      data: {
+        branchId: patient.branchId, patientId: patient.id, serviceName: b.serviceName, code: genApptCode(),
+        startsAt, patientType: patient.type, status: 'SIN_CONFIRMAR',
+      },
+    });
+  } catch (error) {
+    const duplicate = await prisma.appointment.findFirst({
+      where: { branchId: patient.branchId, patientId: patient.id, startsAt, serviceName: b.serviceName, status: { in: [...activeStatuses] } },
+    });
+    if (!duplicate) throw error;
+    return res.json({ ok: true, code: duplicate.code, message: 'Esta solicitud ya estaba registrada; no se creó otra copia.' });
+  }
   // Seguimiento automático: la solicitud del portal entra al tablero para que recepción la contacte.
   await upsertLead({ branchId: patient.branchId, patientId: patient.id, name: patient.name, stage: 'NUEVO_MENSAJE', summary: `Solicitó cita: ${b.serviceName}` });
 
