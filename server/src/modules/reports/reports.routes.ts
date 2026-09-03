@@ -49,10 +49,50 @@ reportsRouter.get('/dashboard', requireStaff, async (req, res) => {
   const strip = <T extends { ventasMes: number; recibosMes: number; ventasHoy: number; ticketPromedio: number }>(o: T) =>
     isAdmin ? o : { ...o, ventasMes: 0, recibosMes: 0, ventasHoy: 0, ticketPromedio: 0 };
 
+  // ── METAS: mensual de la sucursal y por esteticista ──
+  // La meta puede venir de BranchGoal (por período YYYY-MM) o del valor base de la sucursal.
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const metaCache = new Map<string, { monthly: number; perAsesor: number }>();
+  async function metaDe(branchId: string): Promise<{ monthly: number; perAsesor: number }> {
+    if (metaCache.has(branchId)) return metaCache.get(branchId)!;
+    const b = branches.find((x) => x.id === branchId);
+    const bg = await prisma.branchGoal.findUnique({ where: { branchId_period: { branchId, period } } }).catch(() => null);
+    const r = { monthly: bg?.monthly ?? b?.monthlyGoal ?? 0, perAsesor: bg?.perAsesor ?? b?.perAsesorGoal ?? 0 };
+    metaCache.set(branchId, r);
+    return r;
+  }
+  // Meta de la sucursal en foco (o suma consolidada de todas).
+  let metaScope = 0;
+  if (scopeBranch) metaScope = (await metaDe(scopeBranch)).monthly;
+  else for (const b of branches) metaScope += (await metaDe(b.id)).monthly;
+  const perBranchMeta = await Promise.all(perBranch.map(async (b) => ({ ...b, meta: (await metaDe(b.id)).monthly })));
+  const pct = (v: number, m: number) => (m > 0 ? Math.round((v / m) * 100) : 0);
+
+  // Meta por esteticista (solo Admin): ventas atribuidas del mes vs meta por asesor.
+  let staffGoals: { name: string; branch: string; ventas: number; meta: number; pct: number }[] = [];
+  if (isAdmin) {
+    const ventasPorTera = await prisma.invoice.groupBy({
+      by: ['therapistId'],
+      where: { status: 'PAGADA', issuedAt: { gte: monthStart }, therapistId: { not: null }, ...(scopeBranch ? { branchId: scopeBranch } : {}) },
+      _sum: { total: true },
+    });
+    const vmap = new Map(ventasPorTera.map((v) => [v.therapistId, v._sum.total ?? 0]));
+    const teras = await prisma.user.findMany({
+      where: { role: 'ESTETICISTA', active: true, ...(scopeBranch ? { branchId: scopeBranch } : {}) },
+      select: { id: true, name: true, branchId: true, branch: { select: { name: true } } },
+    });
+    staffGoals = (await Promise.all(teras.map(async (u) => {
+      const meta = u.branchId ? (await metaDe(u.branchId)).perAsesor : 0;
+      const ventas = vmap.get(u.id) ?? 0;
+      return { name: u.name, branch: u.branch?.name ?? '—', ventas, meta, pct: pct(ventas, meta) };
+    }))).sort((a, b) => b.ventas - a.ventas);
+  }
+
   res.json({
     isAdmin,
-    scope: strip(scope),
-    branches: perBranch.map(strip),
+    scope: { ...strip(scope), meta: isAdmin ? metaScope : 0, metaPct: isAdmin ? pct(scope.ventasMes, metaScope) : 0 },
+    branches: perBranchMeta.map((b) => ({ ...strip(b), meta: isAdmin ? b.meta : 0, metaPct: isAdmin ? pct(b.ventasMes, b.meta) : 0 })),
+    staffGoals,
   });
 });
 
