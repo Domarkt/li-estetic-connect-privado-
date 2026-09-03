@@ -497,9 +497,11 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     const inicioDelDia = new Date(endedAt); inicioDelDia.setHours(0, 0, 0, 0);
     const sesionesHoy = await prisma.treatmentSession.findMany({
       where: { treatmentId: target.id, at: { gte: inicioDelDia } },
-      select: { techniques: true },
+      select: { techniques: true, areas: true },
     });
-    const registrada = sesionesHoy.some((s) => s.techniques.length > 0);
+    // Se considera registrado si marcó al menos un área o una técnica (láser marca áreas).
+    // En cuerpo completo, una sesión "en curso" también cuenta como registrada.
+    const registrada = sesionesHoy.some((s) => s.techniques.length > 0 || s.areas.length > 0);
     if (!registrada) {
       return res.status(409).json({
         error: `Antes de cerrar el turno, registra en la ficha las técnicas aplicadas de "${target.name}" y pide la firma del paciente.`,

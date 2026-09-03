@@ -316,6 +316,8 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
   // Familia de áreas: define qué grupo se muestra al asignar áreas al paciente.
   const [areaGroup, setAreaGroup] = useState<'' | 'CORPORAL' | 'LASER'>(item?.areaGroup ?? '');
   const [areas, setAreas] = useState<string[]>(item?.defaultAreas ?? []);
+  // Modo de sesión del combo: por área (cada área su cupo) o cuerpo completo (partible).
+  const [sessionMode, setSessionMode] = useState<'PER_AREA' | 'FULL_BODY'>(item?.sessionMode ?? 'PER_AREA');
   const toggleArea = (k: string) => setAreas((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
 
   // Áreas administrables (incluye las que la admin agregue en Configuración).
@@ -345,7 +347,7 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
       imageUrl: kind !== 'INSUMO' ? imageUrl : null,
       validUntil: componible ? (validUntil || null) : null,
       // Solo se envían cuando aplica, para no borrar las técnicas de otros tipos.
-      ...(componible ? { services: serviceIds.map((id) => ({ id, qty: serviceQty[id] || 1 })), areaGroup: areaGroup || null, defaultAreas: areaGroup ? areas : [] } : {}),
+      ...(componible ? { services: serviceIds.map((id) => ({ id, qty: serviceQty[id] || 1 })), areaGroup: areaGroup || null, defaultAreas: areaGroup ? areas : [], sessionMode } : {}),
     };
     try {
       if (mode === 'edit' && item) {
@@ -451,6 +453,26 @@ export function CatalogModal({ mode, item, defaultKind, onClose, onSaved }: {
                 <option value="LASER">Láser (piernas, axilas, cara…)</option>
               </select>
             </label>
+          )}
+
+          {/* Modo de sesión: cómo se descuenta y si se puede partir en varias visitas. */}
+          {componible && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-muted">¿Cómo se trabaja la sesión?</span>
+              <div className="flex gap-2">
+                {([['PER_AREA', 'Por área', 'Cada área lleva su propio cupo'], ['FULL_BODY', 'Cuerpo completo', 'Se puede partir en varias visitas · cuenta como 1 sesión']] as const).map(([v, lbl, hint]) => {
+                  const on = sessionMode === v;
+                  return (
+                    <button key={v} type="button" onClick={() => setSessionMode(v)}
+                      className="flex-1 rounded-[9px] border px-3 py-2.5 text-left"
+                      style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                      <span className="block text-[12.5px] font-bold" style={{ color: on ? 'var(--magenta)' : 'var(--navy)' }}>{lbl}</span>
+                      <span className="block text-[10.5px] text-faint">{hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Áreas que trae el combo por defecto: se cargan al venderlo al paciente.

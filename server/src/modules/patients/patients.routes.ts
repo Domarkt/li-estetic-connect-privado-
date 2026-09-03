@@ -50,6 +50,14 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
   const truthyKeys = (obj: unknown) =>
     obj && typeof obj === 'object' ? Object.entries(obj as Record<string, unknown>).filter(([, v]) => v === true).map(([k]) => k) : [];
 
+  // Sesiones EN CURSO (cuerpo completo partido en varias visitas): áreas ya trabajadas
+  // de la ronda actual, para mostrar en la ficha qué falta por retomar.
+  const enCursoRows = await prisma.treatmentSession.findMany({
+    where: { patientId: patient.id, completa: false },
+    select: { treatmentId: true, areas: true, techniques: true },
+  });
+  const enCursoMap = new Map(enCursoRows.map((s) => [s.treatmentId, s]));
+
   res.json({
     ...serializePatient(patient),
     since: patient.createdAt.toLocaleDateString('es-DO', { month: 'short', year: 'numeric' }),
@@ -92,6 +100,9 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
           : (t.catalogItem?.incluye ?? []).map((x) => ({ id: x.service.id, name: x.service.name, qty: x.qty, total: x.qty, done: 0, remaining: x.qty })),
         // Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector.
         areaGroup: t.catalogItem?.areaGroup ?? null,
+        // Modo de la sesión y, si es cuerpo completo, la sesión EN CURSO (áreas ya hechas).
+        sessionMode: t.sessionMode,
+        enCurso: enCursoMap.get(t.id) ? { areas: enCursoMap.get(t.id)!.areas, techniques: enCursoMap.get(t.id)!.techniques } : null,
       })),
     // Historial de sesiones atendidas: qué se le aplicó y en qué áreas, para que la
     // esteticista sepa qué le viene dando y qué toca en la próxima visita.
@@ -226,6 +237,8 @@ const sesionSchema = z.object({
   notes: z.string().max(500).optional(),
   // Firma del paciente (PNG en base64). Se limita el tamaño para no inflar la base.
   signature: z.string().max(400_000).optional(),
+  // FULL_BODY: false = "continuar otro día" (sesión en curso, no descuenta todavía).
+  completa: z.boolean().optional().default(true),
 });
 
 /**
@@ -240,11 +253,13 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
   const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
   if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
   if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
-  if (!b.signature) return res.status(400).json({ error: 'Falta la firma del paciente para validar el procedimiento' });
+  // La firma se exige al CERRAR la sesión. En cuerpo completo, "continuar otro día"
+  // (completa=false) aún no pide firma: el paciente firma cuando se completa la sesión.
+  if (b.completa && !b.signature) return res.status(400).json({ error: 'Falta la firma del paciente para validar el procedimiento' });
 
   const r = await registrarSesionAplicada(t.id, {
     techniques: b.techniques, areas: b.areas, notes: b.notes,
-    signature: b.signature,
+    signature: b.signature, completa: b.completa,
     therapistId: (req.staff!.role === 'ESTETICISTA' || req.staff!.role === 'COORDINADOR') ? req.staff!.sub : null,
   });
   if (!r) return res.status(404).json({ error: 'Plan no encontrado' });
@@ -252,14 +267,18 @@ patientsRouter.post('/treatments/:treatmentId/session', requireStaff, requireRol
   const labels = await getAreaLabelMap();
   await audit(req, {
     action: 'TREATMENT_SESSION', entity: 'Treatment', entityId: t.id, branchId: t.patient.branchId,
-    summary: `Sesión ${r.done}/${r.total} de ${t.name} (${t.patient.name}): ${r.sesion.techniques.join(', ') || 'sin técnicas'} · firmada`,
+    summary: r.enCurso
+      ? `Sesión EN CURSO de ${t.name} (${t.patient.name}): ${r.sesion.areas.join(', ') || 'sin áreas'} (falta completar)`
+      : `Sesión ${r.done}/${r.total} de ${t.name} (${t.patient.name}): ${r.sesion.techniques.join(', ') || 'sin técnicas'} · firmada`,
   });
 
   res.status(201).json({
-    ok: true,
+    ok: true, enCurso: r.enCurso,
     done: r.done, restantes: r.restantes, total: r.total,
     sesiones: await listarSesiones(t.id, labels),
-    message: `Sesión ${r.done} de ${r.total} registrada y firmada`,
+    message: r.enCurso
+      ? 'Áreas registradas · sesión en curso. Se completa (y descuenta) cuando termine las áreas que faltan.'
+      : `Sesión ${r.done} de ${r.total} registrada y firmada`,
   });
 });
 

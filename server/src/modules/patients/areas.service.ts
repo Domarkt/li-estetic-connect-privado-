@@ -77,12 +77,16 @@ export function serializeAreas(
  * (las que se eligieron al crearlo en el catálogo). No hace nada si no hay áreas o si
  * el tratamiento ya tiene alguna.
  */
-export async function seedTreatmentAreas(treatmentId: string, areas: string[], totalSessions: number): Promise<void> {
+export async function seedTreatmentAreas(treatmentId: string, areas: string[], totalSessions: number, mode: string = 'PER_AREA'): Promise<void> {
   const validas = areas.filter((a) => !!a && a.trim());
   if (!validas.length) return;
   const existentes = await prisma.treatmentArea.count({ where: { treatmentId } });
   if (existentes > 0) return;
-  const reparto = repartirSesiones(totalSessions, validas.length);
+  // FULL_BODY: cada área se trabaja una vez por RONDA → su cupo = número de rondas
+  // (totalSessions). PER_AREA: las sesiones se reparten entre las áreas (como hoy).
+  const reparto = mode === 'FULL_BODY'
+    ? validas.map(() => totalSessions)
+    : repartirSesiones(totalSessions, validas.length);
   await prisma.treatmentArea.createMany({
     data: validas.map((area, i) => ({ treatmentId, area, totalSessions: reparto[i], isExtra: false })),
     skipDuplicates: true,
@@ -143,7 +147,7 @@ export async function createTreatmentFromCatalog(
   const treatment = await prisma.treatment.create({
     data: {
       patientId, name: item.name, catalogItemId: item.id,
-      totalSessions: total, doneSessions: 0,
+      totalSessions: total, doneSessions: 0, sessionMode: item.sessionMode ?? 'PER_AREA',
       // FUENTE ÚNICA del dinero pendiente de un plan: este balance.
       // Si el paciente abonó, aquí queda lo que falta; si pagó todo, queda en 0.
       // No se crean cargos sintéticos de "saldo" en paralelo.
@@ -151,7 +155,7 @@ export async function createTreatmentFromCatalog(
       balance: Math.max(0, Math.min(opts.outstanding ?? 0, precio)),
     },
   });
-  if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total);
+  if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total, item.sessionMode ?? 'PER_AREA');
   if (item.incluye?.length) {
     await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty * qty })));
   } else {
@@ -341,7 +345,7 @@ export async function cambiarCombo(
  */
 export async function registrarSesionAplicada(
   treatmentId: string,
-  datos: { techniques: string[]; areas: string[]; therapistId?: string | null; signature?: string | null; notes?: string | null; at?: Date | null },
+  datos: { techniques: string[]; areas: string[]; therapistId?: string | null; signature?: string | null; notes?: string | null; at?: Date | null; completa?: boolean },
 ) {
   const t = await prisma.treatment.findUnique({
     where: { id: treatmentId },
@@ -349,6 +353,56 @@ export async function registrarSesionAplicada(
   });
   if (!t) return null;
 
+  const cerrar = datos.completa !== false; // por defecto la sesión se cierra (descuenta)
+
+  // ── FULL_BODY: la sesión (cuerpo completo) puede hacerse en varias visitas. Se
+  // acumulan las áreas/técnicas en UNA sesión "en curso" y solo al completarla se
+  // descuenta 1 sesión del plan. Partir el proceso en 2 días = 1 sesión. ──
+  if (t.sessionMode === 'FULL_BODY') {
+    const enCursoPrev = await prisma.treatmentSession.findFirst({ where: { treatmentId: t.id, completa: false }, orderBy: { at: 'desc' } });
+    const mergedAreas = [...new Set([...(enCursoPrev?.areas ?? []), ...datos.areas])];
+    const mergedTecs = [...new Set([...(enCursoPrev?.techniques ?? []), ...datos.techniques])];
+
+    const sesion = enCursoPrev
+      ? await prisma.treatmentSession.update({
+          where: { id: enCursoPrev.id },
+          data: {
+            areas: mergedAreas, techniques: mergedTecs, completa: cerrar,
+            therapistId: datos.therapistId ?? enCursoPrev.therapistId,
+            signature: datos.signature ?? enCursoPrev.signature,
+            notes: datos.notes ?? enCursoPrev.notes,
+            at: datos.at ?? new Date(), // refresca a la última visita (para el candado del día)
+          },
+        })
+      : await prisma.treatmentSession.create({
+          data: {
+            treatmentId: t.id, patientId: t.patientId, therapistId: datos.therapistId ?? null,
+            areas: mergedAreas, techniques: mergedTecs, completa: cerrar,
+            signature: datos.signature ?? null, notes: datos.notes ?? null,
+            at: datos.at ?? new Date(),
+          },
+        });
+
+    if (!cerrar) {
+      // Queda EN CURSO: no descuenta. El plan sigue igual; se retoma otro día.
+      return { sesion, done: t.doneSessions, restantes: Math.max(0, t.totalSessions - t.doneSessions), total: t.totalSessions, enCurso: true };
+    }
+    // Se completa la ronda: sube el avance de cada área/técnica trabajada y descuenta 1 sesión.
+    for (const areaKey of mergedAreas) {
+      const a = t.areas.find((x) => x.area === areaKey);
+      if (a && a.doneSessions < a.totalSessions) await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: { increment: 1 } } });
+    }
+    for (const tecName of mergedTecs) {
+      const tec = t.techniques.find((x) => x.name === tecName);
+      if (tec && tec.done < tec.total) await prisma.treatmentTechnique.update({ where: { id: tec.id }, data: { done: { increment: 1 } } });
+    }
+    const doneFB = Math.min(t.totalSessions, t.doneSessions + 1);
+    const restFB = Math.max(0, t.totalSessions - doneFB);
+    await prisma.treatment.update({ where: { id: t.id }, data: { doneSessions: doneFB, ...(restFB === 0 ? { active: false } : {}) } });
+    return { sesion, done: doneFB, restantes: restFB, total: t.totalSessions, enCurso: false };
+  }
+
+  // ── PER_AREA (por defecto): descuenta por cada área trabajada, como hasta ahora. ──
   // Solo lo que realmente queda disponible (no se descuenta de más).
   const tecnicas = t.techniques.filter((x) => datos.techniques.includes(x.name) && x.done < x.total);
   const areas = t.areas.filter((a) => datos.areas.includes(a.area) && a.doneSessions < a.totalSessions);
@@ -382,7 +436,7 @@ export async function registrarSesionAplicada(
     },
   });
 
-  return { sesion, done, restantes, total: t.totalSessions };
+  return { sesion, done, restantes, total: t.totalSessions, enCurso: false };
 }
 
 /**

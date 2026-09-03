@@ -359,6 +359,7 @@ model Treatment {
   name          String
   totalSessions Int
   doneSessions  Int       @default(0)
+  sessionMode   String    @default("PER_AREA") // PER_AREA | FULL_BODY (cuerpo completo partible)
   price         Int       @default(0) // valor total del paquete RD$
   balance       Int       @default(0) // saldo pendiente RD$ (pesos enteros)
   expiresAt     DateTime?
@@ -460,6 +461,9 @@ model CatalogItem {
   tag          String? // "Ahorro RD$2,000", "Popular"
   validUntil   DateTime? // vencimiento de una oferta/paquete/combo (opcional)
   areaGroup    String? // combos/paquetes: familia de áreas — CORPORAL | LASER (para el selector)
+  // Modo de sesión: PER_AREA (cada área su cupo) | FULL_BODY (cuerpo completo, se puede
+  // partir en varias visitas y cuenta como 1 sesión). Se hereda al plan al venderlo.
+  sessionMode  String      @default("PER_AREA")
   defaultAreas String[]    @default([]) // áreas que trae el combo por defecto (se cargan al venderlo)
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now())
@@ -932,6 +936,7 @@ model TreatmentSession {
   at          DateTime @default(now())
   techniques  String[] // nombres de las tecnicas aplicadas ese dia
   areas       String[] // claves de las areas trabajadas ese dia
+  completa    Boolean  @default(true) // false = sesion EN CURSO (cuerpo completo, faltan areas)
   notes       String?
   signature   String? // firma del paciente (imagen PNG en base64)
 

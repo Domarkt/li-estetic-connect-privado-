@@ -54,6 +54,10 @@ export interface PatientPackage {
   services?: { id: string; name: string; qty?: number; total?: number; done?: number; remaining?: number }[];
   /** Familia de áreas del combo (CORPORAL | LASER) para filtrar el selector. */
   areaGroup?: 'CORPORAL' | 'LASER' | null;
+  /** Modo de sesión del plan: PER_AREA | FULL_BODY (cuerpo completo, partible). */
+  sessionMode?: 'PER_AREA' | 'FULL_BODY';
+  /** Si FULL_BODY: sesión EN CURSO (áreas/técnicas ya trabajadas de la ronda actual). */
+  enCurso?: { areas: string[]; techniques: string[] } | null;
 }
 
 export interface TreatmentArea {
@@ -130,6 +134,8 @@ export interface CatalogItem {
   areaGroup?: 'CORPORAL' | 'LASER' | null;
   /** Combo/paquete: áreas que trae por defecto (se cargan al venderlo). */
   defaultAreas?: string[];
+  /** Modo de sesión: PER_AREA (cada área su cupo) | FULL_BODY (cuerpo completo, partible). */
+  sessionMode?: 'PER_AREA' | 'FULL_BODY';
 }
 
 export const fmtRD = (n: number) => 'RD$' + Math.round(n).toLocaleString('en-US');

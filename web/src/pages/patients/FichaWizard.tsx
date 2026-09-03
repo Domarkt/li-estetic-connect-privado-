@@ -548,7 +548,7 @@ function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
       if (tecnicas.length || areasHoy.length) {
         const r = await api.post<{ message: string; sesiones: SesionAplicada[] }>(
           `/patients/treatments/${pkg!.id}/session`,
-          { techniques: tecnicas, areas: areasHoy, signature: firma, notes: notas || undefined },
+          { techniques: tecnicas, areas: areasHoy, signature: firma, notes: notas || undefined, completa: true },
         );
         msg = r.message; setSesiones(r.sesiones);
       }
@@ -564,6 +564,21 @@ function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
     } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
   }
 
+  // FULL_BODY: guarda las áreas trabajadas HOY sin cerrar la sesión (no descuenta ni
+  // pide firma). La sesión se completa (y descuenta) el día que termine lo que falta.
+  async function guardarParcial() {
+    if (!areasHoy.length && !tecnicas.length) { toast('Marca lo que trabajaste hoy'); return; }
+    setBusy(true);
+    try {
+      if (!planTieneAreas && areasHoy.length) await api.patch(`/patients/treatments/${pkg!.id}/areas`, { areas: areasHoy }).catch(() => {});
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg!.id}/session`, { techniques: tecnicas, areas: areasHoy, completa: false, notes: notas || undefined });
+      toast(r.message);
+      setPaso(1); setTecnicas([]); setAreasHoy([]); setNotas('');
+      setRecarga((v) => v + 1); onSesion();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  const areaLabel = (k: string) => opciones.find((o) => o.key === k)?.label ?? k;
   const chip = (on: boolean) => ({ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'transparent', color: on ? 'var(--magenta)' : 'var(--muted)' });
 
   return (
@@ -576,6 +591,14 @@ function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
           <div className="text-[11.5px] text-muted">{pkg.total} sesiones · {pkg.done} hechas · {pkg.remaining} restantes</div>
         </div>
       </div>
+      {pkg.sessionMode === 'FULL_BODY' && pkg.enCurso && (pkg.enCurso.areas.length > 0 || pkg.enCurso.techniques.length > 0) && (
+        <div className="mb-3 rounded-[10px] px-3.5 py-2.5 text-[11.5px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>
+          ↻ Sesión en curso · ya se trabajó: <b>{pkg.enCurso.areas.map(areaLabel).join(', ') || '—'}</b>. Marca lo que falta y usa <b>Completar</b> (con firma) para cerrarla; o guarda de nuevo para seguir otro día.
+        </div>
+      )}
+      {pkg.sessionMode === 'FULL_BODY' && (
+        <div className="mb-3 rounded-[10px] bg-card px-3.5 py-2 text-[11px] font-semibold text-muted">🧩 Cuerpo completo: puedes hacer unas áreas hoy y dejar el resto para otro día. Cuenta como <b>1 sesión</b>.</div>
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
         {PASOS_PLAN.map((lbl, i) => {
           const n = i + 1; const done = n < paso; const cur = n === paso;
@@ -770,10 +793,16 @@ function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
           ) : (
             <button type="button" onClick={guardar} disabled={busy || !firma}
               className="flex-1 rounded-[9px] bg-navy py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
-              {busy ? 'Guardando…' : '✓ Guardar el plan'}
+              {busy ? 'Guardando…' : (pkg.sessionMode === 'FULL_BODY' ? '✓ Completar sesión (firma)' : '✓ Guardar el plan')}
             </button>
           )}
         </div>
+        {pkg.sessionMode === 'FULL_BODY' && (
+          <button type="button" onClick={guardarParcial} disabled={busy || (!areasHoy.length && tecnicas.length === 0)}
+            className="mt-2 w-full rounded-[9px] border border-magenta bg-magenta-soft py-2.5 text-[12px] font-bold text-magenta disabled:opacity-50">
+            💾 Guardar lo de hoy y continuar otro día · no descuenta ni pide firma
+          </button>
+        )}
       </div>
 
       {/* Historial breve de lo ya aplicado en este plan */}
