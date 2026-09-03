@@ -314,11 +314,11 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                         </div>
                       )}
 
-                      {/* Cambio de combo: solo al inicio (antes de la 3ra sesión), a uno
-                          parecido con más técnicas/áreas e igual o mayor valor. */}
-                      {canCombo && pk.done < 3 && (
+                      {/* Cambio de combo: recepción/coordinación solo al inicio (antes de la
+                          3ra sesión). El Admin siempre lo ve, para CORREGIR un combo mal pasado. */}
+                      {canCombo && (pk.done < 3 || staff?.role === 'ADMIN') && (
                         <div className="mt-2.5 border-t border-line-2 pt-2.5">
-                          <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ Cambiar de combo (antes de la 3ra sesión)</button>
+                          <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ {pk.done >= 3 ? 'Corregir / cambiar de combo' : 'Cambiar de combo (antes de la 3ra sesión)'}</button>
                         </div>
                       )}
                     </div>
@@ -629,7 +629,10 @@ const KIND_TAG_COMBO: Record<string, string> = { COMBO: 'Combo', PAQUETE: 'Paque
  */
 function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [combos, setCombos] = useState<CatalogItem[]>([]);
+  const { staff } = useAuth();
+  const isAdmin = staff?.role === 'ADMIN';
+  const [allCombos, setAllCombos] = useState<CatalogItem[]>([]);
+  const [correccion, setCorreccion] = useState(false);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<CatalogItem | null>(null);
   const [precio, setPrecio] = useState(''); // precio del nuevo combo (editable)
@@ -637,16 +640,14 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
 
   useEffect(() => {
     api.get<CatalogItem[]>('/catalog')
-      .then((all) => setCombos(all.filter((c) =>
-        (c.kind === 'COMBO' || c.kind === 'PAQUETE')
-        && c.id !== pkg.catalogItemId
-        // Igual o mayor valor: una clienta puede cambiar por un combo DIFERENTE del mismo
-        // precio. No se excluye por nombre igual (hay combos distintos con el mismo nombre).
-        && c.price >= pkg.price,
+      .then((all) => setAllCombos(all.filter((c) =>
+        (c.kind === 'COMBO' || c.kind === 'PAQUETE') && c.id !== pkg.catalogItemId,
       )))
-      .catch(() => setCombos([]));
+      .catch(() => setAllCombos([]));
   }, []);
 
+  // Modo normal: solo combos de igual o mayor valor. Corrección (Admin): todos.
+  const combos = allCombos.filter((c) => correccion || c.price >= pkg.price);
   const texto = q.trim().toLowerCase();
   const lista = combos.filter((c) => !texto || c.name.toLowerCase().includes(texto));
   const nuevoPrecio = precio !== '' ? Number(precio) : (sel?.price ?? 0);
@@ -663,7 +664,7 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
     setBusy(true);
     try {
       const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/change-combo`, {
-        catalogItemId: sel.id, price: nuevoPrecio || undefined,
+        catalogItemId: sel.id, price: nuevoPrecio || undefined, correction: correccion || undefined,
       });
       toast(r.message);
       onSaved();
@@ -679,7 +680,20 @@ function CambioComboModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onCl
         </div>
 
         <div className="flex flex-col gap-3 overflow-y-auto px-6 py-5">
-          <div className="text-xs font-bold text-muted">Elige el nuevo combo <span className="font-semibold text-faint">(parecido, con más técnicas o áreas · igual o mayor valor)</span></div>
+          {isAdmin && (
+            <button onClick={() => { setCorreccion((v) => !v); setSel(null); }}
+              className="flex w-full items-center justify-between rounded-[10px] border px-3.5 py-2.5 text-left"
+              style={{ borderColor: correccion ? '#C9880E' : 'var(--line)', background: correccion ? '#FBF0DC' : 'var(--card)' }}>
+              <span className="flex flex-col pr-2">
+                <span className="text-[12.5px] font-bold" style={{ color: correccion ? '#8A5D08' : 'var(--navy)' }}>Modo corrección (combo mal pasado)</span>
+                <span className="text-[10.5px] text-faint">Muestra TODOS los combos y permite cambiar aunque sea de menor valor o con la 3ra sesión pasada. Solo Admin.</span>
+              </span>
+              <span className="relative flex h-6 w-11 flex-none items-center rounded-full transition" style={{ background: correccion ? '#C9880E' : 'var(--line)' }}>
+                <span className="absolute h-5 w-5 rounded-full bg-white transition-all" style={{ left: correccion ? 22 : 2 }} />
+              </span>
+            </button>
+          )}
+          <div className="text-xs font-bold text-muted">Elige el nuevo combo <span className="font-semibold text-faint">{correccion ? '(corrección · cualquier combo)' : '(parecido, con más técnicas o áreas · igual o mayor valor)'}</span></div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Buscar combo o paquete…"
             className="w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
           <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto rounded-[11px] border border-line-2 p-2">

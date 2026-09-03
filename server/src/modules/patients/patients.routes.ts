@@ -425,6 +425,7 @@ patientsRouter.post('/treatments/:treatmentId/extra-area', requireStaff, require
 const cambioComboSchema = z.object({
   catalogItemId: z.string().min(1),
   price: z.number().int().nonnegative().optional(), // monto del nuevo combo si recepción lo negocia
+  correction: z.boolean().optional(), // corrección de un combo mal pasado (solo Admin): salta las reglas
 });
 
 /**
@@ -433,12 +434,14 @@ const cambioComboSchema = z.object({
  * factura como cualquier otro cargo. Simplifica el "me cambiaron el combo en cabina".
  */
 patientsRouter.post('/treatments/:treatmentId/change-combo', requireStaff, requireRole('ADMIN', 'COORDINADOR', 'RECEPCIONISTA'), async (req, res) => {
-  const { catalogItemId, price } = cambioComboSchema.parse(req.body);
+  const { catalogItemId, price, correction } = cambioComboSchema.parse(req.body);
+  // El modo corrección (salta "antes de la 3ra sesión" y "igual o mayor valor") es solo del Admin.
+  if (correction && req.staff!.role !== 'ADMIN') return res.status(403).json({ error: 'Solo Administración puede corregir un combo fuera de las reglas normales.' });
   const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: true } });
   if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
   if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
 
-  const r = await cambiarCombo(t.id, catalogItemId, price);
+  const r = await cambiarCombo(t.id, catalogItemId, price, { force: !!correction });
   if ('error' in r) {
     const msg = r.error === 'nocatalog' ? 'El combo elegido no existe'
       : r.error === 'notcombo' ? 'Solo se puede cambiar por un combo o paquete'

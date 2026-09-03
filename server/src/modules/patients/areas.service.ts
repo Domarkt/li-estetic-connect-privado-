@@ -257,6 +257,7 @@ export async function cambiarCombo(
   treatmentId: string,
   newCatalogItemId: string,
   priceOverride?: number,
+  opts?: { force?: boolean }, // corrección de Admin: salta las reglas de negocio (error de captura)
 ) {
   const t = await prisma.treatment.findUnique({
     where: { id: treatmentId },
@@ -273,12 +274,14 @@ export async function cambiarCombo(
   // mismo nombre (o el mismo precio) sí se permiten: cambian el contenido/áreas/técnicas.
   if (item.id === t.catalogItemId) return { error: 'same' as const };
   // Solo se cambia AL INICIO: antes de la 3ra sesión (0, 1 o 2 sesiones hechas).
-  if (t.doneSessions >= 3) return { error: 'used' as const };
+  // En modo corrección (Admin) se permite igual, porque es un error de captura.
+  if (!opts?.force && t.doneSessions >= 3) return { error: 'used' as const };
 
   const nuevoPrecio = item.price ?? 0;
   const precioAplicado = priceOverride ?? nuevoPrecio;
   // Se permite igual o mayor valor. Menor valor se bloquea (no manejamos reembolsos).
-  if (precioAplicado < t.price) return { error: 'lower' as const };
+  // En corrección (Admin) se permite un combo de menor valor: el saldo se recalcula.
+  if (!opts?.force && precioAplicado < t.price) return { error: 'lower' as const };
   // Dinero: lo que YA pagó se conserva; el nuevo saldo = precio del combo nuevo − lo pagado.
   // Ej.: combo 6000 con 4000 pagados (debe 2000) → cambia a 9000 → debe 9000 − 4000 = 5000.
   const pagado = Math.max(0, t.price - t.balance);
