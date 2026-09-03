@@ -21,6 +21,23 @@ export function hasUsableTreatment(treatments: Array<{ active: boolean; totalSes
   return treatments.some((t) => t.active && t.doneSessions < t.totalSessions);
 }
 
+/**
+ * Citas importadas/antiguas pueden no tener treatmentId aunque correspondan a un
+ * paquete activo. Se recupera por nombre y, si no coincide, por plan activo único.
+ */
+export function resolveAppointmentTreatmentId(
+  treatments: Array<{ id: string; name: string; active: boolean; totalSessions: number; doneSessions: number }>,
+  treatmentId: string | null,
+  serviceName: string,
+): string | null {
+  if (treatmentId && treatments.some((t) => t.id === treatmentId)) return treatmentId;
+  const activos = treatments.filter((t) => t.active && t.doneSessions < t.totalSessions);
+  const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  const servicio = normalizar(serviceName);
+  const porNombre = activos.find((t) => normalizar(t.name) === servicio);
+  return porNombre?.id ?? (activos.length === 1 ? activos[0].id : null);
+}
+
 export const apptInclude = {
   patient: { include: { clinicalRecord: true, treatments: { include: { areas: true, catalogItem: { include: { incluye: { include: { service: true } } } } } } } },
   therapist: true,
@@ -45,6 +62,7 @@ export function serializeAppt(
   // Recurrente). No usamos el snapshot guardado en la cita para que la agenda se
   // actualice en vivo cuando la esteticista termina la ficha.
   const liveType = a.patient.type; // NUEVO | RECURRENTE
+  const resolvedTreatmentId = resolveAppointmentTreatmentId(a.patient.treatments, a.treatmentId, a.serviceName);
   // Saldo que se avisa en la agenda ("cobrar antes de atender"): la SUMA de todos
   // sus planes activos. Con el primero solo, un paciente con varios paquetes podía
   // deber y aparecer al día.
@@ -81,7 +99,7 @@ export function serializeAppt(
     paid: hasUsableTreatment(a.patient.treatments),
     // Código de turno + si ya fue validado en cabina.
     code: a.code,
-    treatmentId: a.treatmentId,
+    treatmentId: resolvedTreatmentId,
     checkedIn: !!a.codeUsedAt,
     // Turno abierto (validado en cabina) y aún sin cerrar → se puede "Cerrar turno".
     inService: !!a.codeUsedAt && !a.serviceEndedAt,

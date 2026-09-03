@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
-import { serializeAppt, apptInclude, dayRange, genApptCode, hasUsableTreatment } from './appointments.service.js';
+import { serializeAppt, apptInclude, dayRange, genApptCode, hasUsableTreatment, resolveAppointmentTreatmentId } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.js';
 import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
@@ -512,10 +512,10 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
   //
   // Cerrar turno solo cierra el contador de atención y habilita la calificación.
   // Lo marcado aquí se guarda como referencia de la visita, sin afectar contadores.
-  const activos = appt.patient.treatments.filter((t) => t.active && t.doneSessions < t.totalSessions);
-  const target = appt.treatmentId
-    ? activos.find((t) => t.id === appt.treatmentId) ?? null
-    : (activos.length === 1 ? activos[0] : null);
+  const resolvedTreatmentId = resolveAppointmentTreatmentId(appt.patient.treatments, appt.treatmentId, appt.serviceName);
+  const target = resolvedTreatmentId
+    ? appt.patient.treatments.find((t) => t.id === resolvedTreatmentId) ?? null
+    : null;
 
   let sessionMsg = '';
   if (target) {
@@ -526,11 +526,11 @@ appointmentsRouter.post('/:id/finish', requireStaff, requireRole('ADMIN', 'ESTET
     const inicioDelDia = new Date(endedAt); inicioDelDia.setHours(0, 0, 0, 0);
     const sesionesHoy = await prisma.treatmentSession.findMany({
       where: { treatmentId: target.id, at: { gte: inicioDelDia } },
-      select: { techniques: true, areas: true },
+      select: { techniques: true, areas: true, signature: true },
     });
-    // Se considera registrado si marcó al menos un área o una técnica (láser marca áreas).
-    // En cuerpo completo, una sesión "en curso" también cuenta como registrada.
-    const registrada = sesionesHoy.some((s) => s.techniques.length > 0 || s.areas.length > 0);
+    // Algunos servicios históricos (p. ej. masaje postoperatorio) no tenían áreas
+    // ni técnicas configuradas. Si el paciente firmó, la sesión sí fue registrada.
+    const registrada = sesionesHoy.some((s) => !!s.signature || s.techniques.length > 0 || s.areas.length > 0);
     if (!registrada) {
       return res.status(409).json({
         error: `Antes de cerrar el turno, registra en la ficha las técnicas aplicadas de "${target.name}" y pide la firma del paciente.`,
