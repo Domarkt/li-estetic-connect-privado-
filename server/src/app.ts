@@ -32,8 +32,9 @@ import { assetsRouter } from './modules/assets/assets.routes.js';
 import { teamRouter } from './modules/team/team.routes.js';
 import { maintenanceRouter } from './modules/maintenance/maintenance.routes.js';
 import { purchasesRouter } from './modules/purchases/purchases.routes.js';
+import { accountingRouter } from './modules/accounting/accounting.routes.js';
 import { followupRouter } from './modules/followup/followup.routes.js';
-import { denyCoordinator, requireModule, requireStaff } from './middleware/auth.js';
+import { denyCoordinator, requireModule, requireRole, requireStaff } from './middleware/auth.js';
 
 export function createApp() {
   const app = express();
@@ -85,7 +86,7 @@ export function createApp() {
   app.use('/api/appointments', requireStaff, requireModule('agenda'), invalidateOnWrite('appt:', 'inv:', 'pat:', 'fup:'), appointmentsRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api/invoices', requireStaff, denyCoordinator, invalidateOnWrite('inv:', 'pat:', 'appt:', 'fup:'), invoicesRouter);
+  app.use('/api/invoices', requireStaff, denyCoordinator, invalidateOnWrite('inv:', 'pat:', 'appt:', 'fup:', 'acc:'), invoicesRouter);
   app.use('/api/messaging', requireStaff, requireModule('mensajes'), messagingRouter);
   app.use('/api/pipeline', pipelineRouter);
   app.use('/api/points', requireStaff, denyCoordinator, pointsRouter);
@@ -100,7 +101,8 @@ export function createApp() {
   app.use('/api/assets', requireStaff, requireModule('equipos'), assetsRouter);
   app.use('/api/team-chat', requireStaff, requireModule('chat'), teamRouter);
   app.use('/api/maintenance', maintenanceRouter);
-  app.use('/api/purchases', requireStaff, denyCoordinator, invalidateOnWrite('pur:'), purchasesRouter);
+  app.use('/api/purchases', requireStaff, denyCoordinator, invalidateOnWrite('pur:', 'acc:'), purchasesRouter);
+  app.use('/api/accounting', requireStaff, requireRole('ADMIN'), invalidateOnWrite('acc:'), accountingRouter);
   app.use('/api/followup', requireStaff, requireModule('contactar'), invalidateOnWrite('fup:', 'pat:'), followupRouter);
 
   // Fases siguientes montan aquí sus routers:

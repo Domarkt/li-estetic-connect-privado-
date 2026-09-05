@@ -25,7 +25,11 @@ export type AuditAction =
   | 'TREATMENT_SESSION'   // se registró el procedimiento aplicado (firmado)
   | 'PORTAL_ACCESS'      // se retiró/devolvió el acceso al portal de un paciente
   | 'PORTAL_MESSAGE'     // se publicó un mensaje/oferta en el portal
-  | 'PORTAL_LOGIN';       // el paciente entró a su portal
+  | 'PORTAL_LOGIN'       // el paciente entró a su portal
+  | 'LEDGER_ENTRY'       // se registró/editó un movimiento contable manual
+  | 'LEDGER_ENTRY_VOID'  // se eliminó un movimiento contable manual
+  | 'PERIOD_CLOSE'       // se cerró un período contable
+  | 'PERIOD_REOPEN';      // se reabrió un período contable
 
 interface AuditInput {
   action: AuditAction;

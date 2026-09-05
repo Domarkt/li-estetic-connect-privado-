@@ -68,6 +68,8 @@ const createSchema = z.object({
   category: z.string().optional(),
   amount: z.number().int().positive('El monto debe ser mayor que cero'),
   ncf: z.string().optional(),
+  supplierRnc: z.string().max(15).optional(), // RNC del proveedor (606 DGII)
+  itbis: z.number().int().min(0).optional(),  // ITBIS de la factura (crédito fiscal)
   purchasedAt: z.string().min(8, 'Falta la fecha'),
   branchId: z.string().optional(),
   invoiceImage: z.string().max(3_000_000).optional(), // imagen comprimida (~<2MB)
@@ -85,6 +87,7 @@ purchasesRouter.post('/', requireStaff, requireRole(...GESTORES), branchScope, a
     data: {
       branchId, supplier: b.supplier.trim(), concept: b.concept.trim(),
       category: b.category ?? null, amount: b.amount, ncf: b.ncf?.trim() || null,
+      supplierRnc: b.supplierRnc?.trim() || null, itbis: b.itbis ?? 0,
       purchasedAt: new Date(`${b.purchasedAt}T00:00:00`),
       invoiceImage: b.invoiceImage ?? null, notes: b.notes?.trim() || null,
       createdById: req.staff!.sub,

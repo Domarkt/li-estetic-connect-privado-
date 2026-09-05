@@ -129,6 +129,8 @@ function NuevaCompra({ branches, isAdmin, onClose, onSaved }: { branches: { id: 
   const [category, setCategory] = useState(CATEGORIAS[0]);
   const [amount, setAmount] = useState('');
   const [ncf, setNcf] = useState('');
+  const [supplierRnc, setSupplierRnc] = useState('');
+  const [itbis, setItbis] = useState('');
   const [purchasedAt, setPurchasedAt] = useState(new Date().toISOString().slice(0, 10));
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [invoiceImage, setInvoiceImage] = useState<string | null>(null);
@@ -173,6 +175,8 @@ function NuevaCompra({ branches, isAdmin, onClose, onSaved }: { branches: { id: 
       const r = await api.post<{ message: string }>('/purchases', {
         supplier: supplier.trim(), concept: concept.trim(), category, amount: monto,
         ncf: ncf.trim() || undefined, purchasedAt,
+        supplierRnc: supplierRnc.trim() || undefined,
+        itbis: itbis ? Math.round(Number(itbis)) : undefined,
         branchId: isAdmin ? branchId : undefined,
         invoiceImage: invoiceImage ?? undefined, notes: notes.trim() || undefined,
       });
@@ -210,6 +214,13 @@ function NuevaCompra({ branches, isAdmin, onClose, onSaved }: { branches: { id: 
               <input type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} className={inp} /></label>
             <label className="flex flex-col gap-1"><span className={lbl}>NCF (opcional)</span>
               <input value={ncf} onChange={(e) => setNcf(e.target.value)} placeholder="B01…" className={inp} /></label>
+          </div>
+          {/* RNC + ITBIS del proveedor: necesarios para el reporte 606 de la DGII. */}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1"><span className={lbl}>RNC proveedor (606)</span>
+              <input value={supplierRnc} onChange={(e) => setSupplierRnc(e.target.value)} placeholder="1-31-00000-0" className={inp} /></label>
+            <label className="flex flex-col gap-1"><span className={lbl}>ITBIS de la factura (RD$)</span>
+              <input value={itbis} onChange={(e) => setItbis(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="0" className={inp} /></label>
           </div>
           <label className="flex flex-col gap-1"><span className={lbl}>Anexar factura (foto o imagen)</span>
             <input type="file" accept="image/*" onChange={onFile} className="text-[12px]" /></label>

@@ -32,6 +32,7 @@ const SucursalesPage = lazy(() => import('./pages/SucursalesPage'));
 const InventarioPage = lazy(() => import('./pages/inventory/InventarioPage'));
 const EquiposPage = lazy(() => import('./pages/inventory/EquiposPage'));
 const ComprasPage = lazy(() => import('./pages/purchases/ComprasPage'));
+const ContabilidadPage = lazy(() => import('./pages/accounting/ContabilidadPage'));
 const SeguimientoPage = lazy(() => import('./pages/seguimiento/SeguimientoPage'));
 const ChatPage = lazy(() => import('./pages/team/ChatPage'));
 
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="equipos" element={<EquiposPage />} />
             <Route path="compras" element={<ComprasPage />} />
+            <Route path="contabilidad" element={<ContabilidadPage />} />
             <Route path="contactar" element={<SeguimientoPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="puntos" element={<PointsPage />} />

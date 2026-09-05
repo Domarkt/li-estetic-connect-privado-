@@ -65,6 +65,7 @@ export const NAV_ICON: Record<string, string> = {
   equipos: 'wrench',
   puntos: 'star',
   equipo: 'chart',
+  contabilidad: 'money',
   reportes: 'chart',
   auditoria: 'chart',
   seguimiento: 'funnel',

@@ -413,6 +413,8 @@ model Purchase {
   category     String? // insumos | equipos | servicios | alquiler | otros
   amount       Int // monto total RD$
   ncf          String? // NCF de la factura del proveedor (para 606/ITBIS)
+  supplierRnc  String? // RNC/cédula del proveedor (obligatorio en el 606 DGII)
+  itbis        Int      @default(0) // ITBIS de la factura del proveedor (crédito fiscal, para el 606)
   purchasedAt  DateTime // fecha de la factura
   invoiceImage String? // imagen de la factura (base64), opcional
   notes        String?
@@ -420,6 +422,72 @@ model Purchase {
   createdAt    DateTime @default(now())
 
   @@index([branchId, purchasedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONTABILIDAD — libro único, ajustes, cierres y reportes contables
+// Las VENTAS viven en Invoice y las COMPRAS a proveedores en Purchase; aquí solo
+// se registran los movimientos que esas tablas no capturan (nómina, alquiler,
+// servicios, retiros/aportes de socia, depósitos, otros ingresos y ajustes). Los
+// reportes hacen la unión de las tres fuentes, así nada se cuenta doble.
+// ─────────────────────────────────────────────────────────────
+
+// Plan de cuentas administrable. kind agrupa el movimiento y define su efecto:
+//  INGRESO/EGRESO afectan el Estado de Resultados; RETIRO/APORTE/TRASLADO son
+//  movimientos de caja/patrimonio que NO son utilidad (no inflan/deflan la ganancia).
+model LedgerCategory {
+  id        String   @id @default(cuid())
+  kind      String // INGRESO | EGRESO | RETIRO | APORTE | TRASLADO
+  name      String
+  code      String? // código contable opcional
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  entries LedgerEntry[]
+
+  @@unique([kind, name])
+}
+
+// Movimiento contable manual / ajuste. Un solo asiento por fila.
+model LedgerEntry {
+  id           String   @id @default(cuid())
+  date         DateTime // fecha del movimiento (contable)
+  type         String // INGRESO | EGRESO | RETIRO | APORTE | TRASLADO
+  categoryId   String?
+  categoryName String   @default("") // snapshot legible por si se elimina la categoría
+  amount       Int // monto en RD$ (siempre positivo; el signo lo da el type)
+  method       String   @default("EFECTIVO") // EFECTIVO | TRANSFERENCIA | TARJETA | OTRO
+  branchId     String
+  ncf          String? // NCF si el gasto lleva comprobante (para el 606)
+  supplierRnc  String? // RNC del proveedor (606)
+  concept      String   @default("")
+  notes        String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  category LedgerCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([branchId, date])
+  @@index([categoryId])
+}
+
+// Cierre contable de un mes (por sucursal o consolidado). Congela el período:
+// bloquea crear/editar movimientos manuales con fecha dentro del mes cerrado.
+model AccountingPeriod {
+  id            String   @id @default(cuid())
+  period        String // YYYY-MM
+  branchId      String? // null = consolidado (todas las sucursales)
+  status        String   @default("CERRADO") // CERRADO
+  totalIngresos Int      @default(0)
+  totalEgresos  Int      @default(0)
+  utilidad      Int      @default(0)
+  closedById    String?
+  closedAt      DateTime @default(now())
+  note          String?
+
+  // La unicidad real (period + branchId con null=ALL) se aplica con un índice
+  // único por expresión creado en la migración manual 042.
 }
 
 // Área del cuerpo dentro de un combo. Un combo cubre 2 áreas y sus sesiones se
