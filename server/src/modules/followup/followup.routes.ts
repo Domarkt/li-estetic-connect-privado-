@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope } from '../../middleware/auth.js';
+import { cached, cacheKey } from '../../utils/cache.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
 import { sendCampaignEmail } from '../mail/mail.service.js';
@@ -98,8 +99,11 @@ async function buckets(scopeBranchId: string | null) {
 
 /** Reporte de seguimiento/actividad del paciente (admin/recepción/esteticista). */
 followupRouter.get('/', requireStaff, requireRole('ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA'), branchScope, async (req, res) => {
-  const data = await buckets(req.scopeBranchId ?? null);
-  res.json(req.staff!.role === 'COORDINADOR' ? { ...data, porCobrar: [] } : data);
+  const payload = await cached(cacheKey('fup:list', req), 60_000, async () => {
+    const data = await buckets(req.scopeBranchId ?? null);
+    return req.staff!.role === 'COORDINADOR' ? { ...data, porCobrar: [] } : data;
+  });
+  res.json(payload);
 });
 
 /** Envío masivo por correo a un grupo (solo Administradora). Manual y controlado. */

@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
 import { notFound, errorHandler } from './middleware/error.js';
+import { invalidateOnWrite } from './utils/cache.js';
 import { auditRouter } from './modules/audit/audit.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { branchesRouter } from './modules/branches/branches.routes.js';
@@ -80,11 +81,11 @@ export function createApp() {
   app.use('/api/audit', auditRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/catalog', requireStaff, denyCoordinator, catalogRouter);
-  app.use('/api/patients', requireStaff, requireModule('pacientes'), patientsRouter);
-  app.use('/api/appointments', requireStaff, requireModule('agenda'), appointmentsRouter);
+  app.use('/api/patients', requireStaff, requireModule('pacientes'), invalidateOnWrite('pat:', 'inv:', 'appt:', 'fup:'), patientsRouter);
+  app.use('/api/appointments', requireStaff, requireModule('agenda'), invalidateOnWrite('appt:', 'inv:', 'pat:', 'fup:'), appointmentsRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api/invoices', requireStaff, denyCoordinator, invoicesRouter);
+  app.use('/api/invoices', requireStaff, denyCoordinator, invalidateOnWrite('inv:', 'pat:', 'appt:', 'fup:'), invoicesRouter);
   app.use('/api/messaging', requireStaff, requireModule('mensajes'), messagingRouter);
   app.use('/api/pipeline', pipelineRouter);
   app.use('/api/points', requireStaff, denyCoordinator, pointsRouter);
@@ -99,8 +100,8 @@ export function createApp() {
   app.use('/api/assets', requireStaff, requireModule('equipos'), assetsRouter);
   app.use('/api/team-chat', requireStaff, requireModule('chat'), teamRouter);
   app.use('/api/maintenance', maintenanceRouter);
-  app.use('/api/purchases', requireStaff, denyCoordinator, purchasesRouter);
-  app.use('/api/followup', requireStaff, requireModule('contactar'), followupRouter);
+  app.use('/api/purchases', requireStaff, denyCoordinator, invalidateOnWrite('pur:'), purchasesRouter);
+  app.use('/api/followup', requireStaff, requireModule('contactar'), invalidateOnWrite('fup:', 'pat:'), followupRouter);
 
   // Fases siguientes montan aquí sus routers:
   // app.use('/api/invoices', invoicesRouter);   // Fase 4

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
+import { cached, cacheKey } from '../../utils/cache.js';
 import { serializePatient, patientInclude, patientListInclude, syncPatientType, ageFromBirth } from './patients.service.js';
 import { decryptClinical, encryptClinicalWrite, decryptPatientPII, encryptPatientWrite } from './patients.crypto.js';
 import { decrypt } from '../../utils/crypto.js';
@@ -19,19 +20,22 @@ export const patientsRouter = Router();
 /** Lista de pacientes (aislada por sucursal; búsqueda por nombre/teléfono). */
 patientsRouter.get('/', requireStaff, branchScope, async (req, res) => {
   const q = (req.query.q as string | undefined)?.trim();
-  const where = {
-    ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
-    ...(q
-      ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }] }
-      : {}),
-  };
-  const patients = await prisma.patient.findMany({
-    where,
-    include: patientListInclude,
-    orderBy: { createdAt: 'desc' },
-    take: 500, // tope de seguridad: la búsqueda filtra; evita traer miles de golpe
+  const payload = await cached(cacheKey('pat:list', req, { q: q ?? '' }), 45_000, async () => {
+    const where = {
+      ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
+      ...(q
+        ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }] }
+        : {}),
+    };
+    const patients = await prisma.patient.findMany({
+      where,
+      include: patientListInclude,
+      orderBy: { createdAt: 'desc' },
+      take: 500, // tope de seguridad: la búsqueda filtra; evita traer miles de golpe
+    });
+    return patients.map(serializePatient);
   });
-  res.json(patients.map(serializePatient));
+  res.json(payload);
 });
 
 /** Detalle de un paciente (drawer). */

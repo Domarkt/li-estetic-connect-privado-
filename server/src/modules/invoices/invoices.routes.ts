@@ -10,6 +10,7 @@ import { decrementSoldProducts } from '../inventory/inventory.service.js';
 import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, sendReceipt } from '../mail/mail.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
+import { cached, cacheKey } from '../../utils/cache.js';
 import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { createTreatmentFromCatalog } from '../patients/areas.service.js';
@@ -38,35 +39,38 @@ function buildLineDetail(item: { kind: string; sessions: number; incluye?: { qty
 invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
   // Navegación por fecha: ?date=YYYY-MM-DD (por defecto, hoy).
   const dateStr = (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
-  const start = new Date(dateStr + 'T00:00:00');
-  const end = new Date(start); end.setDate(end.getDate() + 1);
-  const isToday = dateStr === new Date().toISOString().slice(0, 10);
+  const payload = await cached(cacheKey('inv:list', req, { date: dateStr }), 45_000, async () => {
+    const start = new Date(dateStr + 'T00:00:00');
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    const isToday = dateStr === new Date().toISOString().slice(0, 10);
 
-  const baseWhere = req.scopeBranchId ? { branchId: req.scopeBranchId } : {};
-  const invoices = await prisma.invoice.findMany({
-    where: { ...baseWhere, issuedAt: { gte: start, lt: end } },
-    include: invoiceInclude, orderBy: { issuedAt: 'desc' },
+    const baseWhere = req.scopeBranchId ? { branchId: req.scopeBranchId } : {};
+    const invoices = await prisma.invoice.findMany({
+      where: { ...baseWhere, issuedAt: { gte: start, lt: end } },
+      include: invoiceInclude, orderBy: { issuedAt: 'desc' },
+    });
+
+    const paid = invoices.filter((i) => i.status === 'PAGADA');
+    const total = paid.reduce((s, i) => s + i.total, 0);
+    const cash = paid.reduce((s, i) => {
+      const pays = (i.payments ?? null) as { method: string; amount: number }[] | null;
+      if (Array.isArray(pays) && pays.length) return s + pays.filter((p) => p.method === 'EFECTIVO').reduce((a, p) => a + p.amount, 0);
+      return s + (i.method === 'EFECTIVO' ? i.total : 0);
+    }, 0);
+    const suf = isToday ? 'hoy' : 'del día';
+
+    return {
+      date: dateStr,
+      stats: [
+        { label: `Cobrado ${suf}`, value: total },
+        { label: `Recibos ${suf}`, value: paid.length },
+        { label: `Efectivo ${suf}`, value: cash },
+        { label: 'Otros métodos', value: total - cash },
+      ],
+      invoices: invoices.map(serializeInvoiceRow),
+    };
   });
-
-  const paid = invoices.filter((i) => i.status === 'PAGADA');
-  const total = paid.reduce((s, i) => s + i.total, 0);
-  const cash = paid.reduce((s, i) => {
-    const pays = (i.payments ?? null) as { method: string; amount: number }[] | null;
-    if (Array.isArray(pays) && pays.length) return s + pays.filter((p) => p.method === 'EFECTIVO').reduce((a, p) => a + p.amount, 0);
-    return s + (i.method === 'EFECTIVO' ? i.total : 0);
-  }, 0);
-  const suf = isToday ? 'hoy' : 'del día';
-
-  res.json({
-    date: dateStr,
-    stats: [
-      { label: `Cobrado ${suf}`, value: total },
-      { label: `Recibos ${suf}`, value: paid.length },
-      { label: `Efectivo ${suf}`, value: cash },
-      { label: 'Otros métodos', value: total - cash },
-    ],
-    invoices: invoices.map(serializeInvoiceRow),
-  });
+  res.json(payload);
 });
 
 /**
@@ -76,6 +80,7 @@ invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, asyn
  * invitar a la clienta a saldar. Aislado por sucursal.
  */
 invoicesRouter.get('/receivables', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  const payload = await cached(cacheKey('inv:recv', req), 60_000, async () => {
   const branchId = req.scopeBranchId ?? null;
   const [treatments, charges] = await Promise.all([
     prisma.treatment.findMany({
@@ -111,11 +116,14 @@ invoicesRouter.get('/receivables', requireStaff, requireRole(...billers), branch
     })),
   ].sort((a, b) => b.at.localeCompare(a.at)); // más recientes primero
 
-  res.json({ rows, total: rows.reduce((s, r) => s + r.monto, 0), count: rows.length });
+    return { rows, total: rows.reduce((s, r) => s + r.monto, 0), count: rows.length };
+  });
+  res.json(payload);
 });
 
 /** Pacientes para el listado del cobro (con plan, saldo y cargos pendientes). */
 invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  const payload = await cached(cacheKey('inv:pat', req), 45_000, async () => {
   const patients = await prisma.patient.findMany({
     where: req.scopeBranchId ? { branchId: req.scopeBranchId } : {},
     include: {
@@ -142,7 +150,7 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
     : [];
   const porId = new Map(itemsAgendados.map((i) => [i.id, i]));
 
-  res.json(
+  return (
     patients.map((p) => {
       const cita = p.appointments[0];
       const itemCita = cita?.catalogItemId ? porId.get(cita.catalogItemId) : undefined;
@@ -191,8 +199,10 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
           fecha: cita.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short' }),
         } : null,
       };
-    }),
+    })
   );
+  });
+  res.json(payload);
 });
 
 const pendingChargeUpdateSchema = z.object({

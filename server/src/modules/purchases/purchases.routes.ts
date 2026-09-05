@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
+import { cached, cacheKey } from '../../utils/cache.js';
 
 export const purchasesRouter = Router();
 
@@ -15,31 +16,34 @@ const GESTORES = ['ADMIN', 'RECEPCIONISTA'] as const;
  */
 purchasesRouter.get('/', requireStaff, requireRole(...GESTORES), branchScope, async (req, res) => {
   const month = (req.query.month as string | undefined) ?? new Date().toISOString().slice(0, 7);
-  const desde = new Date(`${month}-01T00:00:00`);
-  const hasta = new Date(desde); hasta.setMonth(hasta.getMonth() + 1);
+  const payload = await cached(cacheKey('pur:list', req, { month }), 60_000, async () => {
+    const desde = new Date(`${month}-01T00:00:00`);
+    const hasta = new Date(desde); hasta.setMonth(hasta.getMonth() + 1);
 
-  const where: Record<string, unknown> = { purchasedAt: { gte: desde, lt: hasta } };
-  if (req.scopeBranchId) where.branchId = req.scopeBranchId;
+    const where: Record<string, unknown> = { purchasedAt: { gte: desde, lt: hasta } };
+    if (req.scopeBranchId) where.branchId = req.scopeBranchId;
 
-  const [rows, branches] = await Promise.all([
-    prisma.purchase.findMany({ where, orderBy: { purchasedAt: 'desc' } }),
-    req.staff!.role === 'ADMIN' ? prisma.branch.findMany({ orderBy: { code: 'asc' }, select: { id: true, name: true } }) : Promise.resolve([]),
-  ]);
-  const nombres = new Map((await prisma.branch.findMany({ select: { id: true, name: true } })).map((b) => [b.id, b.name]));
+    const [rows, branches] = await Promise.all([
+      prisma.purchase.findMany({ where, orderBy: { purchasedAt: 'desc' } }),
+      req.staff!.role === 'ADMIN' ? prisma.branch.findMany({ orderBy: { code: 'asc' }, select: { id: true, name: true } }) : Promise.resolve([]),
+    ]);
+    const nombres = new Map((await prisma.branch.findMany({ select: { id: true, name: true } })).map((b) => [b.id, b.name]));
 
-  const total = rows.reduce((s, r) => s + r.amount, 0);
-  res.json({
-    month, total,
-    branches,
-    purchases: rows.map((r) => ({
-      id: r.id, branchId: r.branchId, branch: nombres.get(r.branchId) ?? '—',
-      supplier: r.supplier, concept: r.concept, category: r.category,
-      amount: r.amount, ncf: r.ncf,
-      date: r.purchasedAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
-      purchasedAt: r.purchasedAt.toISOString().slice(0, 10),
-      hasInvoice: !!r.invoiceImage, notes: r.notes,
-    })),
+    const total = rows.reduce((s, r) => s + r.amount, 0);
+    return {
+      month, total,
+      branches,
+      purchases: rows.map((r) => ({
+        id: r.id, branchId: r.branchId, branch: nombres.get(r.branchId) ?? '—',
+        supplier: r.supplier, concept: r.concept, category: r.category,
+        amount: r.amount, ncf: r.ncf,
+        date: r.purchasedAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+        purchasedAt: r.purchasedAt.toISOString().slice(0, 10),
+        hasInvoice: !!r.invoiceImage, notes: r.notes,
+      })),
+    };
   });
+  res.json(payload);
 });
 
 /** Imagen de la factura de una compra (base64). */

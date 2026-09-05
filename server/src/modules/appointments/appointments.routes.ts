@@ -10,6 +10,7 @@ import { notify, notifyBranchTherapists } from '../notifications/notifications.s
 import { sendAppointmentConfirmation, sendAppointmentCancelled } from '../mail/mail.service.js';
 import { notifyRole } from '../notifications/notifications.service.js';
 import { audit } from '../audit/audit.service.js';
+import { cached, cacheKey } from '../../utils/cache.js';
 import { encryptPatientWrite } from '../patients/patients.crypto.js';
 import { upsertLead } from '../messaging/leads.service.js';
 import { businessHoursError } from './business-hours.js';
@@ -52,56 +53,62 @@ function exactActiveAppointment(branchId: string, patientId: string, startsAt: D
 
 /** Agenda del día (aislada por sucursal) + contadores. */
 appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
-  const { start, end } = dayRange(req.query.date as string | undefined);
-  const where = {
-    startsAt: { gte: start, lt: end },
-    ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
-    // La esteticista solo ve SUS citas asignadas
-    ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
-  };
-  const appts = await prisma.appointment.findMany({ where, include: apptInclude, orderBy: { startsAt: 'asc' } });
-  // La duración del servicio solo la ve el administrador (no la esteticista).
-  const includeDuration = req.staff!.role === 'ADMIN';
-  const rows = appts.map((a) => serializeAppt(a, { includeDuration }));
-  res.json({
-    appointments: rows,
-    counters: {
-      total: rows.length,
-      confirmed: rows.filter((a) => a.status === 'CONFIRMADA').length,
-      pending: rows.filter((a) => a.status === 'SIN_CONFIRMAR').length,
-    },
+  const payload = await cached(cacheKey('appt:list', req, { date: (req.query.date as string) ?? '' }), 45_000, async () => {
+    const { start, end } = dayRange(req.query.date as string | undefined);
+    const where = {
+      startsAt: { gte: start, lt: end },
+      ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
+      // La esteticista solo ve SUS citas asignadas
+      ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
+    };
+    const appts = await prisma.appointment.findMany({ where, include: apptInclude, orderBy: { startsAt: 'asc' } });
+    // La duración del servicio solo la ve el administrador (no la esteticista).
+    const includeDuration = req.staff!.role === 'ADMIN';
+    const rows = appts.map((a) => serializeAppt(a, { includeDuration }));
+    return {
+      appointments: rows,
+      counters: {
+        total: rows.length,
+        confirmed: rows.filter((a) => a.status === 'CONFIRMADA').length,
+        pending: rows.filter((a) => a.status === 'SIN_CONFIRMAR').length,
+      },
+    };
   });
+  res.json(payload);
 });
 
 /** Resumen mensual para la vista de calendario (citas por día). */
 appointmentsRouter.get('/calendar', requireStaff, branchScope, async (req, res) => {
   const monthStr = (req.query.month as string | undefined) ?? new Date().toISOString().slice(0, 7); // YYYY-MM
-  const [y, m] = monthStr.split('-').map(Number);
-  const start = new Date(y, m - 1, 1);
-  const end = new Date(y, m, 1);
+  const payload = await cached(cacheKey('appt:cal', req, { month: monthStr }), 60_000, async () => {
+    const [y, m] = monthStr.split('-').map(Number);
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 1);
 
-  const where = {
-    startsAt: { gte: start, lt: end },
-    ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
-    ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
-  };
-  const appts = await prisma.appointment.findMany({
-    where, include: apptInclude, orderBy: { startsAt: 'asc' },
-  });
-
-  const days: Record<string, { count: number; confirmed: number; pending: number; items: { time: string; patient: string; service: string; status: string }[] }> = {};
-  for (const a of appts) {
-    const key = a.startsAt.toISOString().slice(0, 10);
-    if (!days[key]) days[key] = { count: 0, confirmed: 0, pending: 0, items: [] };
-    days[key].count++;
-    if (a.status === 'CONFIRMADA') days[key].confirmed++;
-    if (a.status === 'SIN_CONFIRMAR') days[key].pending++;
-    days[key].items.push({
-      time: a.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
-      patient: a.patient.name, service: a.serviceName, status: a.status,
+    const where = {
+      startsAt: { gte: start, lt: end },
+      ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
+      ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
+    };
+    const appts = await prisma.appointment.findMany({
+      where, include: apptInclude, orderBy: { startsAt: 'asc' },
     });
-  }
-  res.json({ month: monthStr, days });
+
+    const days: Record<string, { count: number; confirmed: number; pending: number; items: { time: string; patient: string; service: string; status: string }[] }> = {};
+    for (const a of appts) {
+      const key = a.startsAt.toISOString().slice(0, 10);
+      if (!days[key]) days[key] = { count: 0, confirmed: 0, pending: 0, items: [] };
+      days[key].count++;
+      if (a.status === 'CONFIRMADA') days[key].confirmed++;
+      if (a.status === 'SIN_CONFIRMAR') days[key].pending++;
+      days[key].items.push({
+        time: a.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
+        patient: a.patient.name, service: a.serviceName, status: a.status,
+      });
+    }
+    return { month: monthStr, days };
+  });
+  res.json(payload);
 });
 
 const createSchema = z.object({
