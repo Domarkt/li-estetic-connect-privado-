@@ -88,13 +88,30 @@ export const invoiceInclude = {
   items: true,
 } satisfies Prisma.InvoiceInclude;
 
-function paymentLines(i: Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>) {
+/**
+ * Include LITE para la LISTA de facturas del día (polleada): sin líneas (items) ni el
+ * paciente completo — la fila solo necesita el nombre y la sucursal. Baja el egress.
+ */
+export const invoiceListInclude = {
+  branch: { select: { name: true } },
+  patient: { select: { name: true } },
+} satisfies Prisma.InvoiceInclude;
+
+/** Forma mínima que necesitan las filas del listado (la cumplen ambos includes). */
+type InvoiceRowShape = {
+  id: string; number: string; issuedAt: Date; concept: string; total: number;
+  discount: number; discountReason: string | null; status: string;
+  method: PaymentMethod; payments: Prisma.JsonValue | null;
+  patient: { name: string } | null; branch: { name: string };
+};
+
+function paymentLines(i: InvoiceRowShape) {
   const raw = (i.payments ?? null) as { method: keyof typeof METHOD_LABEL; amount: number }[] | null;
   if (!raw || raw.length === 0) return [{ method: METHOD_LABEL[i.method], amount: i.total }];
   return raw.map((p) => ({ method: METHOD_LABEL[p.method], amount: p.amount }));
 }
 
-export function serializeInvoiceRow(i: Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>) {
+export function serializeInvoiceRow(i: InvoiceRowShape) {
   const lines = paymentLines(i);
   return {
     id: i.id,

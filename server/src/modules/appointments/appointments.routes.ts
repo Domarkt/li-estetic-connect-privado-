@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
-import { serializeAppt, apptInclude, dayRange, genApptCode, hasUsableTreatment, resolveAppointmentTreatmentId } from './appointments.service.js';
+import { serializeAppt, apptInclude, apptListInclude, dayRange, genApptCode, hasUsableTreatment, resolveAppointmentTreatmentId } from './appointments.service.js';
 import { pushEvent } from '../calendar/calendar.service.js';
 import { sendWhatsAppText, normalizePhone } from '../messaging/whatsapp.service.js';
 import { tratoFormal, sucursalLabel } from '../../utils/trato.js';
@@ -61,7 +61,7 @@ appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
       // La esteticista solo ve SUS citas asignadas
       ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
     };
-    const appts = await prisma.appointment.findMany({ where, include: apptInclude, orderBy: { startsAt: 'asc' } });
+    const appts = await prisma.appointment.findMany({ where, include: apptListInclude, orderBy: { startsAt: 'asc' } });
     // La duración del servicio solo la ve el administrador (no la esteticista).
     const includeDuration = req.staff!.role === 'ADMIN';
     const rows = appts.map((a) => serializeAppt(a, { includeDuration }));
@@ -91,7 +91,7 @@ appointmentsRouter.get('/calendar', requireStaff, branchScope, async (req, res) 
       ...(req.staff!.role === 'ESTETICISTA' ? { therapistId: req.staff!.sub } : {}),
     };
     const appts = await prisma.appointment.findMany({
-      where, include: apptInclude, orderBy: { startsAt: 'asc' },
+      where, include: apptListInclude, orderBy: { startsAt: 'asc' },
     });
 
     const days: Record<string, { count: number; confirmed: number; pending: number; items: { time: string; patient: string; service: string; status: string }[] }> = {};

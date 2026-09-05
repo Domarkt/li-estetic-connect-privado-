@@ -23,11 +23,18 @@ purchasesRouter.get('/', requireStaff, requireRole(...GESTORES), branchScope, as
     const where: Record<string, unknown> = { purchasedAt: { gte: desde, lt: hasta } };
     if (req.scopeBranchId) where.branchId = req.scopeBranchId;
 
-    const [rows, branches] = await Promise.all([
-      prisma.purchase.findMany({ where, orderBy: { purchasedAt: 'desc' } }),
+    // No traemos invoiceImage (base64 pesado): solo los ids que SÍ tienen factura,
+    // para marcar hasInvoice. Antes la lista arrastraba todas las imágenes → egress alto.
+    const [rows, conFactura, branches] = await Promise.all([
+      prisma.purchase.findMany({
+        where, orderBy: { purchasedAt: 'desc' },
+        select: { id: true, branchId: true, supplier: true, concept: true, category: true, amount: true, ncf: true, purchasedAt: true, notes: true },
+      }),
+      prisma.purchase.findMany({ where: { ...where, invoiceImage: { not: null } }, select: { id: true } }),
       req.staff!.role === 'ADMIN' ? prisma.branch.findMany({ orderBy: { code: 'asc' }, select: { id: true, name: true } }) : Promise.resolve([]),
     ]);
     const nombres = new Map((await prisma.branch.findMany({ select: { id: true, name: true } })).map((b) => [b.id, b.name]));
+    const conImg = new Set(conFactura.map((p) => p.id));
 
     const total = rows.reduce((s, r) => s + r.amount, 0);
     return {
@@ -39,7 +46,7 @@ purchasesRouter.get('/', requireStaff, requireRole(...GESTORES), branchScope, as
         amount: r.amount, ncf: r.ncf,
         date: r.purchasedAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
         purchasedAt: r.purchasedAt.toISOString().slice(0, 10),
-        hasInvoice: !!r.invoiceImage, notes: r.notes,
+        hasInvoice: conImg.has(r.id), notes: r.notes,
       })),
     };
   });

@@ -1,4 +1,4 @@
-import type { Prisma, AppointmentStatus } from '@prisma/client';
+import type { Prisma, AppointmentStatus, PatientType } from '@prisma/client';
 
 const STATUS_META: Record<AppointmentStatus, { label: string; color: string }> = {
   SIN_CONFIRMAR: { label: 'Sin confirmar', color: '#C9880E' },
@@ -44,6 +44,39 @@ export const apptInclude = {
   branch: true,
 } satisfies Prisma.AppointmentInclude;
 
+/**
+ * Include LITE para las LISTAS de agenda (día/mes) que el frontend sondea. Trae solo lo
+ * que usa serializeAppt: evita la ficha clínica completa (JSON grande), las áreas y los
+ * combos de cada tratamiento. Reduce mucho el egress del pooler en las listas.
+ */
+export const apptListInclude = {
+  patient: {
+    select: {
+      name: true, type: true,
+      clinicalRecord: { select: { status: true } },
+      treatments: { select: { id: true, name: true, active: true, totalSessions: true, doneSessions: true, balance: true } },
+    },
+  },
+  therapist: { select: { name: true } },
+  branch: { select: { name: true } },
+} satisfies Prisma.AppointmentInclude;
+
+/** Forma mínima que necesita serializeAppt (la cumplen tanto apptInclude como apptListInclude). */
+type ApptForSerialize = {
+  id: string; status: AppointmentStatus; startsAt: Date; durationMin: number;
+  patientId: string; serviceName: string; therapistId: string | null; branchId: string;
+  reminderSentAt: Date | null; googleEventId: string | null; code: string | null;
+  treatmentId: string | null; codeUsedAt: Date | null; serviceEndedAt: Date | null;
+  serviceDurationSec: number | null; cancelReason: string | null; cancelledBy: string | null;
+  patient: {
+    name: string; type: PatientType;
+    clinicalRecord: { status: string } | null;
+    treatments: Array<{ id: string; name: string; active: boolean; totalSessions: number; doneSessions: number; balance: number }>;
+  };
+  therapist: { name: string } | null;
+  branch: { name: string };
+};
+
 function durationLabel(sec: number): string {
   const m = Math.floor(sec / 60);
   const h = Math.floor(m / 60);
@@ -51,7 +84,7 @@ function durationLabel(sec: number): string {
 }
 
 export function serializeAppt(
-  a: Prisma.AppointmentGetPayload<{ include: typeof apptInclude }>,
+  a: ApptForSerialize,
   opts?: { includeDuration?: boolean },
 ) {
   const meta = STATUS_META[a.status];

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import {
-  allocateSequence, splitItbis, invoiceInclude, serializeInvoiceRow, serializeReceipt, rncValido, formatRnc,
+  allocateSequence, splitItbis, invoiceInclude, invoiceListInclude, serializeInvoiceRow, serializeReceipt, rncValido, formatRnc,
 } from './invoices.service.js';
 import { awardSalePoints } from '../points/points.automation.js';
 import { decrementSoldProducts } from '../inventory/inventory.service.js';
@@ -47,7 +47,7 @@ invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, asyn
     const baseWhere = req.scopeBranchId ? { branchId: req.scopeBranchId } : {};
     const invoices = await prisma.invoice.findMany({
       where: { ...baseWhere, issuedAt: { gte: start, lt: end } },
-      include: invoiceInclude, orderBy: { issuedAt: 'desc' },
+      include: invoiceListInclude, orderBy: { issuedAt: 'desc' },
     });
 
     const paid = invoices.filter((i) => i.status === 'PAGADA');
