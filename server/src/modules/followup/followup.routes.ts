@@ -99,7 +99,7 @@ async function buckets(scopeBranchId: string | null) {
 
 /** Reporte de seguimiento/actividad del paciente (admin/recepción/esteticista). */
 followupRouter.get('/', requireStaff, requireRole('ADMIN', 'COORDINADOR', 'RECEPCIONISTA', 'ESTETICISTA'), branchScope, async (req, res) => {
-  const payload = await cached(cacheKey('fup:list', req), 60_000, async () => {
+  const payload = await cached(cacheKey('fup:list', req), 90_000, async () => {
     const data = await buckets(req.scopeBranchId ?? null);
     return req.staff!.role === 'COORDINADOR' ? { ...data, porCobrar: [] } : data;
   });

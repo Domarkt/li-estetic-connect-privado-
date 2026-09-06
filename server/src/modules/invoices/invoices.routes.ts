@@ -39,7 +39,7 @@ function buildLineDetail(item: { kind: string; sessions: number; incluye?: { qty
 invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
   // Navegación por fecha: ?date=YYYY-MM-DD (por defecto, hoy).
   const dateStr = (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
-  const payload = await cached(cacheKey('inv:list', req, { date: dateStr }), 45_000, async () => {
+  const payload = await cached(cacheKey('inv:list', req, { date: dateStr }), 90_000, async () => {
     const start = new Date(dateStr + 'T00:00:00');
     const end = new Date(start); end.setDate(end.getDate() + 1);
     const isToday = dateStr === new Date().toISOString().slice(0, 10);
@@ -80,7 +80,7 @@ invoicesRouter.get('/', requireStaff, requireRole(...billers), branchScope, asyn
  * invitar a la clienta a saldar. Aislado por sucursal.
  */
 invoicesRouter.get('/receivables', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
-  const payload = await cached(cacheKey('inv:recv', req), 60_000, async () => {
+  const payload = await cached(cacheKey('inv:recv', req), 90_000, async () => {
   const branchId = req.scopeBranchId ?? null;
   const [treatments, charges] = await Promise.all([
     prisma.treatment.findMany({
@@ -123,7 +123,7 @@ invoicesRouter.get('/receivables', requireStaff, requireRole(...billers), branch
 
 /** Pacientes para el listado del cobro (con plan, saldo y cargos pendientes). */
 invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
-  const payload = await cached(cacheKey('inv:pat', req), 45_000, async () => {
+  const payload = await cached(cacheKey('inv:pat', req), 90_000, async () => {
   const patients = await prisma.patient.findMany({
     where: req.scopeBranchId ? { branchId: req.scopeBranchId } : {},
     include: {

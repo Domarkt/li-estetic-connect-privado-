@@ -53,7 +53,7 @@ function exactActiveAppointment(branchId: string, patientId: string, startsAt: D
 
 /** Agenda del día (aislada por sucursal) + contadores. */
 appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
-  const payload = await cached(cacheKey('appt:list', req, { date: (req.query.date as string) ?? '' }), 45_000, async () => {
+  const payload = await cached(cacheKey('appt:list', req, { date: (req.query.date as string) ?? '' }), 90_000, async () => {
     const { start, end } = dayRange(req.query.date as string | undefined);
     const where = {
       startsAt: { gte: start, lt: end },
@@ -80,7 +80,7 @@ appointmentsRouter.get('/', requireStaff, branchScope, async (req, res) => {
 /** Resumen mensual para la vista de calendario (citas por día). */
 appointmentsRouter.get('/calendar', requireStaff, branchScope, async (req, res) => {
   const monthStr = (req.query.month as string | undefined) ?? new Date().toISOString().slice(0, 7); // YYYY-MM
-  const payload = await cached(cacheKey('appt:cal', req, { month: monthStr }), 60_000, async () => {
+  const payload = await cached(cacheKey('appt:cal', req, { month: monthStr }), 90_000, async () => {
     const [y, m] = monthStr.split('-').map(Number);
     const start = new Date(y, m - 1, 1);
     const end = new Date(y, m, 1);

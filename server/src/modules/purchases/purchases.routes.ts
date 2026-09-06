@@ -16,7 +16,7 @@ const GESTORES = ['ADMIN', 'RECEPCIONISTA'] as const;
  */
 purchasesRouter.get('/', requireStaff, requireRole(...GESTORES), branchScope, async (req, res) => {
   const month = (req.query.month as string | undefined) ?? new Date().toISOString().slice(0, 7);
-  const payload = await cached(cacheKey('pur:list', req, { month }), 60_000, async () => {
+  const payload = await cached(cacheKey('pur:list', req, { month }), 90_000, async () => {
     const desde = new Date(`${month}-01T00:00:00`);
     const hasta = new Date(desde); hasta.setMonth(hasta.getMonth() + 1);
 
@@ -59,6 +59,7 @@ purchasesRouter.get('/:id/invoice', requireStaff, requireRole(...GESTORES), asyn
   if (!p) return res.status(404).json({ error: 'Compra no encontrada' });
   if (!assertBranchAccess(req, p.branchId)) return res.status(403).json({ error: 'Compra de otra sucursal' });
   if (!p.invoiceImage) return res.status(404).json({ error: 'Esta compra no tiene factura anexa' });
+  res.setHeader('Cache-Control', 'private, max-age=86400'); // la imagen no cambia: cachea 1 día
   res.json({ invoiceImage: p.invoiceImage });
 });
 

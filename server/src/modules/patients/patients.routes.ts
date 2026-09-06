@@ -20,7 +20,7 @@ export const patientsRouter = Router();
 /** Lista de pacientes (aislada por sucursal; búsqueda por nombre/teléfono). */
 patientsRouter.get('/', requireStaff, branchScope, async (req, res) => {
   const q = (req.query.q as string | undefined)?.trim();
-  const payload = await cached(cacheKey('pat:list', req, { q: q ?? '' }), 45_000, async () => {
+  const payload = await cached(cacheKey('pat:list', req, { q: q ?? '' }), 90_000, async () => {
     const where = {
       ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}),
       ...(q

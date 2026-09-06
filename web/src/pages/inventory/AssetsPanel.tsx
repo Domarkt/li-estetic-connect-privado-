@@ -14,8 +14,28 @@ type Kind = 'EQUIPO' | 'SUMINISTRO';
 interface Asset {
   id: string; code: string; kind: Kind; name: string; category: string | null;
   status: string; statusLabel: string; serial: string | null; notes: string | null;
-  imageUrl: string | null;
+  hasImage: boolean; // la foto ya no viaja en la lista: se pide aparte (ahorra egress)
   branch: string; branchId: string; assignedTo: { id: string; name: string } | null;
+}
+
+// La foto (data URI pesado) se descarga bajo demanda y se cachea en memoria, para no
+// arrastrarla en cada lectura de la lista (que además se recarga al navegar).
+const assetImgCache = new Map<string, string>();
+async function fetchAssetImage(id: string): Promise<string | null> {
+  const hit = assetImgCache.get(id);
+  if (hit) return hit;
+  try { const r = await api.get<{ imageUrl: string }>(`/assets/${id}/image`); assetImgCache.set(id, r.imageUrl); return r.imageUrl; }
+  catch { return null; }
+}
+function AssetImage({ id, name }: { id: string; name: string }) {
+  const [src, setSrc] = useState<string | null>(() => assetImgCache.get(id) ?? null);
+  useEffect(() => {
+    if (src) return; let vivo = true;
+    fetchAssetImage(id).then((u) => { if (vivo && u) setSrc(u); });
+    return () => { vivo = false; };
+  }, [id, src]);
+  if (!src) return <div className="mb-3 flex h-32 w-full items-center justify-center rounded-[10px] border border-line bg-bg text-[22px] text-faint">📷</div>;
+  return <img src={src} alt={name} className="mb-3 h-32 w-full rounded-[10px] border border-line object-cover" />;
 }
 interface UserLite { id: string; name: string; role: string; branchId: string | null }
 interface AssetResp { assets: Asset[]; users: UserLite[]; branches: { id: string; name: string }[] }
@@ -75,7 +95,7 @@ export default function AssetsPanel({ kind, canManage, branchQ, mine }: { kind: 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {assets.map((a) => (
           <div key={a.id} className="rounded-base border border-line bg-card p-4 shadow-card">
-            {a.imageUrl && <img src={a.imageUrl} alt={a.name} className="mb-3 h-32 w-full rounded-[10px] border border-line object-cover" />}
+            {a.hasImage && <AssetImage id={a.id} name={a.name} />}
             <div className="mb-2 flex items-start justify-between gap-2">
               <div>
                 <div className="text-[11px] font-bold text-faint">{a.code}</div>
@@ -129,8 +149,13 @@ function AssetModal({ kind, asset, users, branches, defaultBranchId, onClose, on
   const [serial, setSerial] = useState(asset?.serial ?? '');
   const [notes, setNotes] = useState(asset?.notes ?? '');
   const [status, setStatus] = useState(asset?.status ?? 'OPERATIVO');
-  const [imageUrl, setImageUrl] = useState<string | null>(asset?.imageUrl ?? null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Al editar, la foto actual no viene en la lista: se carga bajo demanda para verla.
+  useEffect(() => {
+    if (asset?.hasImage) fetchAssetImage(asset.id).then((u) => { if (u) setImageUrl(u); });
+  }, [asset]);
 
   // Comprime la foto del equipo a ~900px JPEG para no engordar la base.
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {

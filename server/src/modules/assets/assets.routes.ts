@@ -52,8 +52,15 @@ assetsRouter.get('/', requireStaff, branchScope, async (req, res) => {
   if (mine) where.assignedToId = req.staff!.sub;
 
   const [assets, users, branches] = await Promise.all([
+    // NO traemos imageUrl (data URI pesado): solo si hay foto (hasImage). La imagen
+    // se pide aparte a /:id/image y se cachea, para no arrastrarla en cada lectura.
     prisma.asset.findMany({
-      where, include: { assignedTo: { select: { id: true, name: true } }, branch: { select: { name: true } } },
+      where,
+      select: {
+        id: true, code: true, kind: true, name: true, category: true, status: true,
+        serial: true, notes: true, imageUrl: true, branchId: true,
+        assignedTo: { select: { id: true, name: true } }, branch: { select: { name: true } },
+      },
       orderBy: [{ kind: 'asc' }, { name: 'asc' }],
     }),
     req.staff!.role === 'ADMIN' ? prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true, branchId: true } }) : Promise.resolve([]),
@@ -64,12 +71,21 @@ assetsRouter.get('/', requireStaff, branchScope, async (req, res) => {
     assets: assets.map((a) => ({
       id: a.id, code: a.code, kind: a.kind, name: a.name, category: a.category,
       status: a.status, statusLabel: STATUS_LABEL[a.status] ?? a.status,
-      serial: a.serial, notes: a.notes, imageUrl: a.imageUrl,
+      serial: a.serial, notes: a.notes, hasImage: !!a.imageUrl,
       branch: a.branch.name, branchId: a.branchId,
       assignedTo: a.assignedTo ? { id: a.assignedTo.id, name: a.assignedTo.name } : null,
     })),
     users, branches,
   });
+});
+
+/** Foto de un activo (data URI), BAJO DEMANDA y cacheada en el navegador. */
+assetsRouter.get('/:id/image', requireStaff, async (req, res) => {
+  const a = await prisma.asset.findUnique({ where: { id: req.params.id }, select: { branchId: true, imageUrl: true } });
+  if (!a || !a.imageUrl) return res.status(404).json({ error: 'Este activo no tiene foto' });
+  if (!assertBranchAccess(req, a.branchId)) return res.status(403).json({ error: 'Activo de otra sucursal' });
+  res.setHeader('Cache-Control', 'private, max-age=86400'); // 1 día; la foto casi nunca cambia
+  res.json({ imageUrl: a.imageUrl });
 });
 
 const createSchema = z.object({

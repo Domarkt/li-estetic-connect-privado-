@@ -54,7 +54,17 @@ teamRouter.get('/threads/:branchId/messages', requireStaff, async (req, res) => 
 
   // El personal ve mensajes dirigidos a él (ALL o su rol) y los que él mismo envió; el admin ve todo.
   const roleFilter = req.staff!.role === 'ADMIN' || req.staff!.role === 'COORDINADOR' ? {} : { OR: [{ targetRole: { in: ['ALL', req.staff!.role] } }, { senderId: req.staff!.sub }] };
-  const messages = await prisma.teamMessage.findMany({ where: { branchId, ...roleFilter }, orderBy: { createdAt: 'asc' }, take: 200 });
+  // IMPORTANTE (egress): NO traemos attachmentData (base64, hasta 14 MB c/u). La lista
+  // se sondea cada pocos segundos; antes re-descargaba TODO el historial de adjuntos en
+  // cada refresco. Ahora solo va la metadata y el adjunto se pide aparte, y se cachea.
+  const messages = await prisma.teamMessage.findMany({
+    where: { branchId, ...roleFilter }, orderBy: { createdAt: 'asc' }, take: 200,
+    select: {
+      id: true, body: true, senderId: true, senderName: true, senderRole: true, targetRole: true,
+      patientId: true, patientName: true, attachmentName: true, attachmentKind: true, attachmentMime: true,
+      createdAt: true,
+    },
+  });
 
   await prisma.teamThreadRead.upsert({
     where: { userId_branchId: { userId: req.staff!.sub, branchId } },
@@ -70,9 +80,30 @@ teamRouter.get('/threads/:branchId/messages', requireStaff, async (req, res) => 
     target: m.targetRole,
     mine: m.senderId === req.staff!.sub,
     patient: m.patientId ? { id: m.patientId, name: m.patientName ?? 'Paciente' } : null,
-    attachment: m.attachmentData ? { data: m.attachmentData, name: m.attachmentName ?? 'archivo', kind: m.attachmentKind ?? 'file', mime: m.attachmentMime ?? '' } : null,
+    // Solo metadata: el frontend descarga el adjunto una vez desde /messages/:id/attachment.
+    attachment: m.attachmentName ? { id: m.id, name: m.attachmentName, kind: m.attachmentKind ?? 'file', mime: m.attachmentMime ?? '' } : null,
     time: m.createdAt.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
   })));
+});
+
+/**
+ * Adjunto de un mensaje (base64), BAJO DEMANDA. Se cachea de forma agresiva en el
+ * navegador (nunca cambia) para que se descargue UNA sola vez, no en cada sondeo.
+ */
+teamRouter.get('/messages/:id/attachment', requireStaff, async (req, res) => {
+  const m = await prisma.teamMessage.findUnique({
+    where: { id: req.params.id },
+    select: { branchId: true, targetRole: true, senderId: true, attachmentData: true, attachmentName: true, attachmentKind: true, attachmentMime: true },
+  });
+  if (!m || !m.attachmentData) return res.status(404).json({ error: 'Adjunto no encontrado' });
+  const s = req.staff!;
+  if (s.role !== 'ADMIN' && s.role !== 'COORDINADOR') {
+    if (m.branchId !== s.branchId) return res.status(403).json({ error: 'Adjunto de otra sucursal' });
+    if (!(m.targetRole === 'ALL' || m.targetRole === s.role || m.senderId === s.sub)) return res.status(403).json({ error: 'No autorizado' });
+  }
+  // 1 año, inmutable: el adjunto de un mensaje no cambia. `private` = solo el navegador.
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.json({ data: m.attachmentData, name: m.attachmentName ?? 'archivo', kind: m.attachmentKind ?? 'file', mime: m.attachmentMime ?? '' });
 });
 
 // ~10 MB de archivo ≈ 14 MB en base64 (data URL). Límite para no saturar la DB.

@@ -16,8 +16,15 @@ function targetsFor(role?: string): Target[] {
 }
 
 interface Thread { branchId: string; name: string; place: string; dotColor: string; lastMessage: string | null; lastAt: string | null; unread: number }
+// En la lista solo llega la metadata del adjunto (sin el base64). El contenido se
+// pide aparte a /messages/:id/attachment y se cachea (ahorra egress en cada sondeo).
+interface AttachmentMeta { id: string; name: string; kind: 'image' | 'video' | 'file'; mime: string }
 interface Attachment { data: string; name: string; kind: 'image' | 'video' | 'file'; mime: string }
-interface Msg { id: string; body: string; senderName: string; senderRole: string; target: string; mine: boolean; patient: { id: string; name: string } | null; attachment: Attachment | null; time: string }
+interface Msg { id: string; body: string; senderName: string; senderRole: string; target: string; mine: boolean; patient: { id: string; name: string } | null; attachment: AttachmentMeta | null; time: string }
+
+// Caché en memoria de adjuntos ya descargados (por id de mensaje): evita volver a
+// pedirlos en cada refresco de 30s mientras la pestaña está abierta.
+const attachmentCache = new Map<string, Attachment>();
 interface PatientLite { id: string; name: string; phone: string }
 
 const MAX_FILE_MB = 8;
@@ -61,7 +68,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!active) return;
     loadMessages(active);
-    const t = setInterval(() => loadMessages(active), 20000);
+    const t = setInterval(() => loadMessages(active), 30000);
     return () => clearInterval(t);
   }, [active, loadMessages]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -208,15 +215,35 @@ export default function ChatPage() {
   );
 }
 
-function AttachmentView({ att, mine }: { att: Attachment; mine: boolean }) {
+function AttachmentView({ att, mine }: { att: AttachmentMeta; mine: boolean }) {
+  // Descarga el contenido una sola vez (cache en memoria + del navegador).
+  const [data, setData] = useState<string | null>(() => attachmentCache.get(att.id)?.data ?? null);
+  useEffect(() => {
+    if (data) return;
+    let vivo = true;
+    api.get<Attachment>(`/team-chat/messages/${att.id}/attachment`)
+      .then((r) => { attachmentCache.set(att.id, r); if (vivo) setData(r.data); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [att.id, data]);
+
+  if (!data) {
+    return (
+      <div className={`flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12px] font-semibold ${mine ? 'bg-white/20 text-white' : 'bg-bg text-muted'}`}>
+        <span>{att.kind === 'image' ? '📷' : att.kind === 'video' ? '🎬' : '📎'}</span>
+        <span className="truncate">{att.name}</span>
+        <span className={mine ? 'text-white/70' : 'text-faint'}>· cargando…</span>
+      </div>
+    );
+  }
   if (att.kind === 'image') {
-    return <a href={att.data} target="_blank" rel="noopener noreferrer"><img src={att.data} alt={att.name} className="max-h-[240px] max-w-full rounded-[10px]" /></a>;
+    return <a href={data} target="_blank" rel="noopener noreferrer"><img src={data} alt={att.name} className="max-h-[240px] max-w-full rounded-[10px]" /></a>;
   }
   if (att.kind === 'video') {
-    return <video src={att.data} controls className="max-h-[260px] max-w-full rounded-[10px]" />;
+    return <video src={data} controls className="max-h-[260px] max-w-full rounded-[10px]" />;
   }
   return (
-    <a href={att.data} download={att.name}
+    <a href={data} download={att.name}
       className={`flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12.5px] font-bold ${mine ? 'bg-white/20 text-white' : 'bg-bg text-navy'}`}>
       <span className="text-[15px]">📎</span>
       <span className="truncate">{att.name}</span>
