@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, Portal, stop } from '../../components/Modal';
+import FirmaDigital from '../../components/FirmaDigital';
 import { fmtRD, type CatalogItem, type PatientDetail, type PatientPackage } from '../../lib/types';
 
 interface Props {
@@ -33,6 +34,25 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [saldoFor, setSaldoFor] = useState<PatientPackage | null>(null);
   const [sesionesFor, setSesionesFor] = useState<PatientPackage | null>(null); // deshacer sesiones registradas por error
   const [tecnicasFor, setTecnicasFor] = useState<PatientPackage | null>(null); // corregir el conteo por técnica
+  const [waiverFor, setWaiverFor] = useState<PatientPackage | null>(null); // aviso/renuncia de técnica
+  const [sigView, setSigView] = useState<string | null>(null); // firma de un aviso, para verla
+
+  // Recepción y esteticista registran avisos de técnica; admin además anula.
+  const canWaiver = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'].includes(staff?.role ?? '');
+
+  async function verFirma(id: string) {
+    try { const r = await api.get<{ signature: string }>(`/patients/waivers/${id}/signature`); setSigView(r.signature); }
+    catch (e) { toast(e instanceof Error ? e.message : 'No se pudo cargar la firma'); }
+  }
+  async function anularWaiver(id: string) {
+    const reason = window.prompt('Motivo para anular este aviso (ej. el paciente decidió hacérsela):');
+    if (!reason || reason.trim().length < 3) return;
+    try {
+      const r = await api.post<{ message: string }>(`/patients/waivers/${id}/anular`, { reason: reason.trim() });
+      toast(r.message);
+      api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {});
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); }
+  }
 
   useEffect(() => {
     api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => setD(null));
@@ -312,9 +332,14 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                               </div>
                             ))}
                           </div>
-                          {staff?.role === 'ADMIN' && (
-                            <button onClick={() => setTecnicasFor(pk)} className="mt-1.5 text-[11.5px] font-bold text-magenta">Corregir técnicas</button>
-                          )}
+                          <div className="mt-1.5 flex flex-wrap gap-3">
+                            {staff?.role === 'ADMIN' && (
+                              <button onClick={() => setTecnicasFor(pk)} className="text-[11.5px] font-bold text-magenta">Corregir técnicas</button>
+                            )}
+                            {canWaiver && (
+                              <button onClick={() => setWaiverFor(pk)} className="text-[11.5px] font-bold text-magenta">⚠ Aviso de técnica</button>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -343,6 +368,36 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                       {staff?.role === 'ADMIN' && <button type="button" onClick={() => voidPendingCharge(c)} className="rounded-[7px] border border-danger px-2 py-0.5 text-[11px] font-bold text-danger">Anular</button>}
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Avisos / renuncias de técnica: constancia (con firma) de que no quiso
+                  una técnica del combo, para cuando después la reclame. */}
+              {(d.waivers ?? []).length > 0 && (
+                <div className="rounded-[11px] border px-4 py-3" style={{ background: 'var(--warn-soft)', borderColor: '#F0DCA8' }}>
+                  <div className="mb-1.5 text-xs font-bold" style={{ color: '#8A6D3B' }}>Avisos / renuncias de técnica</div>
+                  <div className="flex flex-col gap-2">
+                    {d.waivers!.map((w) => (
+                      <div key={w.id} className="rounded-[9px] border border-line bg-card px-3 py-2 text-[12px]">
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 font-bold" style={{ textDecoration: w.status === 'ANULADA' ? 'line-through' : 'none', color: w.status === 'ANULADA' ? 'var(--faint)' : undefined }}>
+                            {w.technique}
+                          </span>
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: w.kind === 'RENUNCIA_PACIENTE' ? 'var(--danger-soft)' : 'var(--navy-soft)', color: w.kind === 'RENUNCIA_PACIENTE' ? 'var(--danger)' : 'var(--navy)' }}>
+                            {w.kindLabel}
+                          </span>
+                          {w.status === 'ANULADA' && <span className="rounded-full bg-bg px-2 py-0.5 text-[10px] font-bold text-faint">Anulado</span>}
+                        </div>
+                        <div className="mt-1 text-muted">{w.reason}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint">
+                          <span>{w.by}{w.role ? ` · ${w.role}` : ''} · {w.date}</span>
+                          {w.hasSignature && <button onClick={() => verFirma(w.id)} className="font-bold text-magenta">Ver firma</button>}
+                          {staff?.role === 'ADMIN' && w.status === 'ACTIVA' && <button onClick={() => anularWaiver(w.id)} className="font-bold text-danger">Anular</button>}
+                        </div>
+                        {w.status === 'ANULADA' && w.annulReason && <div className="mt-1 text-[11px] text-faint">Anulado: {w.annulReason}</div>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -396,6 +451,18 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
       {tecnicasFor && (
         <TecnicasModal pkg={tecnicasFor} onClose={() => setTecnicasFor(null)}
           onSaved={() => { setTecnicasFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
+      )}
+      {waiverFor && (
+        <WaiverModal pkg={waiverFor} onClose={() => setWaiverFor(null)}
+          onSaved={() => { setWaiverFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
+      )}
+      {sigView && (
+        <Overlay onClose={() => setSigView(null)} z={130}>
+          <div onClick={stop} className="w-[420px] max-w-full rounded-2xl bg-card p-5 animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+            <div className="mb-3 flex items-center"><div className="flex-1 text-[14px] font-extrabold">Firma del paciente</div><button onClick={() => setSigView(null)} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+            <img src={sigView} alt="Firma" className="w-full rounded-lg border border-line bg-white" />
+          </div>
+        </Overlay>
       )}
     </div>
     </Portal>
@@ -653,6 +720,82 @@ type AreaOpt = { key: string; label: string; grupo: string };
  * Define las áreas incluidas del paquete/combo (sus sesiones se reparten entre ellas)
  * y permite agregar un área adicional, que se cobra en recepción.
  */
+/**
+ * Aviso / renuncia de una técnica del combo. Deja constancia (no toca cupos). Si el
+ * paciente renuncia, exige su FIRMA como prueba para cuando después la reclame.
+ */
+function WaiverModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const tecnicas = (pkg.services ?? []).map((s) => s.name);
+  const [technique, setTechnique] = useState(tecnicas[0] ?? '');
+  const [kind, setKind] = useState<'RENUNCIA_PACIENTE' | 'REPORTE_ESTETICISTA'>('RENUNCIA_PACIENTE');
+  const [reason, setReason] = useState('');
+  const [signature, setSignature] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const esRenuncia = kind === 'RENUNCIA_PACIENTE';
+
+  async function guardar() {
+    if (!technique.trim()) { toast('Indica la técnica'); return; }
+    if (reason.trim().length < 3) { toast('Escribe el motivo'); return; }
+    if (esRenuncia && !signature) { toast('Falta la firma del paciente'); return; }
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>(`/patients/treatments/${pkg.id}/waiver`, {
+        techniqueName: technique.trim(), kind, reason: reason.trim(),
+        signature: esRenuncia ? signature ?? undefined : undefined,
+      });
+      toast(r.message); onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  const lbl = 'text-xs font-bold text-muted';
+  const inp = 'rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta';
+  return (
+    <Overlay onClose={onClose} z={125}>
+      <div onClick={stop} className="flex max-h-[90vh] w-[460px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-5 py-4"><div className="flex-1 text-[15px] font-extrabold">Aviso de técnica</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3 overflow-y-auto px-5 py-4">
+          <div className="rounded-[9px] bg-warn-soft px-3 py-2 text-[11.5px] font-semibold" style={{ color: '#8A6D3B' }}>
+            Deja constancia de que no se aplicará una técnica del combo. No cambia los cupos; queda como prueba en la ficha.
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setKind('RENUNCIA_PACIENTE')} className="rounded-[10px] border px-2 py-2 text-[12.5px] font-bold"
+              style={{ borderColor: esRenuncia ? 'var(--magenta)' : 'var(--line)', background: esRenuncia ? 'var(--magenta-soft)' : 'var(--card)', color: esRenuncia ? 'var(--magenta)' : 'var(--muted)' }}>
+              El paciente renuncia
+            </button>
+            <button onClick={() => setKind('REPORTE_ESTETICISTA')} className="rounded-[10px] border px-2 py-2 text-[12.5px] font-bold"
+              style={{ borderColor: !esRenuncia ? 'var(--magenta)' : 'var(--line)', background: !esRenuncia ? 'var(--magenta-soft)' : 'var(--card)', color: !esRenuncia ? 'var(--magenta)' : 'var(--muted)' }}>
+              Reporte de esteticista
+            </button>
+          </div>
+          <label className="flex flex-col gap-1"><span className={lbl}>Técnica</span>
+            {tecnicas.length > 0 ? (
+              <select value={technique} onChange={(e) => setTechnique(e.target.value)} className={inp}>
+                {tecnicas.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            ) : (
+              <input value={technique} onChange={(e) => setTechnique(e.target.value)} placeholder="Nombre de la técnica" className={inp} />
+            )}
+          </label>
+          <label className="flex flex-col gap-1"><span className={lbl}>Motivo</span>
+            <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={esRenuncia ? 'Ej. El paciente no desea la cavitación por ahora.' : 'Ej. No se aplicó por contraindicación / decisión clínica.'} className={`${inp} resize-none`} />
+          </label>
+          {esRenuncia && (
+            <div className="flex flex-col gap-1">
+              <span className={lbl}>Firma del paciente (obligatoria)</span>
+              <FirmaDigital onChange={setSignature} etiqueta="Firma del paciente" />
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-5 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+          <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Guardando…' : 'Guardar aviso'}</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 function AreasModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const incluidas = (pkg.areas ?? []).filter((a) => !a.isExtra).map((a) => a.area);

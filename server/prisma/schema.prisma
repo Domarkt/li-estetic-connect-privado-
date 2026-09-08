@@ -372,8 +372,36 @@ model Treatment {
   areas       TreatmentArea[]
   techniques  TreatmentTechnique[]
   sessions    TreatmentSession[]
+  waivers     TechniqueWaiver[]
 
   @@index([patientId])
+}
+
+// Aviso/renuncia de una técnica del combo. Deja CONSTANCIA (no toca los cupos) de que
+// el paciente no quiso una técnica (con su FIRMA como prueba) o de que la esteticista
+// reporta que no se aplicó. Evita la disputa de "no me la hice y ahora la reclamo".
+model TechniqueWaiver {
+  id             String    @id @default(cuid())
+  treatmentId    String
+  patientId      String
+  branchId       String
+  techniqueName  String
+  kind           String // RENUNCIA_PACIENTE | REPORTE_ESTETICISTA
+  reason         String
+  signature      String? // firma del paciente (base64) — obligatoria en RENUNCIA_PACIENTE
+  status         String    @default("ACTIVA") // ACTIVA | ANULADA
+  reportedById   String?
+  reportedByName String? // snapshot del nombre (sobrevive a cambios de usuario)
+  reportedRole   String?
+  annulledById   String?
+  annulReason    String?
+  annulledAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([treatmentId])
 }
 
 // Conteo por técnica dentro del combo del paciente (ej. 18 cavitaciones, 3 lipoláser).

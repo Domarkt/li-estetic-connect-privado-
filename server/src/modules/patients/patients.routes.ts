@@ -128,6 +128,13 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
       where: { patientId: patient.id, status: 'PENDIENTE_FACTURAR' },
       orderBy: { createdAt: 'desc' },
     }),
+    // Avisos/renuncias de técnica: constancia de que no quiso (o no se aplicó) una
+    // técnica del combo. Sin traer la firma (pesada): se pide aparte si se quiere ver.
+    waivers: (await prisma.techniqueWaiver.findMany({
+      where: { patientId: patient.id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, treatmentId: true, techniqueName: true, kind: true, reason: true, signature: true, status: true, reportedByName: true, reportedRole: true, createdAt: true, annulReason: true },
+    })).map(serializeWaiver),
   });
 });
 
@@ -182,6 +189,29 @@ patientsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), as
 // Recepción y esteticista pueden definirlas: a veces la clienta las pide en recepción
 // antes de pasar a cabina, y a veces se definen en la cabina misma.
 const areasRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA', 'COORDINADOR'] as const;
+
+// ── Avisos / renuncias de técnica ──
+// Recepción y esteticista registran; admin ve y anula. Deja constancia (no toca cupos).
+const waiverRoles = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'] as const;
+const WAIVER_KIND_LABEL: Record<string, string> = {
+  RENUNCIA_PACIENTE: 'El paciente renunció',
+  REPORTE_ESTETICISTA: 'Reporte de la esteticista',
+};
+type WaiverRow = {
+  id: string; treatmentId: string; techniqueName: string; kind: string; reason: string;
+  signature: string | null; status: string; reportedByName: string | null; reportedRole: string | null;
+  createdAt: Date; annulReason: string | null;
+};
+function serializeWaiver(w: WaiverRow) {
+  return {
+    id: w.id, treatmentId: w.treatmentId, technique: w.techniqueName,
+    kind: w.kind, kindLabel: WAIVER_KIND_LABEL[w.kind] ?? w.kind,
+    reason: w.reason, hasSignature: !!w.signature, status: w.status,
+    by: w.reportedByName ?? '—', role: w.reportedRole ?? null,
+    date: w.createdAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+    annulReason: w.annulReason,
+  };
+}
 
 const definirAreasSchema = z.object({
   areas: z.array(z.string().min(1)).min(1, 'Elige al menos un área').max(12),
@@ -379,6 +409,69 @@ patientsRouter.patch('/treatments/:treatmentId/session/:sessionId', requireStaff
     sesiones: await listarSesiones(t.id, labels),
     message: r.agregadas ? `Se agregó lo que faltaba · sesión ${r.done} de ${r.total}` : 'No había nada nuevo que agregar',
   });
+});
+
+// ── Avisos / renuncias de técnica ──
+
+const waiverSchema = z.object({
+  techniqueName: z.string().trim().min(1, 'Indica la técnica'),
+  kind: z.enum(['RENUNCIA_PACIENTE', 'REPORTE_ESTETICISTA']),
+  reason: z.string().trim().min(3, 'Escribe el motivo').max(600),
+  signature: z.string().max(400_000).optional(), // firma del paciente (base64)
+});
+
+/**
+ * Registrar un aviso de técnica (recepción/esteticista). Deja constancia; NO toca los
+ * cupos del combo. Si el paciente renuncia, la FIRMA es obligatoria (es la prueba).
+ */
+patientsRouter.post('/treatments/:treatmentId/waiver', requireStaff, requireRole(...waiverRoles), async (req, res) => {
+  const b = waiverSchema.parse(req.body);
+  const t = await prisma.treatment.findUnique({ where: { id: req.params.treatmentId }, include: { patient: { select: { id: true, name: true, branchId: true } } } });
+  if (!t) return res.status(404).json({ error: 'Plan no encontrado' });
+  if (!assertBranchAccess(req, t.patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+  if (b.kind === 'RENUNCIA_PACIENTE' && !b.signature) {
+    return res.status(400).json({ error: 'Falta la firma del paciente para dejar constancia de la renuncia' });
+  }
+
+  const w = await prisma.techniqueWaiver.create({
+    data: {
+      treatmentId: t.id, patientId: t.patient.id, branchId: t.patient.branchId,
+      techniqueName: b.techniqueName, kind: b.kind, reason: b.reason,
+      signature: b.signature ?? null,
+      reportedById: req.staff!.sub, reportedByName: req.staff!.name, reportedRole: req.staff!.role,
+    },
+  });
+  await audit(req, {
+    action: 'TECHNIQUE_WAIVER', entity: 'TechniqueWaiver', entityId: w.id, branchId: t.patient.branchId,
+    summary: `${WAIVER_KIND_LABEL[b.kind]} · "${b.techniqueName}" en ${t.name} (${t.patient.name})`,
+  });
+  res.status(201).json({ ok: true, id: w.id, message: 'Aviso registrado' });
+});
+
+/** Ver la firma de un aviso (bajo demanda; solo la mira quien tiene acceso al paciente). */
+patientsRouter.get('/waivers/:id/signature', requireStaff, branchScope, async (req, res) => {
+  const w = await prisma.techniqueWaiver.findUnique({ where: { id: req.params.id }, select: { branchId: true, signature: true } });
+  if (!w || !w.signature) return res.status(404).json({ error: 'Este aviso no tiene firma' });
+  if (!assertBranchAccess(req, w.branchId)) return res.status(403).json({ error: 'Aviso de otra sucursal' });
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.json({ signature: w.signature });
+});
+
+/** Anular un aviso (solo Admin): si el paciente cambió de opinión. Queda en auditoría. */
+patientsRouter.post('/waivers/:id/anular', requireStaff, requireRole('ADMIN'), async (req, res) => {
+  const reason = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo').max(300) }).parse(req.body).reason;
+  const w = await prisma.techniqueWaiver.findUnique({ where: { id: req.params.id } });
+  if (!w) return res.status(404).json({ error: 'Aviso no encontrado' });
+  if (w.status === 'ANULADA') return res.status(409).json({ error: 'El aviso ya estaba anulado' });
+  await prisma.techniqueWaiver.update({
+    where: { id: w.id },
+    data: { status: 'ANULADA', annulledById: req.staff!.sub, annulReason: reason, annulledAt: new Date() },
+  });
+  await audit(req, {
+    action: 'TECHNIQUE_WAIVER_VOID', entity: 'TechniqueWaiver', entityId: w.id, branchId: w.branchId,
+    summary: `Anuló el aviso de "${w.techniqueName}" · motivo: ${reason}`,
+  });
+  res.json({ ok: true, message: 'Aviso anulado' });
 });
 
 /**

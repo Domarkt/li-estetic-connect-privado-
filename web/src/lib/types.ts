@@ -110,6 +110,15 @@ export interface PatientDetail extends PatientRow {
     sessionNo: number | null; areas: string[]; techniques: string[];
   }[];
   pendingCharges: { id: string; name: string; price: number }[];
+  /** Avisos/renuncias de técnica del combo (constancia; no toca cupos). */
+  waivers?: TechniqueWaiver[];
+}
+
+export interface TechniqueWaiver {
+  id: string; treatmentId: string; technique: string;
+  kind: 'RENUNCIA_PACIENTE' | 'REPORTE_ESTETICISTA'; kindLabel: string;
+  reason: string; hasSignature: boolean; status: 'ACTIVA' | 'ANULADA';
+  by: string; role: string | null; date: string; annulReason: string | null;
 }
 
 export type CatalogKind = 'SERVICIO' | 'PAQUETE' | 'COMBO' | 'PRODUCTO' | 'INSUMO';

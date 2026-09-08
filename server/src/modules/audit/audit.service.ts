@@ -29,7 +29,9 @@ export type AuditAction =
   | 'LEDGER_ENTRY'       // se registró/editó un movimiento contable manual
   | 'LEDGER_ENTRY_VOID'  // se eliminó un movimiento contable manual
   | 'PERIOD_CLOSE'       // se cerró un período contable
-  | 'PERIOD_REOPEN';      // se reabrió un período contable
+  | 'PERIOD_REOPEN'      // se reabrió un período contable
+  | 'TECHNIQUE_WAIVER'      // se registró un aviso/renuncia de técnica del combo
+  | 'TECHNIQUE_WAIVER_VOID'; // se anuló un aviso/renuncia de técnica
 
 interface AuditInput {
   action: AuditAction;
