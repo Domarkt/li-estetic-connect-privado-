@@ -414,11 +414,10 @@ export async function registrarSesionAplicada(
     await prisma.treatmentArea.update({ where: { id: a.id }, data: { doneSessions: { increment: 1 } } });
   }
 
-  // El plan consume TANTAS sesiones como áreas se trabajaron: sus sesiones se
-  // repartieron entre las áreas (18 en 2 áreas = 9 y 9), así que trabajar las dos
-  // en una visita gasta 2. Si no se marcó ninguna área, se cuenta como 1.
-  const consumidas = areas.length || 1;
-  const done = Math.min(t.totalSessions, t.doneSessions + consumidas);
+  // 1 sesión por VISITA: trabajar varias áreas en una misma visita gasta UNA sesión,
+  // no una por área (así lo entiende el cliente: "10 sesiones" = 10 visitas). Los cupos
+  // por área y por técnica se llevan aparte (arriba) como detalle del avance.
+  const done = Math.min(t.totalSessions, t.doneSessions + 1);
   const restantes = Math.max(0, t.totalSessions - done);
   await prisma.treatment.update({
     where: { id: t.id },
@@ -472,12 +471,13 @@ export async function rectificarSesion(
     await prisma.treatmentTechnique.update({ where: { id: x.id }, data: { done: { increment: 1 } } });
   }
 
-  // Cada área añadida gasta una sesión del plan (se reparten por área).
-  const done = Math.min(t.totalSessions, t.doneSessions + areasNuevas.length);
+  // Es la MISMA visita (solo se agregó lo que faltó marcar): NO consume sesiones
+  // adicionales del plan. Solo se suben los cupos de área/técnica (arriba).
+  const done = t.doneSessions;
   const restantes = Math.max(0, t.totalSessions - done);
   await prisma.treatment.update({
     where: { id: t.id },
-    data: { doneSessions: done, active: restantes > 0 },
+    data: { active: restantes > 0 },
   });
 
   const sesion = await prisma.treatmentSession.update({
@@ -513,9 +513,8 @@ export async function eliminarSesion(sessionId: string) {
     await prisma.treatmentTechnique.update({ where: { id: x.id }, data: { done: { decrement: 1 } } });
   }
 
-  // El plan consumió tantas sesiones como áreas trajo la visita (o 1 si no tenía áreas).
-  const liberadas = s.areas.length || 1;
-  const done = Math.max(0, t.doneSessions - liberadas);
+  // Cada visita vale 1 sesión: deshacerla libera 1 cupo (no uno por área).
+  const done = Math.max(0, t.doneSessions - 1);
   await prisma.treatment.update({
     where: { id: t.id },
     data: { doneSessions: done, active: true },

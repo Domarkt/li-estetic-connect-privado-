@@ -62,6 +62,21 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
   });
   const enCursoMap = new Map(enCursoRows.map((s) => [s.treatmentId, s]));
 
+  // Técnicas aplicadas por DÍA, tomadas de la bitácora (TreatmentSession). El historial
+  // de citas guardaba las áreas pero no siempre las técnicas ("No se registró qué se
+  // aplicó" aunque sí estaban en la bitácora); se completan desde aquí.
+  const bitacoraDias = await prisma.treatmentSession.findMany({
+    where: { patientId: patient.id },
+    select: { at: true, techniques: true },
+  });
+  const tecPorDia = new Map<string, Set<string>>();
+  for (const s of bitacoraDias) {
+    const key = s.at.toISOString().slice(0, 10);
+    const set = tecPorDia.get(key) ?? new Set<string>();
+    s.techniques.forEach((x) => set.add(x));
+    tecPorDia.set(key, set);
+  }
+
   res.json({
     ...serializePatient(patient),
     since: patient.createdAt.toLocaleDateString('es-DO', { month: 'short', year: 'numeric' }),
@@ -121,7 +136,8 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         therapist: a.therapist?.name ?? null,
         sessionNo: a.sessionNo,
         areas: a.areas.map((x) => AREA_LABEL[x] ?? x),
-        techniques: a.techniques,
+        // Si la cita no guardó técnicas, se muestran las de la bitácora de ese mismo día.
+        techniques: a.techniques.length ? a.techniques : [...(tecPorDia.get(a.serviceEndedAt!.toISOString().slice(0, 10)) ?? [])],
       })),
     // Cargos pendientes que la esteticista mandó a recepción
     pendingCharges: await prisma.chargeItem.findMany({
