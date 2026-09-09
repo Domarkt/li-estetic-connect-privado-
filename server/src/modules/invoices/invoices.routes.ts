@@ -87,8 +87,11 @@ invoicesRouter.get('/receivables', requireStaff, requireRole(...billers), branch
       where: { balance: { gt: 0 }, ...(branchId ? { patient: { branchId } } : {}) },
       include: { patient: { select: { id: true, name: true, phone: true, sex: true, branch: { select: { name: true } } } } },
     }),
+    // Solo cargos con MONTO real: un cargo en RD$0 (procedimiento que la esteticista
+    // registró sin precio, o ya incluido en un combo pagado) no es dinero por cobrar
+    // y antes quedaba atascado aquí para siempre. Cuentas por cobrar = dinero pendiente.
     prisma.chargeItem.findMany({
-      where: { status: 'PENDIENTE_FACTURAR', ...(branchId ? { branchId } : {}) },
+      where: { status: 'PENDIENTE_FACTURAR', price: { gt: 0 }, ...(branchId ? { branchId } : {}) },
       include: { patient: { select: { id: true, name: true, phone: true, sex: true, branch: { select: { name: true } } } } },
     }),
   ]);
@@ -167,7 +170,7 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
       // cobrar (para no acumular cobros viejos en la pantalla del día).
       const AHORA = Date.now(); const DIA = 24 * 3_600_000;
       const recentPending =
-        p.chargeItems.some((c) => AHORA - c.createdAt.getTime() <= DIA) ||
+        p.chargeItems.some((c) => c.price > 0 && AHORA - c.createdAt.getTime() <= DIA) ||
         p.treatments.some((x) => x.active && x.balance > 0 && AHORA - x.createdAt.getTime() <= DIA);
       return {
         id: p.id, name: p.name, phone: p.phone, avatarColor: p.avatarColor,
