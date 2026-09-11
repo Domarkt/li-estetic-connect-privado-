@@ -208,6 +208,36 @@ invoicesRouter.get('/patients', requireStaff, requireRole(...billers), branchSco
   res.json(payload);
 });
 
+/** Esteticistas de la sucursal en foco: para elegir a quién se le acredita la venta. */
+invoicesRouter.get('/therapists', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  const list = await prisma.user.findMany({
+    where: { role: 'ESTETICISTA', active: true, ...(req.scopeBranchId ? { branchId: req.scopeBranchId } : {}) },
+    select: { id: true, name: true, branchId: true },
+    orderBy: { name: 'asc' },
+  });
+  res.json(list);
+});
+
+/** Asignar/corregir la esteticista de una factura (comisión/ranking). Solo Admin. */
+invoicesRouter.patch('/:id/therapist', requireStaff, requireRole('ADMIN'), branchScope, async (req, res) => {
+  const { therapistId } = z.object({ therapistId: z.string().nullable() }).parse(req.body);
+  const inv = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { id: true, number: true, branchId: true } });
+  if (!inv) return res.status(404).json({ error: 'Recibo no encontrado' });
+  if (!assertBranchAccess(req, inv.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
+  let nombre = 'Sin esteticista';
+  if (therapistId) {
+    const u = await prisma.user.findUnique({ where: { id: therapistId }, select: { name: true } });
+    if (!u) return res.status(400).json({ error: 'Esteticista no válida' });
+    nombre = u.name;
+  }
+  await prisma.invoice.update({ where: { id: inv.id }, data: { therapistId } });
+  await audit(req, {
+    action: 'INVOICE_ATTRIBUTE', entity: 'Invoice', entityId: inv.id, branchId: inv.branchId,
+    summary: `Atribuyó el recibo ${inv.number} a: ${nombre}`,
+  });
+  res.json({ ok: true, message: `Recibo atribuido a ${nombre}` });
+});
+
 const pendingChargeUpdateSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   price: z.number().int().nonnegative().optional(),
@@ -258,6 +288,7 @@ const billSchema = z.object({
   // catalogItemId: si la línea es un combo/paquete, con esto se le crea el plan de sesiones al paciente.
   items: z.array(z.object({ name: z.string().min(1), price: z.number().int().nonnegative(), qty: z.number().int().positive().default(1), catalogItemId: z.string().optional() })).optional(),
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
+  therapistId: z.string().nullish(), // esteticista a la que se le acredita la venta (comisión)
   paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
   // Tipo de comprobante: consumo final (B02) o crédito fiscal (B01, exige RNC).
   ncfType: z.enum(['B02', 'B01']).default('B02'),
@@ -506,10 +537,27 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   // (si fallara, el cajero vería "error interno" con la factura YA creada y recobraría).
   try {
   if (b.patientId) {
-    const cr = await prisma.clinicalRecord.findUnique({ where: { patientId: b.patientId }, select: { therapistId: true } });
-    if (cr?.therapistId) {
-      await prisma.invoice.update({ where: { id: invoice.id }, data: { therapistId: cr.therapistId } });
-      await awardSalePoints(cr.therapistId, branchId, amount); // puntos automáticos (no rompe el cobro)
+    // Esteticista de la venta (comisión/ranking) por PRIORIDAD:
+    //  1) la que recepción eligió en el cobro (b.therapistId);
+    //  2) la que agregó los cargos que se están facturando (createdById esteticista);
+    //  3) la de la ficha clínica.
+    // Antes SOLO era (3): las fichas sin esteticista dejaban la venta sin atribuir
+    // (≈65% del mes), por eso las que más venden aparecían con menos ventas.
+    let ventaTid: string | null = b.therapistId ?? null;
+    if (!ventaTid && charges.length) {
+      const creatorIds = [...new Set(charges.map((c) => c.createdById).filter((x): x is string => !!x))];
+      if (creatorIds.length) {
+        const creadores = await prisma.user.findMany({ where: { id: { in: creatorIds }, role: 'ESTETICISTA' }, select: { id: true } });
+        ventaTid = creadores[0]?.id ?? null;
+      }
+    }
+    if (!ventaTid) {
+      const cr = await prisma.clinicalRecord.findUnique({ where: { patientId: b.patientId }, select: { therapistId: true } });
+      ventaTid = cr?.therapistId ?? null;
+    }
+    if (ventaTid) {
+      await prisma.invoice.update({ where: { id: invoice.id }, data: { therapistId: ventaTid } });
+      await awardSalePoints(ventaTid, branchId, amount); // puntos automáticos (no rompe el cobro)
     }
 
     // El paciente pagó: activa su ACCESO al portal (correo + teléfono) y se lo envía por

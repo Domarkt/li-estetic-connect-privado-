@@ -225,6 +225,7 @@ model User {
   appointments     Appointment[]     @relation("TherapistAppointments")
   clinicalRecords  ClinicalRecord[]  @relation("TherapistRecords")
   invoicesIssued   Invoice[]         @relation("CashierInvoices")
+  invoicesSold     Invoice[]         @relation("TherapistInvoices")
   pointsLedger     PointsEntry[]
   redemptions      Redemption[]
   therapistProfile TherapistProfile?
@@ -799,6 +800,7 @@ model Invoice {
   branch    Branch        @relation(fields: [branchId], references: [id])
   patient   Patient?      @relation(fields: [patientId], references: [id])
   cashier   User?         @relation("CashierInvoices", fields: [cashierId], references: [id])
+  therapist User?         @relation("TherapistInvoices", fields: [therapistId], references: [id])
   treatment Treatment?    @relation(fields: [treatmentId], references: [id])
   items     InvoiceItem[]
 

@@ -211,6 +211,8 @@ export interface InvoiceRow {
   concept: string; method: string; total: number; status: string;
   payments?: { method: string; amount: number }[];
   discount?: number; discountReason?: string | null;
+  /** Esteticista atribuida (comisión). null = sin atribuir. */
+  therapist?: string | null; therapistId?: string | null;
 }
 export interface BillingResponse {
   date?: string;
@@ -243,10 +245,14 @@ export interface Receipt {
   payments?: { method: string; amount: number }[];
   paymentKind?: string;
   status?: string;
+  /** Esteticista atribuida a la venta (comisión); editable por Admin desde el recibo. */
+  therapistId?: string | null; therapistName?: string | null;
   /** Tras cobrar: enlace de WhatsApp con la CITA del paciente y su código
    *  (ya pagó, así que ahora sí se le puede entregar el código). */
   citaWhatsappUrl?: string | null;
 }
+
+export interface TherapistLite { id: string; name: string; branchId: string | null }
 
 export type Channel = 'INSTAGRAM' | 'WHATSAPP' | 'MESSENGER' | 'TIKTOK';
 

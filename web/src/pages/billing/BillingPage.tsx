@@ -197,7 +197,16 @@ export default function BillingPage() {
               aria-label={`Ver recibo ${i.number} de ${i.patient}`}
               className={`grid w-full cursor-pointer ${gridCols} items-center gap-3 border-b border-line-2 px-5 py-3.5 text-left hover:bg-bg focus-visible:bg-bg`}>
               <div className="text-[13px] font-bold text-magenta">{i.number}</div>
-              <div><div className="text-[13px] font-semibold">{i.patient}</div><div className="text-[11.5px] text-faint">{i.date} · {i.branchName}</div></div>
+              <div>
+                <div className="text-[13px] font-semibold">{i.patient}</div>
+                <div className="text-[11.5px] text-faint">{i.date} · {i.branchName}</div>
+                {/* Esteticista atribuida (comisión): Admin ve las "sin esteticista" para corregirlas. */}
+                {showMoney && (i.status !== 'Anulada') && (
+                  i.therapist
+                    ? <div className="text-[11px] font-semibold text-muted">Esteticista: {i.therapist}</div>
+                    : <div className="text-[11px] font-bold" style={{ color: 'var(--danger)' }}>⚠ Sin esteticista</div>
+                )}
+              </div>
               <div className="text-[13px]">
                 {i.concept}
                 {(i.discount ?? 0) > 0 && (

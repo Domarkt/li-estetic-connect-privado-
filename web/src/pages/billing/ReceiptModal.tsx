@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { useAuth } from '../../auth/AuthContext';
-import { fmtRD, type Receipt } from '../../lib/types';
+import { fmtRD, type Receipt, type TherapistLite } from '../../lib/types';
 import { buildReceiptImage } from './receiptImage';
 
 const SIZES: { key: string; label: string; width: string }[] = [
@@ -18,6 +18,26 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
   const [size, setSize] = useState('carta');
   const [anulando, setAnulando] = useState(false);
   const [reparando, setReparando] = useState(false);
+
+  // Esteticista de la venta (comisión): Admin puede asignarla/corregirla desde aquí.
+  const isAdmin = staff?.role === 'ADMIN';
+  const [therapists, setTherapists] = useState<TherapistLite[]>([]);
+  const [tid, setTid] = useState(receipt.therapistId ?? '');
+  const [tName, setTName] = useState(receipt.therapistName ?? null);
+  const [savingTid, setSavingTid] = useState(false);
+  useEffect(() => {
+    if (isAdmin) api.get<TherapistLite[]>('/invoices/therapists').then(setTherapists).catch(() => setTherapists([]));
+  }, [isAdmin]);
+
+  async function asignarEsteticista() {
+    if (!receipt.invoiceId) { toast('Este recibo no se puede modificar'); return; }
+    setSavingTid(true);
+    try {
+      const r = await api.patch<{ message: string }>(`/invoices/${receipt.invoiceId}/therapist`, { therapistId: tid || null });
+      setTName(therapists.find((t) => t.id === tid)?.name ?? null);
+      toast(r.message);
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setSavingTid(false); }
+  }
 
   // Anular el recibo (solo Administradora): corrige un cobro hecho por error.
   async function anular() {
@@ -204,6 +224,21 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
               style={{ background: '#25D366' }}>
               <span className="text-[15px]">🔑</span> Enviar código por WhatsApp
             </a>
+          </div>
+        )}
+
+        {isAdmin && receipt.invoiceId && (
+          <div className="border-t border-line bg-card px-[22px] py-4">
+            <div className="mb-2 text-[13px] font-extrabold">Esteticista de la venta (comisión)</div>
+            <div className="mb-2 text-[11.5px] text-muted">Actual: <b>{tName ?? 'Sin esteticista'}</b>. Asígnala o corrígela para que la comisión y el ranking cuadren.</div>
+            <div className="flex gap-2">
+              <select value={tid} onChange={(e) => setTid(e.target.value)} className="min-w-0 flex-1 rounded-[9px] border border-line px-3 py-2 text-[13px] outline-none focus:border-magenta">
+                <option value="">Sin esteticista</option>
+                {therapists.map((th) => <option key={th.id} value={th.id}>{th.name}</option>)}
+              </select>
+              <button onClick={asignarEsteticista} disabled={savingTid || (tid || '') === (receipt.therapistId ?? '')}
+                className="flex-none rounded-[9px] bg-navy px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50">{savingTid ? '…' : 'Guardar'}</button>
+            </div>
           </div>
         )}
 

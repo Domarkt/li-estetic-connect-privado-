@@ -86,6 +86,7 @@ export const invoiceInclude = {
   branch: true,
   patient: true,
   items: true,
+  therapist: { select: { name: true } },
 } satisfies Prisma.InvoiceInclude;
 
 /**
@@ -95,6 +96,7 @@ export const invoiceInclude = {
 export const invoiceListInclude = {
   branch: { select: { name: true } },
   patient: { select: { name: true } },
+  therapist: { select: { name: true } },
 } satisfies Prisma.InvoiceInclude;
 
 /** Forma mínima que necesitan las filas del listado (la cumplen ambos includes). */
@@ -103,6 +105,7 @@ type InvoiceRowShape = {
   discount: number; discountReason: string | null; status: string;
   method: PaymentMethod; payments: Prisma.JsonValue | null;
   patient: { name: string } | null; branch: { name: string };
+  therapistId?: string | null; therapist?: { name: string } | null;
 };
 
 function paymentLines(i: InvoiceRowShape) {
@@ -126,6 +129,9 @@ export function serializeInvoiceRow(i: InvoiceRowShape) {
     discount: i.discount,
     discountReason: i.discountReason,
     status: i.status === 'PAGADA' ? 'Pagada' : i.status === 'ANULADA' ? 'Anulada' : 'Pendiente',
+    // Esteticista atribuida (comisión/ranking): permite ver y corregir "sin esteticista".
+    therapistId: i.therapistId ?? null,
+    therapist: i.therapist?.name ?? null,
   };
 }
 
@@ -161,5 +167,8 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     payments: paymentLines(i), // desglose para el recibo
     paymentKind: i.paymentKind,
     status: i.status === 'PAGADA' ? 'Pagada' : i.status === 'ANULADA' ? 'Anulada' : 'Pendiente',
+    // Esteticista atribuida (para ver/corregir la comisión desde el recibo).
+    therapistId: i.therapistId ?? null,
+    therapistName: i.therapist?.name ?? null,
   };
 }

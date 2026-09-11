@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import { fmtRD, type BillPatient, type CatalogItem, type PaymentMethod, type Receipt } from '../../lib/types';
+import { fmtRD, type BillPatient, type CatalogItem, type PaymentMethod, type Receipt, type TherapistLite } from '../../lib/types';
 
 const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
 
@@ -57,6 +57,11 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   // Fecha de la cita de la que se precargó el servicio (para avisarlo en pantalla).
   const [desdeAgenda, setDesdeAgenda] = useState<string | null>(null);
 
+  // Esteticista a la que se le acredita la venta (comisión). '' = automático (según
+  // quién cargó el servicio o la ficha). Recepción puede fijar/cambiar aquí.
+  const [therapists, setTherapists] = useState<TherapistLite[]>([]);
+  const [ventaTid, setVentaTid] = useState('');
+
   // ── Datos fiscales del comprobante ──
   // No todos los servicios estéticos llevan ITBIS: se decide al cobrar.
   // La mayoría de los servicios se facturan SIN ITBIS: el interruptor arranca
@@ -101,6 +106,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   useEffect(() => {
     loadPatients();
     api.get<CatalogItem[]>('/catalog').then((all) => setCatalog(all.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO'))).catch(() => setCatalog([]));
+    api.get<TherapistLite[]>(`/invoices/therapists${branchQP}`).then(setTherapists).catch(() => setTherapists([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -229,6 +235,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     try {
       const r = await api.post<{ receipt: Receipt; message: string; citaWhatsappUrl: string | null }>('/invoices', {
         patientId: selected ?? undefined, concept: finalConcept.trim(),
+        therapistId: ventaTid || undefined,
         payments: paymentsList, treatmentId: payingSaldo ? treatmentId : undefined,
         paymentKind: (payingSaldo || freeAbono) ? payKind : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
@@ -632,6 +639,16 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
             </div>
             {t && (payKind === 'ABONO' || payKind === 'SALDO') && (
               <div className="rounded-md px-3 py-2 text-[12px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>Saldo tras el pago: {fmtRD(balanceAfter)}{balanceAfter > 0 && t.remaining > 0 ? ` · ${fmtRD(Math.round(balanceAfter / t.remaining))}/sesión` : ''}</div>
+            )}
+            {selected && (
+              <label className="flex flex-col gap-1 rounded-[11px] border border-line-2 p-3">
+                <span className="text-[11.5px] font-bold text-muted">Comisión / venta para (esteticista)</span>
+                <select value={ventaTid} onChange={(e) => setVentaTid(e.target.value)} className="rounded-[9px] border border-line px-3 py-2 text-[13px] outline-none focus:border-magenta">
+                  <option value="">Automático (quien cargó el servicio / la ficha)</option>
+                  {therapists.map((th) => <option key={th.id} value={th.id}>{th.name}</option>)}
+                </select>
+                <span className="text-[10.5px] text-faint">Si lo dejas en automático, se atribuye a quien agregó el combo/servicio o, si no, a la esteticista de la ficha.</span>
+              </label>
             )}
             <div className="text-[11.5px] text-faint">Revisa los datos. Al confirmar se emite el recibo y se registra en caja.</div>
           </div>
