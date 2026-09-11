@@ -77,6 +77,29 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
     tecPorDia.set(key, set);
   }
 
+  // Facturas de cada plan contratado (para que Admin dé seguimiento a lo que se le
+  // asigna al cliente y valide errores). Se agrupan por treatmentId. Incluye anuladas
+  // (marcadas) porque ver un cobro anulado ayuda a rastrear un error.
+  const planInvoices = await prisma.invoice.findMany({
+    where: { patientId: patient.id, treatmentId: { not: null } },
+    select: { id: true, number: true, treatmentId: true, issuedAt: true, total: true, paymentKind: true, status: true, concept: true },
+    orderBy: { issuedAt: 'asc' },
+  });
+  const KIND_LABEL: Record<string, string> = { TOTAL: 'Pago total', ABONO: 'Abono', SALDO: 'Saldo' };
+  const ST_LABEL: Record<string, string> = { PAGADA: 'Pagada', ANULADA: 'Anulada', PENDIENTE: 'Pendiente' };
+  const invByTreatment = new Map<string, { id: string; number: string; date: string; total: number; kind: string; status: string; concept: string }[]>();
+  for (const iv of planInvoices) {
+    if (!iv.treatmentId) continue;
+    const arr = invByTreatment.get(iv.treatmentId) ?? [];
+    arr.push({
+      id: iv.id, number: iv.number,
+      date: iv.issuedAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
+      total: iv.total, kind: KIND_LABEL[iv.paymentKind] ?? iv.paymentKind,
+      status: ST_LABEL[iv.status] ?? iv.status, concept: iv.concept,
+    });
+    invByTreatment.set(iv.treatmentId, arr);
+  }
+
   res.json({
     ...serializePatient(patient),
     since: patient.createdAt.toLocaleDateString('es-DO', { month: 'short', year: 'numeric' }),
@@ -122,6 +145,8 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
         // Modo de la sesión y, si es cuerpo completo, la sesión EN CURSO (áreas ya hechas).
         sessionMode: t.sessionMode,
         enCurso: enCursoMap.get(t.id) ? { areas: enCursoMap.get(t.id)!.areas, techniques: enCursoMap.get(t.id)!.techniques } : null,
+        // Facturas de este plan (recibos), para seguimiento/validación de Admin.
+        invoices: invByTreatment.get(t.id) ?? [],
       })),
     // Historial de sesiones atendidas: qué se le aplicó y en qué áreas, para que la
     // esteticista sepa qué le viene dando y qué toca en la próxima visita.

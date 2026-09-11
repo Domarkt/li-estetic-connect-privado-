@@ -6,7 +6,8 @@ import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, Portal, stop } from '../../components/Modal';
 import FirmaDigital from '../../components/FirmaDigital';
-import { fmtRD, type CatalogItem, type PatientDetail, type PatientPackage } from '../../lib/types';
+import ReceiptModal from '../billing/ReceiptModal';
+import { fmtRD, type CatalogItem, type PatientDetail, type PatientPackage, type Receipt } from '../../lib/types';
 
 interface Props {
   patientId: string;
@@ -36,9 +37,15 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [tecnicasFor, setTecnicasFor] = useState<PatientPackage | null>(null); // corregir el conteo por técnica
   const [waiverFor, setWaiverFor] = useState<PatientPackage | null>(null); // aviso/renuncia de técnica
   const [sigView, setSigView] = useState<string | null>(null); // firma de un aviso, para verla
+  const [receipt, setReceipt] = useState<Receipt | null>(null); // recibo de un plan, para verlo
 
   // Recepción y esteticista registran avisos de técnica; admin además anula.
   const canWaiver = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA'].includes(staff?.role ?? '');
+
+  async function verRecibo(invoiceId: string) {
+    try { setReceipt(await api.get<Receipt>(`/invoices/${invoiceId}/receipt`)); }
+    catch (e) { toast(e instanceof Error ? e.message : 'No se pudo cargar el recibo'); }
+  }
 
   async function verFirma(id: string) {
     try { const r = await api.get<{ signature: string }>(`/patients/waivers/${id}/signature`); setSigView(r.signature); }
@@ -350,6 +357,25 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                           <button onClick={() => setCambioFor(pk)} className="text-[12px] font-bold text-magenta">⇄ {pk.done >= 3 ? 'Corregir / cambiar de combo' : 'Cambiar de combo (antes de la 3ra sesión)'}</button>
                         </div>
                       )}
+
+                      {/* Facturas del plan (solo Admin): seguimiento de lo asignado + validar errores. */}
+                      {staff?.role === 'ADMIN' && (pk.invoices ?? []).length > 0 && (
+                        <div className="mt-2.5 border-t border-line-2 pt-2.5">
+                          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-faint">Facturas del plan</div>
+                          <div className="flex flex-col gap-1">
+                            {pk.invoices!.map((iv) => (
+                              <div key={iv.id} className="flex items-center gap-2 text-[12px]">
+                                <span className="font-bold">{iv.number}</span>
+                                <span className="text-faint">{iv.date}</span>
+                                <span className="rounded-full bg-navy-soft px-1.5 py-0.5 text-[10px] font-bold text-navy">{iv.kind}</span>
+                                {iv.status === 'Anulada' && <span className="rounded-full bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold text-danger">Anulada</span>}
+                                <span className="ml-auto font-bold">{fmtRD(iv.total)}</span>
+                                <button onClick={() => verRecibo(iv.id)} className="font-bold text-magenta">Ver recibo</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -463,6 +489,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
             <img src={sigView} alt="Firma" className="w-full rounded-lg border border-line bg-white" />
           </div>
         </Overlay>
+      )}
+      {receipt && (
+        <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)}
+          onVoided={() => { setReceipt(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
       )}
     </div>
     </Portal>

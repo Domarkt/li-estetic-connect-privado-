@@ -58,6 +58,13 @@ export interface PatientPackage {
   sessionMode?: 'PER_AREA' | 'FULL_BODY';
   /** Si FULL_BODY: sesión EN CURSO (áreas/técnicas ya trabajadas de la ronda actual). */
   enCurso?: { areas: string[]; techniques: string[] } | null;
+  /** Facturas/recibos de este plan (para seguimiento y validación de Admin). */
+  invoices?: PlanInvoice[];
+}
+
+export interface PlanInvoice {
+  id: string; number: string; date: string; total: number;
+  kind: string; status: string; concept: string;
 }
 
 export interface TreatmentArea {
