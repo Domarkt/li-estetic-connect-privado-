@@ -36,7 +36,11 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
   const [sesionesFor, setSesionesFor] = useState<PatientPackage | null>(null); // deshacer sesiones registradas por error
   const [tecnicasFor, setTecnicasFor] = useState<PatientPackage | null>(null); // corregir el conteo por técnica
   const [waiverFor, setWaiverFor] = useState<PatientPackage | null>(null); // aviso/renuncia de técnica
+  const [registrarFor, setRegistrarFor] = useState<PatientPackage | null>(null); // registrar sesión aplicada
   const [sigView, setSigView] = useState<string | null>(null); // firma de un aviso, para verla
+
+  // Registrar la sesión aplicada la puede hacer quien atiende y quien coordina el cobro.
+  const canRegistrarSesion = ['ADMIN', 'RECEPCIONISTA', 'ESTETICISTA', 'COORDINADOR'].includes(staff?.role ?? '');
   const [receipt, setReceipt] = useState<Receipt | null>(null); // recibo de un plan, para verlo
 
   // Recepción y esteticista registran avisos de técnica; admin además anula.
@@ -279,6 +283,15 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
                       <div className="mb-2 h-2 overflow-hidden rounded-md" style={{ background: 'var(--navy-soft)' }}>
                         <div className="h-full rounded-md bg-magenta" style={{ width: `${pk.total ? Math.round((pk.done / pk.total) * 100) : 0}%` }} />
                       </div>
+                      {/* Registrar la sesión aplicada (consume 1). Disponible SIEMPRE que queden
+                          sesiones, aunque el turno ya se cerró o el plan se facturó después de
+                          atender: así el servicio recibido siempre se puede descontar. */}
+                      {canRegistrarSesion && pk.remaining > 0 && (
+                        <button type="button" onClick={() => setRegistrarFor(pk)}
+                          className="mb-2 flex w-full items-center justify-center gap-2 rounded-[10px] border border-magenta bg-magenta-soft py-2 text-[12.5px] font-bold text-magenta">
+                          ✓ Registrar sesión aplicada
+                        </button>
+                      )}
                       <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
                         <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
                           Quedan {pk.remaining} sesión{pk.remaining === 1 ? '' : 'es'}
@@ -481,6 +494,10 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
       {waiverFor && (
         <WaiverModal pkg={waiverFor} onClose={() => setWaiverFor(null)}
           onSaved={() => { setWaiverFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
+      )}
+      {registrarFor && (
+        <RegistrarSesionModal pkg={registrarFor} onClose={() => setRegistrarFor(null)}
+          onSaved={() => { setRegistrarFor(null); api.get<PatientDetail>(`/patients/${patientId}`).then(setD).catch(() => {}); }} />
       )}
       {sigView && (
         <Overlay onClose={() => setSigView(null)} z={130}>
@@ -750,6 +767,79 @@ type AreaOpt = { key: string; label: string; grupo: string };
  * Define las áreas incluidas del paquete/combo (sus sesiones se reparten entre ellas)
  * y permite agregar un área adicional, que se cobra en recepción.
  */
+/**
+ * Registrar la sesión aplicada de un plan (consume 1 sesión). Sirve en cualquier
+ * momento —aunque el turno ya se cerró o el plan se facturó después de atender—, que
+ * era el hueco por el que quedaban servicios "pendientes" tras recibirlos.
+ */
+function RegistrarSesionModal({ pkg, onClose, onSaved }: { pkg: PatientPackage; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const tecnicas = (pkg.services ?? []).filter((s) => (s.remaining ?? ((s.total ?? 0) - (s.done ?? 0))) > 0);
+  const areas = pkg.areas ?? [];
+  const [tSel, setTSel] = useState<Set<string>>(() => new Set(tecnicas.map((t) => t.name)));
+  const [aSel, setASel] = useState<Set<string>>(new Set());
+  const [signature, setSignature] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  function toggle(set: Set<string>, setSet: (s: Set<string>) => void, key: string) {
+    const n = new Set(set); if (n.has(key)) n.delete(key); else n.add(key); setSet(n);
+  }
+
+  async function guardar() {
+    if (tSel.size === 0 && aSel.size === 0) { toast('Marca al menos una técnica o un área aplicada'); return; }
+    if (!signature) { toast('Falta la firma del paciente'); return; }
+    setBusy(true);
+    try {
+      await api.post(`/patients/treatments/${pkg.id}/session`, {
+        techniques: [...tSel], areas: [...aSel], signature, notes: notes.trim() || undefined,
+      });
+      toast('Sesión registrada'); onSaved();
+    } catch (e) { toast(e instanceof Error ? e.message : 'Error'); } finally { setBusy(false); }
+  }
+
+  const chip = (on: boolean) => `rounded-full border px-3 py-1.5 text-[12.5px] font-semibold ${on ? 'border-magenta bg-magenta-soft text-magenta' : 'border-line bg-card text-muted'}`;
+  return (
+    <Overlay onClose={onClose} z={125}>
+      <div onClick={stop} className="flex max-h-[90vh] w-[460px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+        <div className="flex items-center border-b border-line px-5 py-4"><div className="flex-1 text-[15px] font-extrabold">Registrar sesión · {pkg.name}</div><button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button></div>
+        <div className="flex flex-col gap-3 overflow-y-auto px-5 py-4">
+          <div className="text-[12px] text-muted">Marca lo que se le aplicó hoy y pide la firma. Al guardar se descuenta <b>1 sesión</b> ({pkg.done}/{pkg.total} → {pkg.done + 1}/{pkg.total}).</div>
+          {tecnicas.length > 0 && (
+            <div>
+              <div className="mb-1.5 text-xs font-bold text-muted">Técnicas aplicadas</div>
+              <div className="flex flex-wrap gap-1.5">
+                {tecnicas.map((t) => <button key={t.name} type="button" onClick={() => toggle(tSel, setTSel, t.name)} className={chip(tSel.has(t.name))}>{t.name}</button>)}
+              </div>
+            </div>
+          )}
+          {areas.length > 0 && (
+            <div>
+              <div className="mb-1.5 text-xs font-bold text-muted">Áreas trabajadas</div>
+              <div className="flex flex-wrap gap-1.5">
+                {areas.map((a) => <button key={a.id} type="button" onClick={() => toggle(aSel, setASel, a.area)} className={chip(aSel.has(a.area))}>{a.label}</button>)}
+              </div>
+            </div>
+          )}
+          {tecnicas.length === 0 && areas.length === 0 && (
+            <div className="rounded-[9px] bg-warn-soft px-3 py-2 text-[12px] font-semibold" style={{ color: '#8A6D3B' }}>Este plan no tiene técnicas ni áreas definidas; se registrará la visita y se descontará 1 sesión.</div>
+          )}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-muted">Firma del paciente (obligatoria)</span>
+            <FirmaDigital onChange={setSignature} etiqueta="Firma del paciente" />
+          </div>
+          <label className="flex flex-col gap-1"><span className="text-xs font-bold text-muted">Notas (opcional)</span>
+            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta resize-none" /></label>
+        </div>
+        <div className="flex gap-2.5 border-t border-line px-5 py-4">
+          <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
+          <button onClick={guardar} disabled={busy} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Guardando…' : 'Registrar y firmar'}</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
 /**
  * Aviso / renuncia de una técnica del combo. Deja constancia (no toca cupos). Si el
  * paciente renuncia, exige su FIRMA como prueba para cuando después la reclame.
