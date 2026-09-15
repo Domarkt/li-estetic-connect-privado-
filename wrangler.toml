@@ -1,0 +1,7 @@
+name = "li-estetic-connect"
+compatibility_date = "2026-07-12"
+
+# Publicación del frontend compilado por Cloudflare Workers. El backend sigue
+# viviendo en Render; /api se proxifica mediante la configuración del dominio.
+[assets]
+directory = "./web/dist"
