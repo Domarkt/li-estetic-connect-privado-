@@ -302,7 +302,7 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     await prisma.chargeItem.createMany({
       data: serviciosSel.map((s) => ({
         branchId: patient.branchId, patientId: patient.id, catalogItemId: s.id,
-        name: s.name, price: s.price ?? 0, createdById: req.staff!.sub,
+        name: s.name, price: s.price ?? 0, createdById: req.staff!.sub, appointmentId: appt.id,
       })),
     });
   }
@@ -605,10 +605,16 @@ appointmentsRouter.post('/:id/cancel', requireStaff, requireRole('ADMIN', 'RECEP
   if (!assertBranchAccess(req, appt.branchId)) return res.status(403).json({ error: 'Cita de otra sucursal' });
   if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita ya está cancelada' });
 
-  await prisma.appointment.update({
-    where: { id: appt.id },
-    data: { status: 'CANCELADA', cancelReason: reason, cancelledBy: 'STAFF', cancelledAt: new Date() },
-  });
+  await prisma.$transaction([
+    prisma.appointment.update({
+      where: { id: appt.id },
+      data: { status: 'CANCELADA', cancelReason: reason, cancelledBy: 'STAFF', cancelledAt: new Date() },
+    }),
+    prisma.chargeItem.updateMany({
+      where: { appointmentId: appt.id, status: 'PENDIENTE_FACTURAR' },
+      data: { status: 'ANULADO' },
+    }),
+  ]);
 
   const fecha = appt.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
   const hora = appt.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
@@ -710,6 +716,20 @@ appointmentsRouter.patch('/:id', requireStaff, branchScope, async (req, res) => 
     },
     include: apptInclude,
   });
+
+  // Mantiene el cargo sincronizado incluso para cambios de estado realizados por
+  // este endpoint: cancelada lo retira; reactivada/reagendada lo restaura.
+  if (updated.status === 'CANCELADA') {
+    await prisma.chargeItem.updateMany({
+      where: { appointmentId: appt.id, status: 'PENDIENTE_FACTURAR' },
+      data: { status: 'ANULADO' },
+    });
+  } else if (appt.status === 'CANCELADA' && ['SIN_CONFIRMAR', 'CONFIRMADA', 'REAGENDADA'].includes(updated.status)) {
+    await prisma.chargeItem.updateMany({
+      where: { appointmentId: appt.id, status: 'ANULADO' },
+      data: { status: 'PENDIENTE_FACTURAR' },
+    });
+  }
 
   if (cambiaTerapeuta && nuevoTherapistId !== appt.therapistId) {
     await audit(req, {

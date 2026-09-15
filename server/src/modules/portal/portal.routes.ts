@@ -406,10 +406,16 @@ portalRouter.patch('/appointments/:id', async (req, res) => {
   const b = rescheduleSchema.parse(req.body);
   const appt = await prisma.appointment.findUnique({ where: { id: req.params.id } });
   if (!appt || appt.patientId !== req.patient!.patientId) return res.status(404).json({ error: 'Cita no encontrada' });
-  await prisma.appointment.update({
-    where: { id: appt.id },
-    data: { startsAt: new Date(`${b.date}T${b.time}:00`), status: 'REAGENDADA' },
-  });
+  await prisma.$transaction([
+    prisma.appointment.update({
+      where: { id: appt.id },
+      data: { startsAt: new Date(`${b.date}T${b.time}:00`), status: 'REAGENDADA' },
+    }),
+    prisma.chargeItem.updateMany({
+      where: { appointmentId: appt.id, status: 'ANULADO' },
+      data: { status: 'PENDIENTE_FACTURAR' },
+    }),
+  ]);
   res.json({ ok: true, message: 'Cita reagendada · pendiente de confirmar' });
 });
 
@@ -427,10 +433,16 @@ portalRouter.post('/appointments/:id/cancel', async (req, res) => {
   if (appt.status === 'CANCELADA') return res.status(409).json({ error: 'La cita ya está cancelada' });
 
   const hoursToAppt = (appt.startsAt.getTime() - Date.now()) / 36e5;
-  await prisma.appointment.update({
-    where: { id: appt.id },
-    data: { status: 'CANCELADA', cancelReason: reason, cancelledBy: 'PATIENT', cancelledAt: new Date() },
-  });
+  await prisma.$transaction([
+    prisma.appointment.update({
+      where: { id: appt.id },
+      data: { status: 'CANCELADA', cancelReason: reason, cancelledBy: 'PATIENT', cancelledAt: new Date() },
+    }),
+    prisma.chargeItem.updateMany({
+      where: { appointmentId: appt.id, status: 'PENDIENTE_FACTURAR' },
+      data: { status: 'ANULADO' },
+    }),
+  ]);
 
   const fecha = appt.startsAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
   const hora = appt.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });

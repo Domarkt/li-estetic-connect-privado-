@@ -733,6 +733,7 @@ model Appointment {
   branch    Branch  @relation(fields: [branchId], references: [id])
   patient   Patient @relation(fields: [patientId], references: [id])
   therapist User?   @relation("TherapistAppointments", fields: [therapistId], references: [id])
+  chargeItems ChargeItem[]
 
   @@index([branchId, startsAt])
   @@index([patientId])
@@ -837,6 +838,7 @@ model ChargeItem {
   patientId     String
   catalogItemId String?
   createdById   String?
+  appointmentId String? // cita que originó el cargo; permite retirarlo al cancelar y restaurarlo al reagendar
   name          String
   price         Int
   status        ChargeItemStatus @default(PENDIENTE_FACTURAR)
@@ -846,8 +848,10 @@ model ChargeItem {
   patient     Patient      @relation(fields: [patientId], references: [id])
   catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
   createdBy   User?        @relation("ChargeItemCreatedBy", fields: [createdById], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
   @@index([branchId, status])
+  @@index([appointmentId, status])
 }
 
 // ─────────────────────────────────────────────────────────────
