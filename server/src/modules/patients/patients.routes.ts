@@ -10,7 +10,7 @@ import { hashPassword } from '../../utils/password.js';
 import { sendPatientAccess, PORTAL_URL } from '../mail/mail.service.js';
 import { notifyBranchTherapists, notifyRole } from '../notifications/notifications.service.js';
 import { upsertLead } from '../messaging/leads.service.js';
-import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, eliminarSesion, listarSesiones, bitacoraPaciente, createHistoricalTreatmentFromCatalog } from './areas.service.js';
+import { AREA_LABEL, AREA_EXTRA_PRECIO, definirAreas, cambiarCombo, serializeAreas, serializeTechniques, getAreaLabelMap, registrarSesionAplicada, rectificarSesion, eliminarSesion, listarSesiones, bitacoraPaciente, createHistoricalTreatmentFromCatalog, createTreatmentFromCatalog } from './areas.service.js';
 import { audit } from '../audit/audit.service.js';
 import { normalizePhone } from '../messaging/whatsapp.service.js';
 import { signPatient } from '../../utils/jwt.js';
@@ -180,6 +180,49 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
       ORDER BY "createdAt" DESC
     `).map(serializeWaiver),
   });
+});
+
+/**
+ * Recupera compras pagadas antiguas cuyo tratamiento no llegó a crearse.
+ * Es idempotente: createTreatmentFromCatalog no duplica un plan activo y las
+ * citas existentes se enlazan al plan recuperado para poder abrir/cerrar turno.
+ */
+patientsRouter.post('/:id/reconcile-purchases', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA'), branchScope, async (req, res) => {
+  const patient = await prisma.patient.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, branchId: true } });
+  if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
+  if (!assertBranchAccess(req, patient.branchId)) return res.status(403).json({ error: 'Paciente de otra sucursal' });
+
+  const [invoices, catalog] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { patientId: patient.id, status: 'PAGADA' },
+      include: { items: true }, orderBy: { issuedAt: 'asc' },
+    }),
+    prisma.catalogItem.findMany({
+      where: { active: true, kind: { in: ['COMBO', 'PAQUETE', 'SERVICIO'] } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const byName = new Map(catalog.map((it) => [it.name.trim().toLocaleUpperCase('es'), it]));
+  const restored: string[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const invoice of invoices) {
+      for (const line of invoice.items.filter((it) => it.total > 0 && !it.name.toLowerCase().startsWith('saldo pendiente') && !it.name.toLowerCase().startsWith('descuento'))) {
+        const item = byName.get(line.name.trim().toLocaleUpperCase('es'));
+        if (!item) continue;
+        const treatmentId = await createTreatmentFromCatalog(patient.id, item.id, { qty: line.qty }, tx);
+        if (treatmentId) restored.push(item.name);
+        const linked = treatmentId ?? (await tx.treatment.findFirst({ where: { patientId: patient.id, catalogItemId: item.id, active: true }, select: { id: true } }))?.id;
+        if (linked) {
+          await tx.appointment.updateMany({
+            where: { patientId: patient.id, catalogItemId: item.id, treatmentId: null, status: { not: 'CANCELADA' }, serviceEndedAt: null },
+            data: { treatmentId: linked },
+          });
+        }
+      }
+    }
+  });
+  if (restored.length) await audit(req, { action: 'INVOICE_PLAN_RESTORE', entity: 'Patient', entityId: patient.id, branchId: patient.branchId, summary: `${patient.name} · planes recuperados: ${[...new Set(restored)].join(', ')}` });
+  res.json({ ok: true, restored: [...new Set(restored)], message: restored.length ? `Compra cargada en la ficha: ${[...new Set(restored)].join(', ')}.` : 'No había compras pendientes de cargar; no se duplicó ningún plan.' });
 });
 
 const createPatientSchema = z.object({

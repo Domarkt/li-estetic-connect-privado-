@@ -448,6 +448,7 @@ const PASOS_PLAN = ['Servicio', 'Áreas', 'Procesos', 'Observaciones', 'Consenti
  * PATCH /areas (define el reparto la 1ª vez) y POST /session (descuenta y firma).
  */
 function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientId: string; treatmentIdCita?: string | null; onPlan: (p: { name: string; sessions: number } | null) => void; onSesion: () => void }) {
+  const { staff } = useAuth();
   const toast = useToast();
   const [paquetes, setPaquetes] = useState<PatientPackage[]>([]);
   const [pkgId, setPkgId] = useState<string>('');
@@ -455,6 +456,7 @@ function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
   const [opciones, setOpciones] = useState<AreaOptFicha[]>([]);
   const [loading, setLoading] = useState(true);
   const [recarga, setRecarga] = useState(0);
+  const [reconciliando, setReconciliando] = useState(false);
 
   const [paso, setPaso] = useState(1);
   const [areasHoy, setAreasHoy] = useState<string[]>([]);
@@ -503,7 +505,13 @@ function PlanGuiado({ patientId, treatmentIdCita, onPlan, onSesion }: { patientI
   if (loading) return <div className="mb-4 rounded-[11px] border border-line bg-bg px-4 py-3 text-[12.5px] text-muted">Cargando servicio pagado…</div>;
   if (!pkg) return (
     <div className="mb-4 rounded-[11px] border border-dashed border-line px-4 py-3 text-[12.5px] text-muted">
-      Aún no hay un servicio/combo pagado para este paciente. Aparecerá aquí una vez recepción registre el cobro.
+      <div>Aún no hay un servicio/combo pagado para este paciente. Si recepción ya registró el cobro, puedes buscar y cargar la compra sin duplicarla.</div>
+      {(staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA') && <button
+        type="button" disabled={reconciliando}
+        onClick={async () => { setReconciliando(true); try { const r = await api.post<{ message: string }>(`/patients/${patientId}/reconcile-purchases`); toast(r.message); setRecarga((v) => v + 1); } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo buscar la compra'); } finally { setReconciliando(false); } }}
+        className="mt-3 rounded-[9px] border border-magenta bg-magenta-soft px-3 py-2 text-[12px] font-bold text-magenta disabled:opacity-50">
+        {reconciliando ? 'Buscando compras…' : 'Buscar compras pagadas y cargar'}
+      </button>}
     </div>
   );
 
