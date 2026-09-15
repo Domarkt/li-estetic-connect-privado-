@@ -19,7 +19,7 @@ Guía para sacar el proyecto a producción. La base de datos es **Supabase** (Po
 ## 1. Requisitos
 
 - Docker + Docker Compose en el servidor (VPS/EC2/etc.).
-- El proyecto Supabase ya creado (ref `suedjotznakkkgwftmnd`) con las tablas cargadas.
+- El proyecto Supabase ya creado (ref `wsbrcrwxoepyqdafbitq`) con las tablas cargadas.
 - Un dominio apuntando al servidor (para HTTPS).
 
 ## 2. Variables de entorno
@@ -35,8 +35,11 @@ Rellena en `server/.env` (valores de **producción**):
 
 ```ini
 # Supabase (Settings → Database → Connection string)
-DATABASE_URL="postgresql://postgres.suedjotznakkkgwftmnd:TU_PASSWORD@aws-1-us-east-2.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
-DIRECT_URL="postgresql://postgres.suedjotznakkkgwftmnd:TU_PASSWORD@aws-1-us-east-2.pooler.supabase.com:5432/postgres"
+# Usa exactamente las cadenas de Connect → Database de este proyecto nuevo.
+# DATABASE_URL: pooler de Supabase (puerto 6543, pgbouncer=true).
+# DIRECT_URL: conexión directa db.wsbrcrwxoepyqdafbitq.supabase.co:5432.
+DATABASE_URL="postgresql://postgres.wsbrcrwxoepyqdafbitq:TU_PASSWORD@TU_POOLER_HOST:6543/postgres?pgbouncer=true&connection_limit=1"
+DIRECT_URL="postgresql://postgres:TU_PASSWORD@db.wsbrcrwxoepyqdafbitq.supabase.co:5432/postgres"
 
 NODE_ENV=production
 PORT=4000
