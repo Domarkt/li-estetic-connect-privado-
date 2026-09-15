@@ -51,27 +51,32 @@ assetsRouter.get('/', requireStaff, branchScope, async (req, res) => {
   if (req.scopeBranchId) where.branchId = req.scopeBranchId;
   if (mine) where.assignedToId = req.staff!.sub;
 
-  const [assets, users, branches] = await Promise.all([
+  const [assets, assetsWithImage, users, branches] = await Promise.all([
     // NO traemos imageUrl (data URI pesado): solo si hay foto (hasImage). La imagen
     // se pide aparte a /:id/image y se cachea, para no arrastrarla en cada lectura.
     prisma.asset.findMany({
       where,
       select: {
         id: true, code: true, kind: true, name: true, category: true, status: true,
-        serial: true, notes: true, imageUrl: true, branchId: true,
+        serial: true, notes: true, branchId: true,
         assignedTo: { select: { id: true, name: true } }, branch: { select: { name: true } },
       },
       orderBy: [{ kind: 'asc' }, { name: 'asc' }],
     }),
+    prisma.asset.findMany({
+      where: { ...where, imageUrl: { not: null } },
+      select: { id: true },
+    }),
     req.staff!.role === 'ADMIN' ? prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true, branchId: true } }) : Promise.resolve([]),
     req.staff!.role === 'ADMIN' ? prisma.branch.findMany({ orderBy: { code: 'asc' }, select: { id: true, name: true } }) : Promise.resolve([]),
   ]);
+  const imageIds = new Set(assetsWithImage.map((a) => a.id));
 
   res.json({
     assets: assets.map((a) => ({
       id: a.id, code: a.code, kind: a.kind, name: a.name, category: a.category,
       status: a.status, statusLabel: STATUS_LABEL[a.status] ?? a.status,
-      serial: a.serial, notes: a.notes, hasImage: !!a.imageUrl,
+      serial: a.serial, notes: a.notes, hasImage: imageIds.has(a.id),
       branch: a.branch.name, branchId: a.branchId,
       assignedTo: a.assignedTo ? { id: a.assignedTo.id, name: a.assignedTo.name } : null,
     })),

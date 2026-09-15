@@ -21,7 +21,7 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
 
-  // Cantidad de no leídos en el sondeo anterior: si sube, suena.
+  // Cantidad de no leídos en la lectura anterior: si sube, suena.
   const prevUnread = useRef<number | null>(null);
 
   /** Pitido corto con Web Audio (sin archivo de sonido, evita cargar la app). */
@@ -52,11 +52,14 @@ export default function NotificationBell() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 30000); // sondeo cada 30s
-    // También al volver a la pestaña: refresca notificaciones al instante.
     const onFocus = () => load();
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
     window.addEventListener('focus', onFocus);
-    return () => { clearInterval(t); window.removeEventListener('focus', onFocus); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export default function NotificationBell() {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { if (!open) load(); setOpen((v) => !v); }}
         title="Notificaciones"
         className="relative flex h-[42px] w-[42px] items-center justify-center rounded-[10px] border border-line bg-bg text-muted hover:text-ink">
         <Icon name="bell" size={19} />

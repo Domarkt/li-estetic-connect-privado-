@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { requireStaff, requireRole, branchScope, assertBranchAccess } from '../../middleware/auth.js';
 import { cached, cacheKey } from '../../utils/cache.js';
-import { serializePatient, patientInclude, patientListInclude, syncPatientType, ageFromBirth } from './patients.service.js';
+import { serializePatient, patientInclude, patientDetailInclude, patientListInclude, syncPatientType, ageFromBirth } from './patients.service.js';
 import { decryptClinical, encryptClinicalWrite, decryptPatientPII, encryptPatientWrite } from './patients.crypto.js';
 import { decrypt } from '../../utils/crypto.js';
 import { hashPassword } from '../../utils/password.js';
@@ -42,7 +42,7 @@ patientsRouter.get('/', requireStaff, branchScope, async (req, res) => {
 patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
   const patient = await prisma.patient.findUnique({
     where: { id: req.params.id },
-    include: { ...patientInclude, clinicalRecord: { include: { therapist: true } } },
+    include: patientDetailInclude,
   });
   if (!patient) return res.status(404).json({ error: 'Paciente no encontrado' });
   if (!assertBranchAccess(req, patient.branchId)) {
@@ -171,11 +171,14 @@ patientsRouter.get('/:id', requireStaff, branchScope, async (req, res) => {
     }),
     // Avisos/renuncias de técnica: constancia de que no quiso (o no se aplicó) una
     // técnica del combo. Sin traer la firma (pesada): se pide aparte si se quiere ver.
-    waivers: (await prisma.techniqueWaiver.findMany({
-      where: { patientId: patient.id },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, treatmentId: true, techniqueName: true, kind: true, reason: true, signature: true, status: true, reportedByName: true, reportedRole: true, createdAt: true, annulReason: true },
-    })).map(serializeWaiver),
+    waivers: (await prisma.$queryRaw<WaiverRow[]>`
+      SELECT "id", "treatmentId", "techniqueName", "kind", "reason",
+             ("signature" IS NOT NULL AND "signature" <> '') AS "hasSignature",
+             "status", "reportedByName", "reportedRole", "createdAt", "annulReason"
+      FROM "TechniqueWaiver"
+      WHERE "patientId" = ${patient.id}
+      ORDER BY "createdAt" DESC
+    `).map(serializeWaiver),
   });
 });
 
@@ -240,14 +243,14 @@ const WAIVER_KIND_LABEL: Record<string, string> = {
 };
 type WaiverRow = {
   id: string; treatmentId: string; techniqueName: string; kind: string; reason: string;
-  signature: string | null; status: string; reportedByName: string | null; reportedRole: string | null;
+  hasSignature: boolean; status: string; reportedByName: string | null; reportedRole: string | null;
   createdAt: Date; annulReason: string | null;
 };
 function serializeWaiver(w: WaiverRow) {
   return {
     id: w.id, treatmentId: w.treatmentId, technique: w.techniqueName,
     kind: w.kind, kindLabel: WAIVER_KIND_LABEL[w.kind] ?? w.kind,
-    reason: w.reason, hasSignature: !!w.signature, status: w.status,
+    reason: w.reason, hasSignature: w.hasSignature, status: w.status,
     by: w.reportedByName ?? '—', role: w.reportedRole ?? null,
     date: w.createdAt.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' }),
     annulReason: w.annulReason,

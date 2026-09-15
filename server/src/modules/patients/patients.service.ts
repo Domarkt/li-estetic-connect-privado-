@@ -103,6 +103,21 @@ export const patientInclude = {
   appointments: { include: { therapist: true } },
 } satisfies Prisma.PatientInclude;
 
+/** Detalle completo sin descargar la firma cifrada de la ficha clínica. */
+export const patientDetailInclude = {
+  branch: true,
+  clinicalRecord: {
+    select: {
+      status: true, patientFilledAt: true, sentToPatientAt: true, therapistId: true,
+      motivos: true, antecedentes: true, quirurgicos: true, medicamentos: true,
+      fototipo: true, tallaCm: true, pesoLb: true,
+      therapist: { select: { name: true } },
+    },
+  },
+  treatments: { include: { areas: true, techniques: true, catalogItem: { include: { incluye: { include: { service: true } } } } } },
+  appointments: { include: { therapist: true } },
+} satisfies Prisma.PatientInclude;
+
 /**
  * Include LIVIANO para la LISTA de pacientes: solo lo que usa serializePatient.
  * Evita traer áreas/técnicas/catalogItem de cada tratamiento y TODAS las citas de

@@ -22,8 +22,7 @@ interface AttachmentMeta { id: string; name: string; kind: 'image' | 'video' | '
 interface Attachment { data: string; name: string; kind: 'image' | 'video' | 'file'; mime: string }
 interface Msg { id: string; body: string; senderName: string; senderRole: string; target: string; mine: boolean; patient: { id: string; name: string } | null; attachment: AttachmentMeta | null; time: string }
 
-// Caché en memoria de adjuntos ya descargados (por id de mensaje): evita volver a
-// pedirlos en cada refresco de 30s mientras la pestaña está abierta.
+// Caché en memoria de adjuntos ya descargados (por id de mensaje).
 const attachmentCache = new Map<string, Attachment>();
 interface PatientLite { id: string; name: string; phone: string }
 
@@ -68,8 +67,14 @@ export default function ChatPage() {
   useEffect(() => {
     if (!active) return;
     loadMessages(active);
-    const t = setInterval(() => loadMessages(active), 30000);
-    return () => clearInterval(t);
+    const refresh = () => loadMessages(active);
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [active, loadMessages]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 

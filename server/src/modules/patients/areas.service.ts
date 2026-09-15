@@ -534,9 +534,17 @@ async function nombresTerapeutas(ids: (string | null)[]): Promise<Map<string, st
 
 /** Sesiones ya registradas de un plan (historial de lo aplicado). */
 export async function listarSesiones(treatmentId: string, labels: Record<string, string> = AREA_LABEL) {
-  const rows = await prisma.treatmentSession.findMany({
-    where: { treatmentId }, orderBy: { at: 'desc' }, take: 50,
-  });
+  const rows = await prisma.$queryRaw<Array<{
+    id: string; at: Date; techniques: string[]; areas: string[];
+    therapistId: string | null; notes: string | null; firmada: boolean;
+  }>>`
+    SELECT "id", "at", "techniques", "areas", "therapistId", "notes",
+           ("signature" IS NOT NULL AND "signature" <> '') AS "firmada"
+    FROM "TreatmentSession"
+    WHERE "treatmentId" = ${treatmentId}
+    ORDER BY "at" DESC
+    LIMIT 50
+  `;
   const terapeutas = await nombresTerapeutas(rows.map((s) => s.therapistId));
   return rows.map((s) => ({
     id: s.id,
@@ -545,7 +553,7 @@ export async function listarSesiones(treatmentId: string, labels: Record<string,
     techniques: s.techniques,
     areas: s.areas.map((a) => labels[a] ?? a),
     esteticista: s.therapistId ? terapeutas.get(s.therapistId) ?? null : null,
-    firmada: !!s.signature,
+    firmada: s.firmada,
     notes: s.notes,
   }));
 }
@@ -558,12 +566,20 @@ export async function listarSesiones(treatmentId: string, labels: Record<string,
  * atendido por varias según el combo y la técnica que toque ese día.
  */
 export async function bitacoraPaciente(patientId: string, labels: Record<string, string> = AREA_LABEL) {
-  const rows = await prisma.treatmentSession.findMany({
-    where: { patientId },
-    include: { treatment: { select: { name: true } } },
-    orderBy: { at: 'asc' }, // la cita 1 es la primera: se lee como un historial
-    take: 200,
-  });
+  const rows = await prisma.$queryRaw<Array<{
+    id: string; at: Date; techniques: string[]; areas: string[];
+    therapistId: string | null; notes: string | null; firmada: boolean;
+    treatmentName: string | null;
+  }>>`
+    SELECT s."id", s."at", s."techniques", s."areas", s."therapistId", s."notes",
+           (s."signature" IS NOT NULL AND s."signature" <> '') AS "firmada",
+           t."name" AS "treatmentName"
+    FROM "TreatmentSession" s
+    LEFT JOIN "Treatment" t ON t."id" = s."treatmentId"
+    WHERE s."patientId" = ${patientId}
+    ORDER BY s."at" ASC
+    LIMIT 200
+  `;
   const terapeutas = await nombresTerapeutas(rows.map((s) => s.therapistId));
   return rows.map((s, i) => ({
     id: s.id,
@@ -571,12 +587,12 @@ export async function bitacoraPaciente(patientId: string, labels: Record<string,
     at: s.at.toISOString(),
     fecha: s.at.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }),
     hora: s.at.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }),
-    tratamiento: s.treatment?.name ?? '—',
+    tratamiento: s.treatmentName ?? '—',
     techniques: s.techniques,
     areas: s.areas.map((a) => labels[a] ?? a),
     esteticista: s.therapistId ? terapeutas.get(s.therapistId) ?? null : null,
     observaciones: s.notes,
-    firmada: !!s.signature,
+    firmada: s.firmada,
   }));
 }
 
