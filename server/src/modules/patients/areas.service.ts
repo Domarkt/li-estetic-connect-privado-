@@ -1,4 +1,7 @@
 import { prisma } from '../../db/prisma.js';
+import type { Prisma } from '@prisma/client';
+
+type DbClient = typeof prisma | Prisma.TransactionClient;
 
 /**
  * Áreas que cubren los paquetes y combos, en dos familias:
@@ -77,17 +80,17 @@ export function serializeAreas(
  * (las que se eligieron al crearlo en el catálogo). No hace nada si no hay áreas o si
  * el tratamiento ya tiene alguna.
  */
-export async function seedTreatmentAreas(treatmentId: string, areas: string[], totalSessions: number, mode: string = 'PER_AREA'): Promise<void> {
+export async function seedTreatmentAreas(treatmentId: string, areas: string[], totalSessions: number, mode: string = 'PER_AREA', db: DbClient = prisma): Promise<void> {
   const validas = areas.filter((a) => !!a && a.trim());
   if (!validas.length) return;
-  const existentes = await prisma.treatmentArea.count({ where: { treatmentId } });
+  const existentes = await db.treatmentArea.count({ where: { treatmentId } });
   if (existentes > 0) return;
   // FULL_BODY: cada área se trabaja una vez por RONDA → su cupo = número de rondas
   // (totalSessions). PER_AREA: las sesiones se reparten entre las áreas (como hoy).
   const reparto = mode === 'FULL_BODY'
     ? validas.map(() => totalSessions)
     : repartirSesiones(totalSessions, validas.length);
-  await prisma.treatmentArea.createMany({
+  await db.treatmentArea.createMany({
     data: validas.map((area, i) => ({ treatmentId, area, totalSessions: reparto[i], isExtra: false })),
     skipDuplicates: true,
   });
@@ -97,11 +100,11 @@ export async function seedTreatmentAreas(treatmentId: string, areas: string[], t
  * Siembra el conteo por técnica del combo (18 cavitaciones, 3 lipoláser…) al venderlo.
  * No hace nada si ya hay técnicas sembradas.
  */
-export async function seedTreatmentTechniques(treatmentId: string, items: { name: string; qty: number }[]): Promise<void> {
+export async function seedTreatmentTechniques(treatmentId: string, items: { name: string; qty: number }[], db: DbClient = prisma): Promise<void> {
   if (!items.length) return;
-  const existentes = await prisma.treatmentTechnique.count({ where: { treatmentId } });
+  const existentes = await db.treatmentTechnique.count({ where: { treatmentId } });
   if (existentes > 0) return;
-  await prisma.treatmentTechnique.createMany({
+  await db.treatmentTechnique.createMany({
     data: items.map((i) => ({ treatmentId, name: i.name, total: i.qty })),
     skipDuplicates: true,
   });
@@ -119,8 +122,9 @@ export async function createTreatmentFromCatalog(
   patientId: string,
   catalogItemId: string,
   opts: { qty?: number; outstanding?: number } = {},
+  db: DbClient = prisma,
 ): Promise<string | null> {
-  const item = await prisma.catalogItem.findUnique({
+  const item = await db.catalogItem.findUnique({
     where: { id: catalogItemId },
     include: { incluye: { include: { service: true } } },
   });
@@ -138,13 +142,13 @@ export async function createTreatmentFromCatalog(
   if (!esPlan) return null;
 
   // Idempotencia: no duplicar el plan si ya tiene uno activo de este mismo ítem.
-  const yaTiene = await prisma.treatment.findFirst({ where: { patientId, catalogItemId: item.id, active: true } });
+  const yaTiene = await db.treatment.findFirst({ where: { patientId, catalogItemId: item.id, active: true } });
   if (yaTiene) return null;
 
   const qty = Math.max(1, opts.qty ?? 1);
   const total = Math.max(1, (item.sessions ?? 1) * qty);
   const precio = (item.price ?? 0) * qty;
-  const treatment = await prisma.treatment.create({
+  const treatment = await db.treatment.create({
     data: {
       patientId, name: item.name, catalogItemId: item.id,
       totalSessions: total, doneSessions: 0, sessionMode: item.sessionMode ?? 'PER_AREA',
@@ -155,13 +159,13 @@ export async function createTreatmentFromCatalog(
       balance: Math.max(0, Math.min(opts.outstanding ?? 0, precio)),
     },
   });
-  if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total, item.sessionMode ?? 'PER_AREA');
+  if (item.defaultAreas?.length) await seedTreatmentAreas(treatment.id, item.defaultAreas, total, item.sessionMode ?? 'PER_AREA', db);
   if (item.incluye?.length) {
-    await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty * qty })));
+    await seedTreatmentTechniques(treatment.id, item.incluye.map((x) => ({ name: x.service.name, qty: x.qty * qty })), db);
   } else {
     // Servicio suelto: se siembra a sí mismo como técnica. Sin esto la esteticista
     // no tenía nada que marcar al registrar y la sesión nunca se descontaba.
-    await seedTreatmentTechniques(treatment.id, [{ name: item.name, qty: total }]);
+    await seedTreatmentTechniques(treatment.id, [{ name: item.name, qty: total }], db);
   }
   return treatment.id;
 }

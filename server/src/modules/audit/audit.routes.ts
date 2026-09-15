@@ -11,6 +11,7 @@ const ACCION_LABEL: Record<string, string> = {
   PATIENT_CREATE: 'Creó paciente',
   INVOICE_CREATE: 'Emitió recibo',
   INVOICE_VOID: 'Anuló recibo',
+  INVOICE_PLAN_RESTORE: 'Recuperó compra en ficha',
   APPOINTMENT_CANCEL: 'Canceló cita',
   APPOINTMENT_REASSIGN: 'Reasignó esteticista',
   PRICE_CHANGE: 'Cambió precio',

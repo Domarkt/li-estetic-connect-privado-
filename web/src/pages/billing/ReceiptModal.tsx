@@ -18,6 +18,7 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
   const [size, setSize] = useState('carta');
   const [anulando, setAnulando] = useState(false);
   const [reparando, setReparando] = useState(false);
+  const [restaurandoPlan, setRestaurandoPlan] = useState(false);
 
   // Esteticista de la venta (comisión): Admin puede asignarla/corregirla desde aquí.
   const isAdmin = staff?.role === 'ADMIN';
@@ -60,6 +61,16 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
       toast(r.message); onVoided?.(); onClose();
     } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo preparar la refacturación'); }
     finally { setReparando(false); }
+  }
+
+  async function restaurarPlan() {
+    if (!receipt.invoiceId) return;
+    setRestaurandoPlan(true);
+    try {
+      const r = await api.post<{ message: string }>(`/invoices/${receipt.invoiceId}/restore-plan`, {});
+      toast(r.message); onVoided?.();
+    } catch (e) { toast(e instanceof Error ? e.message : 'No se pudo cargar la compra en la ficha'); }
+    finally { setRestaurandoPlan(false); }
   }
   const width = SIZES.find((s) => s.key === size)!.width;
 
@@ -224,6 +235,19 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
               style={{ background: '#25D366' }}>
               <span className="text-[15px]">🔑</span> Enviar código por WhatsApp
             </a>
+          </div>
+        )}
+
+        {receipt.invoiceId && receipt.status !== 'Anulada' && (
+          <div className="border-t border-line bg-card px-[22px] py-4">
+            <div className="rounded-[10px] border border-line bg-bg p-3">
+              <div className="text-[12.5px] font-extrabold">¿La compra no aparece en la ficha?</div>
+              <div className="mt-1 text-[11.5px] text-muted">Verifica este recibo y carga el combo o servicio pagado sin duplicarlo.</div>
+              <button onClick={restaurarPlan} disabled={restaurandoPlan}
+                className="mt-2 w-full rounded-[9px] border border-magenta bg-magenta-soft px-3 py-2 text-[12.5px] font-bold text-magenta disabled:opacity-50">
+                {restaurandoPlan ? 'Verificando…' : 'Cargar compra en la ficha'}
+              </button>
+            </div>
           </div>
         )}
 

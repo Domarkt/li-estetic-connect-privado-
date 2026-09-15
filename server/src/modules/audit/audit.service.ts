@@ -13,6 +13,7 @@ export type AuditAction =
   | 'INVOICE_ATTRIBUTE'   // se asignó/corrigió la esteticista de una venta (comisión)
   | 'INVOICE_VOID'        // se anuló un recibo
   | 'INVOICE_REBILL'      // el cobro anulado quedó preparado para refacturar
+  | 'INVOICE_PLAN_RESTORE' // se recuperó en la ficha un plan de un recibo pagado
   | 'PENDING_CHARGE_UPDATE'
   | 'PENDING_CHARGE_VOID'
   | 'APPOINTMENT_CANCEL'

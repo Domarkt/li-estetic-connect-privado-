@@ -458,8 +458,34 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     }
   }
 
-  const invoice = await prisma.invoice.create({
-    data: {
+  const planSources = [
+    ...(b.items ?? []).filter((it) => it.catalogItemId).map((it) => ({ id: it.catalogItemId!, qty: it.qty })),
+    ...charges.filter((c) => c.catalogItemId).map((c) => ({ id: c.catalogItemId!, qty: 1 })),
+  ];
+
+  // "Solo registrar el ingreso" únicamente es válido si TODOS los planes ya
+  // existen en la ficha. Antes podía activarse por error y el sistema aceptaba el
+  // pago dejando al paciente sin sesiones y sin posibilidad de abrir el turno.
+  if (b.skipPlan && b.patientId && planSources.length) {
+    const sourceIds = [...new Set(planSources.map((s) => s.id))];
+    const existingIds = await prisma.treatment.findMany({
+      where: { patientId: b.patientId, catalogItemId: { in: sourceIds }, active: true },
+      select: { catalogItemId: true },
+    });
+    const present = new Set(existingIds.map((t) => t.catalogItemId).filter((id): id is string => !!id));
+    const missing = sourceIds.filter((id) => !present.has(id));
+    if (missing.length) {
+      return res.status(409).json({
+        error: 'No puedes usar “Solo registrar el ingreso”: esta compra todavía no está cargada en la ficha. Desactiva esa opción para crear sus sesiones.',
+      });
+    }
+  }
+
+  // La factura y los planes comprados son una sola operación. Antes la factura se
+  // guardaba primero y la creación del plan ocurría después con el error oculto;
+  // eso dejaba recibos pagados sin sesiones en la ficha y bloqueaba el turno.
+  const invoice = await prisma.$transaction(async (tx) => {
+    const created = await tx.invoice.create({ data: {
       number, ncf, branchId, patientId: b.patientId ?? null, cashierId: req.staff!.sub,
       treatmentId: b.treatmentId ?? null, paymentKind: b.paymentKind,
       concept: b.concept, subtotal, itbis, total: amount, method: dominant,
@@ -469,8 +495,18 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       clientName: b.ncfType === 'B01' ? b.clientName!.trim() : null,
       payments: b.payments, status: 'PAGADA',
       items: { create: lineItems },
-    },
-    include: invoiceInclude,
+    }, include: invoiceInclude });
+
+    if (!b.skipPlan && b.patientId && planSources.length) {
+      let porRepartir = saldoPlan;
+      for (const it of planSources) {
+        const creado = await createTreatmentFromCatalog(b.patientId, it.id, {
+          qty: it.qty, outstanding: porRepartir,
+        }, tx);
+        if (creado) porRepartir = 0;
+      }
+    }
+    return created;
   });
 
   // Marca como facturados los cargos cobrados.
@@ -504,33 +540,6 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     action: 'INVOICE_CREATE', entity: 'Invoice', entityId: invoice.id, branchId,
     summary: `Recibo ${number} · ${b.concept} · RD$${amount.toLocaleString('en-US')} (${dominant})`,
   });
-
-  // Crea el PLAN de sesiones cuando se cobra un combo/paquete: aquí es donde el servicio
-  // pagado queda ligado al paciente (con sus sesiones reales, áreas y técnicas), para que
-  // la esteticista lo vea al recibir la cita y pueda definir las áreas a trabajar.
-  //
-  // Si el cobro fue un abono, el faltante se registra en el balance del PLAN (fuente
-  // única), no como un cargo pendiente aparte.
-  if (!b.skipPlan && b.patientId && (b.items?.length || charges.length)) {
-    // Tanto el carrito como los cargos que envió la esteticista (con su
-    // catalogItemId) generan plan: así un servicio de varias sesiones cobrado por
-    // recepción queda disponible para agendarle la cita después.
-    // Si skipPlan viene activo, se omite: el plan YA existe en la ficha y solo se
-    // está registrando el ingreso (no se duplica).
-    const fuentes = [
-      ...(b.items ?? []).filter((it) => it.catalogItemId).map((it) => ({ id: it.catalogItemId!, qty: it.qty })),
-      ...charges.filter((c) => c.catalogItemId).map((c) => ({ id: c.catalogItemId!, qty: 1 })),
-    ];
-    let porRepartir = saldoPlan;
-    for (const it of fuentes) {
-      try {
-        const creado = await createTreatmentFromCatalog(b.patientId, it.id, {
-          qty: it.qty, outstanding: porRepartir,
-        });
-        if (creado) porRepartir = 0;
-      } catch { /* el plan no debe bloquear el cobro */ }
-    }
-  }
 
   // Atribuye la venta a la esteticista que atiende al paciente (ficha) para puntos y comisiones.
   // TODO lo que sigue es POSTERIOR al cobro ya registrado: nunca debe tumbar la respuesta
@@ -709,6 +718,71 @@ invoicesRouter.post('/:id/rebill', requireStaff, requireRole('ADMIN'), branchSco
     summary: `Recibo anulado ${invoice.number} devuelto manualmente a Por cobrar`,
   });
   res.json({ ok: true, message: `${invoice.number} ya está disponible en Por cobrar para emitir la factura correcta` });
+});
+
+/**
+ * Recupera una compra pagada cuyo plan no llegó a crearse por un fallo posterior
+ * a la facturación. Usa las líneas del recibo y las cruza por nombre exacto con el
+ * catálogo; es idempotente y nunca duplica un plan activo.
+ */
+invoicesRouter.post('/:id/restore-plan', requireStaff, requireRole(...billers), branchScope, async (req, res) => {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: req.params.id },
+    include: { items: true, patient: { select: { name: true } } },
+  });
+  if (!invoice) return res.status(404).json({ error: 'Recibo no encontrado' });
+  if (!assertBranchAccess(req, invoice.branchId)) return res.status(403).json({ error: 'Recibo de otra sucursal' });
+  if (invoice.status !== 'PAGADA') return res.status(409).json({ error: 'Solo se recuperan compras de recibos pagados' });
+  if (!invoice.patientId) return res.status(400).json({ error: 'El recibo no tiene un paciente asociado' });
+
+  const lines = invoice.items.filter((it) =>
+    it.total > 0 &&
+    !it.name.toLowerCase().startsWith('saldo pendiente') &&
+    !it.name.toLowerCase().startsWith('descuento'),
+  );
+  const catalog = lines.length ? await prisma.catalogItem.findMany({
+    // El catálogo es pequeño; traer solo nombre/id permite comparar sin depender
+    // de mayúsculas o espacios de recibos emitidos con versiones anteriores.
+    where: { active: true, kind: { in: ['COMBO', 'PAQUETE', 'SERVICIO'] } },
+    select: { id: true, name: true },
+  }) : [];
+  const byName = new Map(catalog.map((it) => [it.name.trim().toLocaleUpperCase('es'), it]));
+
+  const restored: string[] = [];
+  const recognized: string[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const line of lines) {
+      const item = byName.get(line.name.trim().toLocaleUpperCase('es'));
+      if (!item) continue;
+      recognized.push(item.name);
+      const treatmentId = await createTreatmentFromCatalog(invoice.patientId!, item.id, { qty: line.qty }, tx);
+      if (!treatmentId) continue;
+      restored.push(item.name);
+      // Enlaza también las citas existentes de esa compra para que el turno abra y
+      // cierre contra el plan correcto, incluso si se agendaron antes de facturar.
+      await tx.appointment.updateMany({
+        where: {
+          patientId: invoice.patientId!, catalogItemId: item.id, treatmentId: null,
+          status: { not: 'CANCELADA' }, serviceEndedAt: null,
+        },
+        data: { treatmentId },
+      });
+    }
+  });
+
+  if (!recognized.length) {
+    return res.status(400).json({ error: 'Las líneas del recibo no coinciden con un servicio, combo o paquete activo del catálogo' });
+  }
+  await audit(req, {
+    action: 'INVOICE_PLAN_RESTORE', entity: 'Invoice', entityId: invoice.id, branchId: invoice.branchId,
+    summary: `${invoice.number} · ${invoice.patient?.name ?? 'Paciente'} · ${restored.length ? `planes recuperados: ${restored.join(', ')}` : 'el plan ya estaba cargado'}`,
+  });
+  res.json({
+    ok: true,
+    message: restored.length
+      ? `Compra cargada en la ficha: ${restored.join(', ')}. Ya puede abrir y cerrar el turno.`
+      : 'La compra ya estaba cargada en la ficha; no se duplicó.',
+  });
 });
 
 /** Datos del recibo para reimprimir. */
