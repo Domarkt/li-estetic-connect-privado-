@@ -214,71 +214,17 @@ appointmentsRouter.post('/', requireStaff, requireRole('ADMIN', 'RECEPCIONISTA')
     });
   }
 
-  // Disponibilidad. Cada cita dura lo que recepción indique (un proceso puede pasar de
-  // una hora), así que el choque se calcula con la duración REAL de cada cita, no con
-  // una ventana fija. Entre pacientes se deja una separación mínima de 30 minutos.
-  // La duración elegida ya reserva el bloque completo. Se permiten citas consecutivas
-  // (p. ej. 5:30–6:30 y 6:30–7:00) sin añadir un colchón fijo artificial.
-  const SEPARACION_MIN = 0;
-  const nuevoInicio = startsAt.getTime();
-  const nuevoFin = nuevoInicio + b.durationMin * 60_000;
-  const margenMs = SEPARACION_MIN * 60_000;
-
-  // Se traen las citas del día cercanas y el solape se evalúa una por una.
-  const cercanas = await prisma.appointment.findMany({
-    where: {
-      branchId: patient.branchId,
-      status: { not: 'CANCELADA' },
-      startsAt: { gt: new Date(nuevoInicio - 8 * 3_600_000), lt: new Date(nuevoFin + 8 * 3_600_000) },
-    },
-    include: { therapist: true },
-  });
-
-  /** ¿Choca con esta cita? Se respeta la separación mínima entre pacientes distintos. */
-  const choca = (a: (typeof cercanas)[number]) => {
-    // Un turno YA cerrado (proceso terminado o cita COMPLETADA) libera el horario:
-    // la esteticista quedó disponible de verdad, así que NO bloquea una cita nueva a
-    // esa misma hora. Solo estorban las citas abiertas/pendientes.
-    if (a.serviceEndedAt || a.status === 'COMPLETADA') return false;
-    const { ini, fin } = ventanaReal(a);
-    // La separación es un colchón por si la cita se alarga. No aplica al mismo paciente
-    // (puede encadenar varias sesiones/servicios en la misma cabina y horario).
-    const margen = a.patientId === patient.id ? 0 : margenMs;
-    return nuevoInicio < fin + margen && ini < nuevoFin + margen;
-  };
-
-  if (b.therapistId) {
-    // Con esteticista asignada: esa persona no puede atender dos pacientes a la vez.
-    // El MISMO paciente no bloquea a la esteticista: puede tener varios servicios
-    // combinados en la misma cabina y horario.
-    const conflict = cercanas.find((a) => a.therapistId === b.therapistId && a.patientId !== patient.id && choca(a));
-    if (conflict) {
-      const h = conflict.startsAt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
-      const quien = conflict.therapist?.name ?? 'la esteticista';
-      return res.status(409).json({
-        error: `${quien} tiene una cita a las ${h} (${conflict.durationMin} min). Elige otra hora o esteticista.`,
-      });
-    }
-  } else {
-    // Sin asignar: se llena solo si TODAS las esteticistas de la sucursal están ocupadas.
-    const capacidad = await prisma.user.count({
-      where: { role: 'ESTETICISTA', active: true, branchId: patient.branchId },
-    });
-    const ocupadas = cercanas.filter(choca).length;
-    if (ocupadas >= Math.max(1, capacidad)) {
-      return res.status(409).json({
-        error: capacidad > 1
-          ? `A esa hora las ${capacidad} esteticistas están ocupadas. Elige otro horario.`
-          : 'Ya hay una cita a esa hora. Elige otro horario.',
-      });
-    }
-  }
+  // SIN candado de hora ni de esteticista: se pueden agendar varias citas a la misma
+  // hora. La esteticista NO se asigna al agendar (el paciente no queda amarrado a
+  // nadie); queda "Sin asignar" y se asigna sola a quien abre el turno en cabina
+  // (check-in) — es decir, a quien realmente atiende. Solo se valida el horario del
+  // negocio (arriba) y que no sea un duplicado exacto de la misma cita.
 
   let appt;
   try {
     appt = await prisma.appointment.create({
       data: {
-        branchId: patient.branchId, patientId: patient.id, therapistId: b.therapistId ?? null,
+        branchId: patient.branchId, patientId: patient.id, therapistId: null,
         serviceName, catalogItemId, treatmentId: b.treatmentId ?? null, code: genApptCode(),
         startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',
       },
@@ -433,7 +379,7 @@ appointmentsRouter.post('/serie', requireStaff, requireRole('ADMIN', 'RECEPCIONI
   const creadas = await prisma.appointment.createMany({
     data: fechas.map((startsAt) => ({
       patientId: patient.id, branchId: patient.branchId,
-      therapistId: b.therapistId || null,
+      therapistId: null, // no se asigna al agendar; se asigna a quien atiende (check-in)
       serviceName: b.serviceName, catalogItemId: b.catalogItemId || null,
       treatmentId: b.treatmentId || null, code: genApptCode(),
       startsAt, durationMin: b.durationMin, patientType: patient.type, status: 'CONFIRMADA',

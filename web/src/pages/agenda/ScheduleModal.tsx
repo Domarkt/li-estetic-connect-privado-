@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import { fmtRD, type BusinessHours, type CatalogItem, type PatientRow, type PatientType, type Therapist } from '../../lib/types';
+import { fmtRD, type BusinessHours, type CatalogItem, type PatientRow, type PatientType } from '../../lib/types';
 
 interface Props { branchQuery: string; onClose: () => void; onSaved: () => void }
 
@@ -42,8 +42,6 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
   const [serviceIds, setServiceIds] = useState<string[]>([]); // varios servicios a agendar/cobrar
   const [followUp, setFollowUp] = useState(false); // seguimiento (sin cargo)
   const [svcQuery, setSvcQuery] = useState(''); // buscador de servicios (formato del cobro)
-  const [therapists, setTherapists] = useState<Therapist[]>([]);
-  const [therapistId, setTherapistId] = useState('');
   const [date, setDate] = useState(todayStr());
   const [time, setTime] = useState('10:00');
   const [busy, setBusy] = useState(false);
@@ -79,8 +77,6 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
     // No se preselecciona ninguno: con el buscador, elegir es explícito (antes quedaba
     // agendado el primer servicio de la lista sin que nadie lo mirara).
     api.get<CatalogItem[]>('/catalog').then((c) => setServices(c.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO')));
-    api.get<Therapist[]>(`/users/therapists${branchQuery ? '?' + branchQuery.slice(1) : ''}`).then((t) => { setTherapists(t); if (t[0] && staff?.role !== 'ESTETICISTA') setTherapistId(t[0].id); });
-    if (staff?.role === 'ESTETICISTA') setTherapistId(staff.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchQuery]);
 
@@ -141,7 +137,6 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
       const nombres = svcSel.map((s) => s.name).join(' + ');
       const payload: Record<string, unknown> = {
         patientType: type, date, time,
-        therapistId: therapistId || undefined,
         isFollowUp: esSeguimiento,
         serviceName: plan
           ? plan.name // en la agenda se lee el combo real, no "Seguimiento"
@@ -164,7 +159,6 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
           serviceName: payload.serviceName,
           catalogItemId: payload.catalogItemId ?? undefined,
           treatmentId: treatmentId || undefined,
-          therapistId: therapistId || undefined,
           date, time, durationMin,
           ...(slots ? { slots } : { count: Math.max(1, Math.min(60, Number(serieCount) || 1)), everyDays: serieEvery }),
         });
@@ -532,12 +526,9 @@ export default function ScheduleModal({ branchQuery, onClose, onSaved }: Props) 
             </div>
           )}
 
-          <label className="flex flex-col gap-1.5"><span className="text-xs font-bold text-muted">Esteticista asignada</span>
-            <select className="rounded-[9px] border border-line bg-card px-3.5 py-3 text-[13.5px]" value={therapistId} onChange={(e) => setTherapistId(e.target.value)}>
-              <option value="">Sin asignar</option>
-              {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </label>
+          <div className="rounded-[10px] border border-line bg-bg px-3.5 py-3 text-[12px] text-muted">
+            <b className="text-navy">Esteticista:</b> se asigna sola a quien atienda el turno en cabina. No se elige al agendar, así el paciente no queda amarrado a una esteticista y puedes agendar varias citas a la misma hora.
+          </div>
           </>)}
         </div>
         <div className="flex gap-2.5 border-t border-line px-4 sm:px-6 py-4">
