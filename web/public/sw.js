@@ -2,15 +2,17 @@
  * Service worker de Li Estetic Connect (PWA instalable).
  *
  * Estrategia conservadora para no romper la app en producción:
- *  - Solo actúa sobre peticiones del MISMO origen (la web). La API vive en otro
- *    dominio (Render): nunca se intercepta ni se cachea (datos por sucursal, con sesión).
+ *  - Solo actúa sobre peticiones del MISMO origen (la web). La API bajo /api/
+ *    siempre va directo a la red (datos por sucursal, con sesión).
  *  - Navegaciones (SPA): RED PRIMERO, con index.html como respaldo sin conexión. Así
  *    siempre llega el index más reciente (que apunta a los assets con hash nuevo tras
  *    cada deploy) y no queda una versión vieja "pegada".
  *  - Assets estáticos (JS/CSS/imágenes): responde de caché y actualiza por detrás.
  *    Como Vite pone hash en el nombre, cada deploy trae archivos nuevos sin conflicto.
  */
-const CACHE = 'lec-v1';
+// v4 renueva el caché de los dispositivos que conservaron un JS de Facturación
+// anterior a la opción de productos y descarta respuestas antiguas de /api/.
+const CACHE = 'lec-v4';
 const SHELL = ['/', '/index.html', '/li-logo.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -31,7 +33,8 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return; // API y terceros: directo a la red
+  if (url.origin !== self.location.origin) return; // terceros: directo a la red
+  if (url.pathname.startsWith('/api/')) return;
 
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).catch(() => caches.match('/index.html')));
