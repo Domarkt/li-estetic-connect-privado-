@@ -41,14 +41,14 @@ export async function adjustStock(opts: {
  */
 export async function decrementSoldProducts(
   branchId: string,
-  catalogItemIds: string[],
+  soldItems: { catalogItemId: string; qty: number }[],
   createdById?: string | null,
 ) {
-  if (!catalogItemIds.length) return;
+  if (!soldItems.length) return;
   try {
     // Cuenta cuántas unidades de cada ítem se facturaron.
     const counts = new Map<string, number>();
-    for (const id of catalogItemIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const item of soldItems) counts.set(item.catalogItemId, (counts.get(item.catalogItemId) ?? 0) + item.qty);
 
     const products = await prisma.catalogItem.findMany({
       where: { id: { in: [...counts.keys()] }, kind: 'PRODUCTO' },

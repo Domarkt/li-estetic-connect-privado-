@@ -6,7 +6,7 @@ import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type BillPatient, type CatalogItem, type PaymentMethod, type Receipt, type TherapistLite } from '../../lib/types';
 
-const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
+const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo', PRODUCTO: 'Producto' };
 
 // Azul se retiró: los pagos con tarjeta (incluida Azul) entran en "Tarjeta".
 type Metodo = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA';
@@ -78,6 +78,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [busy, setBusy] = useState(false);
   const [pQuery, setPQuery] = useState('');
   const [sQuery, setSQuery] = useState('');
+  const [catalogTab, setCatalogTab] = useState<'servicios' | 'productos'>('servicios');
   const [loadingP, setLoadingP] = useState(true);
   const [errP, setErrP] = useState(false);
 
@@ -105,7 +106,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   }
   useEffect(() => {
     loadPatients();
-    api.get<CatalogItem[]>('/catalog').then((all) => setCatalog(all.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO'))).catch(() => setCatalog([]));
+    api.get<CatalogItem[]>('/catalog').then((all) => setCatalog(all.filter((i) => i.kind === 'SERVICIO' || i.kind === 'PAQUETE' || i.kind === 'COMBO' || i.kind === 'PRODUCTO'))).catch(() => setCatalog([]));
     api.get<TherapistLite[]>(`/invoices/therapists${branchQP}`).then(setTherapists).catch(() => setTherapists([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -124,7 +125,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   });
   const filteredCatalog = catalog.filter((c) => {
     const q = sQuery.trim().toLowerCase();
-    return !q || c.name.toLowerCase().includes(q);
+    return (catalogTab === 'productos' ? c.kind === 'PRODUCTO' : c.kind !== 'PRODUCTO')
+      && (!q || c.name.toLowerCase().includes(q) || (c.code ?? '').toLowerCase().includes(q));
   });
 
   function applyPatient(p?: BillPatient) {
@@ -206,10 +208,10 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const balanceAfter = t ? Math.max(0, t.balance - amt) : 0;
 
   function validate(): string | null {
-    if (!payingSaldo && !hasCharges && cart.length === 0) return 'Agrega al menos un servicio';
+    if (!payingSaldo && !hasCharges && cart.length === 0) return 'Agrega al menos un servicio o producto';
     const sinPrecio = cart.find((c) => c.price <= 0);
     if (sinPrecio) return `Escribe el precio de: ${sinPrecio.name}`;
-    if (!finalConcept.trim()) return 'Elige un servicio o paquete';
+    if (!finalConcept.trim()) return 'Elige un servicio o producto';
     if (!amt) return 'Escribe el monto a cobrar';
     if (payingSaldo && t && amt > t.balance) return `El monto no puede superar el saldo (${fmtRD(t.balance)})`;
     if (freeAbono && amt >= lineasTotal) return 'El abono debe ser menor que el total';
@@ -298,9 +300,9 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
               )}
             </div>
 
-            {/* 2 · Servicios */}
+            {/* 2 · Servicios y productos */}
             <div>
-              <span className="mb-1.5 block text-xs font-bold text-muted">Servicios a cobrar</span>
+              <span className="mb-1.5 block text-xs font-bold text-muted">Servicios y productos a cobrar</span>
               {payingSaldo ? (
                 <>
                   {/* Con varios planes con saldo hay que decir cuál se está cobrando. */}
@@ -390,11 +392,20 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                   )}
 
                   {/* Catálogo en forma de ETIQUETAS: se toca para agregar al recibo. */}
-                  <input value={sQuery} onChange={(e) => setSQuery(e.target.value)} placeholder="🔍 Buscar servicio o producto para agregar…"
+                  <div className="mb-2 flex gap-2" role="group" aria-label="Tipo de artículo a cobrar">
+                    {([['servicios', 'Servicios, combos y paquetes'], ['productos', 'Productos']] as const).map(([key, label]) => (
+                      <button key={key} type="button" onClick={() => { setCatalogTab(key); setSQuery(''); }}
+                        aria-pressed={catalogTab === key}
+                        className={`rounded-[9px] border px-3 py-2 text-[12px] font-bold ${catalogTab === key ? 'border-magenta bg-magenta-soft text-magenta' : 'border-line bg-card text-muted'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <input value={sQuery} onChange={(e) => setSQuery(e.target.value)} placeholder={catalogTab === 'productos' ? '🔍 Buscar producto por nombre o código…' : '🔍 Buscar servicio, combo o paquete…'}
                     className="mb-1.5 w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
                   <div className="max-h-[160px] overflow-y-auto rounded-[11px] border border-line-2 p-2">
-                    {catalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay servicios en el catálogo. Créalos en Catálogo.</div>}
-                    {catalog.length > 0 && filteredCatalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">Sin coincidencias.</div>}
+                    {catalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay artículos en el catálogo. Créalos en Catálogo.</div>}
+                    {catalog.length > 0 && filteredCatalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">{sQuery ? 'Sin coincidencias.' : `No hay ${catalogTab === 'productos' ? 'productos' : 'servicios'} en el catálogo.`}</div>}
                     <div className="flex flex-wrap gap-1.5">
                       {filteredCatalog.map((c) => (
                         <button key={c.id} onClick={() => addToCart(c)} title={c.price ? fmtRD(c.price) : 'sin precio'}

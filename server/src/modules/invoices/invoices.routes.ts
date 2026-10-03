@@ -517,12 +517,6 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       where: { id: { in: charges.map((c) => c.id) } },
       data: { status: 'FACTURADO' },
     });
-    // Descuenta del inventario los productos vendidos (por sucursal).
-    await decrementSoldProducts(
-      branchId,
-      charges.map((c) => c.catalogItemId).filter((x): x is string => !!x),
-      req.staff!.sub,
-    );
     // El resto del abono queda como nuevo cargo pendiente para cobrar luego.
     if (saldoServicios > 0 && b.patientId) {
       await prisma.chargeItem.create({
@@ -535,6 +529,17 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       data: { branchId, patientId: b.patientId, name: `Saldo pendiente: ${b.concept}`, price: saldoServicios, createdById: req.staff!.sub },
     });
   }
+
+  // Los productos del carrito y de cargos pendientes salen del inventario de la
+  // sucursal que emitió el recibo. Se respeta la cantidad de cada línea.
+  await decrementSoldProducts(
+    branchId,
+    [
+      ...charges.filter((c) => c.catalogItemId).map((c) => ({ catalogItemId: c.catalogItemId!, qty: 1 })),
+      ...(b.items ?? []).filter((it) => it.catalogItemId).map((it) => ({ catalogItemId: it.catalogItemId!, qty: it.qty })),
+    ],
+    req.staff!.sub,
+  );
 
   await audit(req, {
     action: 'INVOICE_CREATE', entity: 'Invoice', entityId: invoice.id, branchId,
