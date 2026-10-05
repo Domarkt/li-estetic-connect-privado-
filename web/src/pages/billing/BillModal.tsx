@@ -39,7 +39,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
   const [amount, setAmount] = useState(''); // monto a abonar (solo en ABONO)
   const [chargeIds, setChargeIds] = useState<string[]>([]);
   const [treatmentId, setTreatmentId] = useState<string | null>(null);
-  const [payKind, setPayKind] = useState<PayKind>('TOTAL');
+  const [payKind, setPayKind] = useState<PayKind | null>(null);
 
   // Sin método preseleccionado: recepción debe confirmar cómo pagó el cliente.
   const [method, setMethod] = useState<Metodo | null>(null);
@@ -71,7 +71,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
   // (plan cargado/usado). Emite el recibo sin crear/duplicar el plan.
   const [skipPlan, setSkipPlan] = useState(false);
   // B02 consumo final (lo normal) | B01 crédito fiscal (exige RNC del cliente).
-  const [ncfType, setNcfType] = useState<'B02' | 'B01'>('B02');
+  const [ncfType, setNcfType] = useState<'B02' | 'B01' | null>(null);
   const [rnc, setRnc] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
   const [step, setStep] = useState<'form' | 'cart' | 'payment' | 'review'>('form');
@@ -138,17 +138,17 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     if (!p) return;
     setSelected(p.id); setCart([]); setSQuery('');
     if (startNewPurchase) {
-      setConcept(''); setChargeIds([]); setTreatmentId(null); setPayKind('TOTAL'); setAmount(''); setDesdeAgenda(null);
+      setConcept(''); setChargeIds([]); setTreatmentId(null); setAmount(''); setDesdeAgenda(null);
     } else if (p.pendingCharges.length) {
       setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
-      setChargeIds(p.pendingCharges.map((c) => c.id)); setTreatmentId(null); setPayKind('TOTAL'); setAmount('');
+      setChargeIds(p.pendingCharges.map((c) => c.id)); setTreatmentId(null); setAmount('');
     } else if (saldosDe(p).length) {
       // Se toma el primer plan con saldo; si tiene varios, se puede cambiar abajo.
       const t = saldosDe(p)[0];
       setConcept(`Saldo ${t.name}`); setTreatmentId(t.id);
-      setPayKind('SALDO'); setChargeIds([]); setAmount(String(t.balance));
+      setChargeIds([]); setAmount('');
     } else {
-      setConcept(''); setTreatmentId(null); setPayKind('TOTAL'); setChargeIds([]); setAmount('');
+      setConcept(''); setTreatmentId(null); setChargeIds([]); setAmount('');
       // Precarga lo que el paciente AGENDÓ: si pasaron días o hay mucho movimiento,
       // recepción no tiene por qué acordarse ni ir a buscarlo en la agenda.
       if (p.scheduled) {
@@ -163,6 +163,8 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     }
     setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
     setMethod(null);
+    setPayKind(null);
+    setNcfType(null);
   }
 
   function setKind(k: PayKind) {
@@ -214,6 +216,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
   const paymentsList: { method: PaymentMethod; amount: number }[] = splitOn
     ? METHODS.map((m) => ({ method: m as PaymentMethod, amount: num(split[m]) })).filter((p) => p.amount > 0)
     : (amt > 0 && method ? [{ method: method as PaymentMethod, amount: amt }] : []);
+  const paymentReady = !!payKind && !!ncfType && amt > 0 && (splitOn ? assigned === amt : !!method);
   const balanceAfter = t ? Math.max(0, t.balance - amt) : 0;
 
   function validate(): string | null {
@@ -221,6 +224,8 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     const sinPrecio = cart.find((c) => c.price <= 0);
     if (sinPrecio) return `Escribe el precio de: ${sinPrecio.name}`;
     if (!finalConcept.trim()) return 'Elige un servicio o producto';
+    if (!payKind) return 'Selecciona el tipo de pago';
+    if (!ncfType) return 'Selecciona el tipo de comprobante';
     if (!amt) return 'Escribe el monto a cobrar';
     if (!splitOn && !method) return 'Selecciona cómo pagó el cliente';
     if (payingSaldo && t && amt > t.balance) return `El monto no puede superar el saldo (${fmtRD(t.balance)})`;
@@ -261,7 +266,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
         patientId: selected ?? undefined, concept: finalConcept.trim(),
         therapistId: ventaTid || undefined,
         payments: paymentsList, treatmentId: payingSaldo ? treatmentId : undefined,
-        paymentKind: (payingSaldo || freeAbono) ? payKind : 'TOTAL',
+        paymentKind: (payingSaldo || freeAbono) ? payKind! : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
         items: cartOn && cart.length ? cart.map((c) => ({ name: c.name, price: c.price, qty: c.qty, catalogItemId: c.catalogId })) : undefined,
         fullAmount: freeAbono ? lineasTotal : undefined,
@@ -269,7 +274,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
         discountReason: descAmount > 0 && descReason.trim() ? descReason.trim() : undefined,
         itbisApplied: conItbis,
         skipPlan: (!payingSaldo && cartOn && skipPlan) ? true : undefined,
-        ncfType,
+        ncfType: ncfType!,
         ...(ncfType === 'B01' ? { clientRnc: rnc.trim(), clientName: razonSocial.trim() } : {}),
       });
       toast(r.message); onEmitted({ ...r.receipt, citaWhatsappUrl: r.citaWhatsappUrl }); onClose();
@@ -299,7 +304,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
                 <div className="flex items-center gap-2.5 rounded-[11px] border border-magenta bg-magenta-soft px-3 py-2.5">
                   <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11.5px] font-bold text-white" style={{ background: current.avatarColor }}>{current.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
                   <div className="min-w-0 flex-1"><div className="text-[13.5px] font-bold">{current.name}</div><div className="text-[11.5px] text-muted">{current.plan}{current.balance > 0 ? ` · saldo ${fmtRD(current.balance)}` : ''}</div></div>
-                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); setMethod(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); setMethod(null); setPayKind(null); setNcfType(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
                 </div>
               ) : (
                 <>
@@ -360,7 +365,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
                     </>
                   )}
                   {/* Permite salir del cobro de saldo para hacer una compra normal. */}
-                  <button onClick={() => { setTreatmentId(null); setConcept(''); setPayKind('TOTAL'); setAmount(''); setMethod(null); }}
+                  <button onClick={() => { setTreatmentId(null); setConcept(''); setPayKind(null); setAmount(''); setMethod(null); setNcfType(null); }}
                     className="mt-2 text-[11.5px] font-bold text-magenta">+ Mejor cobrar otro servicio/producto</button>
                 </>
               ) : (
@@ -655,8 +660,8 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
         ) : (
           <div className="flex flex-col gap-3 overflow-y-auto px-4 sm:px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
-            <Row k="Tipo de pago" v={KIND_LABEL[(payingSaldo || freeAbono) ? payKind : 'TOTAL']} />
-            <Row k="Comprobante" v={ncfType === 'B01' ? 'Crédito fiscal' : 'Consumo'} />
+            <Row k="Tipo de pago" v={payKind ? KIND_LABEL[payKind] : 'Sin seleccionar'} />
+            <Row k="Comprobante" v={ncfType === 'B01' ? 'Crédito fiscal' : ncfType === 'B02' ? 'Consumo' : 'Sin seleccionar'} />
             {ncfType === 'B01' && (
               <div className="rounded-[11px] border border-magenta/40 bg-magenta-soft p-3">
                 <div className="mb-1 text-[11.5px] font-bold text-magenta">Crédito fiscal · se emite a</div>
@@ -721,7 +726,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
           ) : step === 'payment' ? (
             <>
               <button onClick={() => setStep('cart')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Carrito</button>
-              <button onClick={goReview} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">Revisar cobro →</button>
+              <button onClick={goReview} disabled={!paymentReady} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-50">Revisar cobro →</button>
             </>
           ) : (
             <>
