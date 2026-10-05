@@ -28,6 +28,7 @@ export default function PatientsPage() {
   const [newOpen, setNewOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [billId, setBillId] = useState<string | null>(null);
+  const [billStartNew, setBillStartNew] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [cargando, setCargando] = useState(true);
@@ -121,10 +122,10 @@ export default function PatientsPage() {
         <PatientDrawer patientId={detailId} reloadKey={reloadKey} onClose={() => setDetailId(null)}
           onOpenFicha={(p) => { setDetailId(null); setFicha(p); }}
           onOpenAddServices={(id) => { setDetailId(null); setAddSvc(id); }}
-          onOpenBill={(id) => { setDetailId(null); setBillId(id); }} />
+          onOpenBill={(id, newPurchase) => { setDetailId(null); setBillStartNew(!!newPurchase); setBillId(id); }} />
       )}
       {ficha && <FichaWizard patientId={ficha.id} patientName={ficha.name} onClose={() => setFicha(null)} onSaved={refresh} />}
-      {addSvc && <AddServicesModal patientId={addSvc} canBillNow={canCreate} afterAdd={(id) => setBillId(id)} onClose={() => setAddSvc(null)} onSaved={refresh} />}
+      {addSvc && <AddServicesModal patientId={addSvc} historicalOnly={canCreate} onClose={() => setAddSvc(null)} onSaved={refresh} />}
       {newOpen && <NewPatientModal onClose={() => setNewOpen(false)} onCreated={(p) => { refresh(); setFicha({ id: p.id, name: p.name }); }} />}
       {importOpen && (
         <Overlay onClose={() => { setImportOpen(false); refresh(); }} z={110}>
@@ -137,7 +138,7 @@ export default function PatientsPage() {
           </div>
         </Overlay>
       )}
-      {billId && <BillModal preselectId={billId} onClose={() => setBillId(null)} onEmitted={(r) => { setReceipt(r); refresh(); }} />}
+      {billId && <BillModal preselectId={billId} startNewPurchase={billStartNew} onClose={() => setBillId(null)} onEmitted={(r) => { setReceipt(r); refresh(); }} />}
       {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );

@@ -4,9 +4,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
+import CatalogChoiceCard from '../../components/CatalogChoiceCard';
 import { fmtRD, type BillPatient, type CatalogItem, type PaymentMethod, type Receipt, type TherapistLite } from '../../lib/types';
-
-const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo', PRODUCTO: 'Producto' };
 
 // Azul se retiró: los pagos con tarjeta (incluida Azul) entran en "Tarjeta".
 type Metodo = 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA';
@@ -19,13 +18,13 @@ const KIND_LABEL: Record<PayKind, string> = { TOTAL: 'Pago total', ABONO: 'Abono
 
 const num = (v: string) => parseInt((v || '').replace(/[^0-9]/g, ''), 10) || 0;
 
-// Cada línea es independiente (se puede repetir el mismo servicio): tiene su cantidad.
+// Las líneas del carrito se agrupan por artículo: repetirlo aumenta la cantidad.
 interface CartItem { lineId: string; catalogId: string; name: string; price: number; qty: number }
-interface Props { preselectId?: string; onClose: () => void; onEmitted: (r: Receipt) => void }
+interface Props { preselectId?: string; startNewPurchase?: boolean; onClose: () => void; onEmitted: (r: Receipt) => void }
 
 let lineSeq = 0;
 
-export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
+export default function BillModal({ preselectId, startNewPurchase = false, onClose, onEmitted }: Props) {
   const toast = useToast();
   const { staff } = useAuth();
   const { activeBranch } = useBranch();
@@ -42,7 +41,8 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [treatmentId, setTreatmentId] = useState<string | null>(null);
   const [payKind, setPayKind] = useState<PayKind>('TOTAL');
 
-  const [method, setMethod] = useState<Metodo>('EFECTIVO');
+  // Sin método preseleccionado: recepción debe confirmar cómo pagó el cliente.
+  const [method, setMethod] = useState<Metodo | null>(null);
   const [splitOn, setSplitOn] = useState(false);
   const [split, setSplit] = useState<Record<Metodo, string>>({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
 
@@ -74,7 +74,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const [ncfType, setNcfType] = useState<'B02' | 'B01'>('B02');
   const [rnc, setRnc] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
-  const [step, setStep] = useState<'form' | 'review'>('form');
+  const [step, setStep] = useState<'form' | 'cart' | 'payment' | 'review'>('form');
   const [busy, setBusy] = useState(false);
   const [pQuery, setPQuery] = useState('');
   const [sQuery, setSQuery] = useState('');
@@ -111,10 +111,14 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Agregar un servicio al carrito. Se permite repetir (una para ella, otra para su pareja).
+  // Repetir el mismo artículo aumenta su cantidad; no crea líneas duplicadas.
   function addToCart(item: CatalogItem) {
     setSQuery('');
-    setCart((c) => [...c, { lineId: `l${++lineSeq}`, catalogId: item.id, name: item.name, price: item.price || 0, qty: 1 }]);
+    setCart((c) => {
+      const existing = c.find((line) => line.catalogId === item.id);
+      if (existing) return c.map((line) => line.lineId === existing.lineId ? { ...line, qty: line.qty + 1 } : line);
+      return [...c, { lineId: `l${++lineSeq}`, catalogId: item.id, name: item.name, price: item.price || 0, qty: 1 }];
+    });
   }
   const patchLine = (lineId: string, patch: Partial<CartItem>) => setCart((c) => c.map((x) => (x.lineId === lineId ? { ...x, ...patch } : x)));
   const removeItem = (lineId: string) => setCart((c) => c.filter((x) => x.lineId !== lineId));
@@ -126,13 +130,16 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const filteredCatalog = catalog.filter((c) => {
     const q = sQuery.trim().toLowerCase();
     return (catalogTab === 'productos' ? c.kind === 'PRODUCTO' : c.kind !== 'PRODUCTO')
-      && (!q || c.name.toLowerCase().includes(q) || (c.code ?? '').toLowerCase().includes(q));
+      && (!q || c.name.toLowerCase().includes(q) || (c.code ?? '').toLowerCase().includes(q)
+        || (c.services ?? []).some((service) => service.name.toLowerCase().includes(q)));
   });
 
   function applyPatient(p?: BillPatient) {
     if (!p) return;
     setSelected(p.id); setCart([]); setSQuery('');
-    if (p.pendingCharges.length) {
+    if (startNewPurchase) {
+      setConcept(''); setChargeIds([]); setTreatmentId(null); setPayKind('TOTAL'); setAmount(''); setDesdeAgenda(null);
+    } else if (p.pendingCharges.length) {
       setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
       setChargeIds(p.pendingCharges.map((c) => c.id)); setTreatmentId(null); setPayKind('TOTAL'); setAmount('');
     } else if (saldosDe(p).length) {
@@ -155,6 +162,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
       }
     }
     setSplit({ EFECTIVO: '', TRANSFERENCIA: '', TARJETA: '' });
+    setMethod(null);
   }
 
   function setKind(k: PayKind) {
@@ -195,6 +203,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const freeAbono = payKind === 'ABONO' && !payingSaldo && lineasTotal > 0;
   const freePending = Math.max(0, fullAmt - amt);
   const cartNames = cart.map((c) => (c.qty > 1 ? `${c.qty}× ${c.name}` : c.name));
+  const cartCount = chargeIds.length + cart.reduce((sum, item) => sum + item.qty, 0);
   const finalConcept = payingSaldo
     ? concept
     : [...(hasCharges && concept ? [concept] : []), ...cartNames].join(' + ') || concept || '';
@@ -204,7 +213,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
   const remaining = amt - assigned;
   const paymentsList: { method: PaymentMethod; amount: number }[] = splitOn
     ? METHODS.map((m) => ({ method: m as PaymentMethod, amount: num(split[m]) })).filter((p) => p.amount > 0)
-    : (amt > 0 ? [{ method: method as PaymentMethod, amount: amt }] : []);
+    : (amt > 0 && method ? [{ method: method as PaymentMethod, amount: amt }] : []);
   const balanceAfter = t ? Math.max(0, t.balance - amt) : 0;
 
   function validate(): string | null {
@@ -213,6 +222,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     if (sinPrecio) return `Escribe el precio de: ${sinPrecio.name}`;
     if (!finalConcept.trim()) return 'Elige un servicio o producto';
     if (!amt) return 'Escribe el monto a cobrar';
+    if (!splitOn && !method) return 'Selecciona cómo pagó el cliente';
     if (payingSaldo && t && amt > t.balance) return `El monto no puede superar el saldo (${fmtRD(t.balance)})`;
     if (freeAbono && amt >= lineasTotal) return 'El abono debe ser menor que el total';
     if (splitOn && assigned !== amt) return `El pago dividido (${fmtRD(assigned)}) debe sumar el total (${fmtRD(amt)})`;
@@ -230,6 +240,18 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
     const err = validate();
     if (err) { toast(err); return; }
     setStep('review');
+  }
+
+  function goCart() {
+    if (!payingSaldo && !hasCharges && cart.length === 0) { toast('Agrega al menos un servicio o producto'); return; }
+    setStep('cart');
+  }
+
+  function goPayment() {
+    if (!payingSaldo && !hasCharges && cart.length === 0) { toast('El carrito está vacío'); setStep('form'); return; }
+    const sinPrecio = cart.find((item) => item.price <= 0);
+    if (sinPrecio) { toast(`Escribe el precio de: ${sinPrecio.name}`); return; }
+    setStep('payment');
   }
 
   async function emit() {
@@ -258,14 +280,18 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
   return (
     <Overlay onClose={onClose} z={110}>
-      <div onClick={stop} className="flex max-h-[92vh] w-[520px] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop lg:w-[680px]" style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
+      <div onClick={stop} className={`flex max-h-[92vh] max-w-full flex-col overflow-hidden rounded-2xl bg-card animate-pop ${step === 'form' ? 'w-[520px] lg:w-[980px]' : 'w-[520px] lg:w-[680px]'}`} style={{ boxShadow: '0 24px 80px rgba(0,0,0,.35)' }}>
         <div className="flex flex-none items-center border-b border-line px-4 sm:px-6 py-4">
-          <div className="flex-1 text-base font-extrabold">{step === 'form' ? 'Registrar cobro' : 'Confirmar cobro'}</div>
+          <div className="flex-1">
+            <div className="text-base font-extrabold">{step === 'form' ? 'Elegir servicios y productos' : step === 'cart' ? 'Revisar carrito' : step === 'payment' ? 'Método de pago' : 'Confirmar cobro'}</div>
+            <div className="mt-0.5 text-[11px] font-semibold text-muted">{step === 'form' ? 'Paso 1 de 4' : step === 'cart' ? 'Paso 2 de 4' : step === 'payment' ? 'Paso 3 de 4' : 'Paso 4 de 4'}</div>
+          </div>
           <button onClick={onClose} className="h-8 w-8 rounded-lg bg-bg text-muted">×</button>
         </div>
 
         {step === 'form' ? (
-          <div className="flex flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-5">
+          <div className="grid min-h-0 gap-4 overflow-y-auto px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_290px] lg:overflow-hidden">
+            <div className="flex min-w-0 flex-col gap-4 lg:overflow-y-auto lg:pr-1">
             {/* 1 · Paciente */}
             <div>
               <span className="mb-1.5 block text-xs font-bold text-muted">Paciente</span>
@@ -273,7 +299,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 <div className="flex items-center gap-2.5 rounded-[11px] border border-magenta bg-magenta-soft px-3 py-2.5">
                   <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11.5px] font-bold text-white" style={{ background: current.avatarColor }}>{current.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
                   <div className="min-w-0 flex-1"><div className="text-[13.5px] font-bold">{current.name}</div><div className="text-[11.5px] text-muted">{current.plan}{current.balance > 0 ? ` · saldo ${fmtRD(current.balance)}` : ''}</div></div>
-                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); setMethod(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
                 </div>
               ) : (
                 <>
@@ -334,7 +360,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                     </>
                   )}
                   {/* Permite salir del cobro de saldo para hacer una compra normal. */}
-                  <button onClick={() => { setTreatmentId(null); setConcept(''); setPayKind('TOTAL'); setAmount(''); }}
+                  <button onClick={() => { setTreatmentId(null); setConcept(''); setPayKind('TOTAL'); setAmount(''); setMethod(null); }}
                     className="mt-2 text-[11.5px] font-bold text-magenta">+ Mejor cobrar otro servicio/producto</button>
                 </>
               ) : (
@@ -347,51 +373,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                     </div>
                   )}
 
-                  {/* Cargos que envió la esteticista (etiquetas). Se pueden quitar. */}
-                  {hasCharges && (
-                    <div className="mb-2 flex flex-wrap gap-1.5">
-                      {(current?.pendingCharges ?? []).filter((c) => chargeIds.includes(c.id)).map((c) => (
-                        <span key={c.id} className="flex items-center gap-1.5 rounded-full border border-magenta bg-magenta-soft px-2.5 py-1 text-[12px] font-bold text-magenta">
-                          {c.name}<span className="text-[11px] font-semibold">{fmtRD(c.price)}</span>
-                          <button onClick={() => setChargeIds((ids) => ids.filter((x) => x !== c.id))} className="text-[13px] leading-none text-magenta/70 hover:text-danger">×</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Servicios/productos agregados en el cobro (con cantidad y precio). */}
-                  {cart.length > 0 && (
-                    <div className="mb-2 flex flex-col gap-2 rounded-[11px] border border-line-2 p-2">
-                      {cart.map((it) => (
-                        <div key={it.lineId} className="flex flex-col gap-1.5 rounded-[9px] bg-bg p-2">
-                          <div className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-[13px] font-bold">{it.name}</span>
-                            <button onClick={() => removeItem(it.lineId)} className="flex-none rounded-md px-1.5 text-[15px] font-bold text-muted hover:text-danger">×</button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center rounded-[8px] border border-line bg-card">
-                              <button onClick={() => patchLine(it.lineId, { qty: Math.max(1, it.qty - 1) })} className="px-2.5 py-1 text-[15px] font-bold text-muted">−</button>
-                              <span className="w-6 text-center text-[13px] font-bold">{it.qty}</span>
-                              <button onClick={() => patchLine(it.lineId, { qty: it.qty + 1 })} className="px-2.5 py-1 text-[15px] font-bold text-muted">+</button>
-                            </div>
-                            <div className="flex flex-1 items-center rounded-[8px] border border-line bg-card px-2">
-                              <span className="text-[11px] font-bold text-faint">RD$</span>
-                              <input value={it.price ? String(it.price) : ''} onChange={(e) => patchLine(it.lineId, { price: num(e.target.value) })} inputMode="numeric" placeholder="precio"
-                                className="w-full bg-transparent px-1 py-1.5 text-right text-[13px] font-bold outline-none" />
-                            </div>
-                            {it.qty > 1 && <span className="flex-none text-[12px] font-bold text-magenta">{fmtRD(it.price * it.qty)}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Total de lo que se cobra (cargos + agregados) */}
-                  {(hasCharges || cart.length > 0) && (
-                    <div className="mb-2 flex justify-between rounded-[9px] bg-bg px-3 py-2 text-[13px]"><span className="font-bold text-muted">{descAmount > 0 ? 'Subtotal' : 'Total'}</span><span className="font-extrabold text-magenta">{fmtRD(preTotal)}</span></div>
-                  )}
-
-                  {/* Catálogo en forma de ETIQUETAS: se toca para agregar al recibo. */}
+                  {/* El mismo resumen de catálogo que se ve al abrir un paciente. */}
                   <div className="mb-2 flex gap-2" role="group" aria-label="Tipo de artículo a cobrar">
                     {([['servicios', 'Servicios, combos y paquetes'], ['productos', 'Productos']] as const).map(([key, label]) => (
                       <button key={key} type="button" onClick={() => { setCatalogTab(key); setSQuery(''); }}
@@ -403,18 +385,12 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                   </div>
                   <input value={sQuery} onChange={(e) => setSQuery(e.target.value)} placeholder={catalogTab === 'productos' ? '🔍 Buscar producto por nombre o código…' : '🔍 Buscar servicio, combo o paquete…'}
                     className="mb-1.5 w-full rounded-[9px] border border-line px-3 py-2.5 text-[13px] outline-none focus:border-magenta" />
-                  <div className="max-h-[160px] overflow-y-auto rounded-[11px] border border-line-2 p-2">
+                  <div className="max-h-[280px] overflow-y-auto rounded-[11px] border border-line-2 p-2">
                     {catalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">No hay artículos en el catálogo. Créalos en Catálogo.</div>}
                     {catalog.length > 0 && filteredCatalog.length === 0 && <div className="px-2.5 py-3 text-center text-[12.5px] text-muted">{sQuery ? 'Sin coincidencias.' : `No hay ${catalogTab === 'productos' ? 'productos' : 'servicios'} en el catálogo.`}</div>}
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-col gap-2">
                       {filteredCatalog.map((c) => (
-                        <button key={c.id} onClick={() => addToCart(c)} title={c.price ? fmtRD(c.price) : 'sin precio'}
-                          className="flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-[12px] font-bold text-navy hover:border-magenta hover:text-magenta">
-                          <span className="rounded-full bg-navy-soft px-1.5 py-0.5 text-[9.5px] font-bold text-navy">{KIND_TAG[c.kind] ?? c.kind}</span>
-                          {c.name}
-                          <span className="text-[11px] font-semibold text-magenta">{c.price ? fmtRD(c.price) : 'sin $'}</span>
-                          <span className="text-[14px] leading-none text-magenta">+</span>
-                        </button>
+                        <CatalogChoiceCard key={c.id} item={c} action="Agregar" onClick={() => addToCart(c)} />
                       ))}
                     </div>
                   </div>
@@ -461,6 +437,65 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 )}
               </div>
             )}
+
+            </div>
+            <aside aria-label="Carrito de compra" className="flex min-h-[190px] flex-col rounded-xl border border-line bg-bg p-3 lg:min-h-0 lg:overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-line pb-2"><div className="text-[14px] font-extrabold text-navy">🛒 Carrito</div><div className="rounded-full bg-magenta-soft px-2 py-0.5 text-[11px] font-bold text-magenta">{payingSaldo ? 'Saldo' : `${cartCount} ${cartCount === 1 ? 'artículo' : 'artículos'}`}</div></div>
+              <div className="flex-1 space-y-2 py-3">
+                {payingSaldo ? <div className="rounded-lg bg-card p-2.5 text-[12px]"><div className="font-bold">{concept}</div><div className="mt-1 text-muted">Saldo del plan: {fmtRD(t?.balance ?? 0)}</div></div> : (
+                  <>
+                    {cartCount === 0 && <div className="py-7 text-center text-[12px] text-muted">El carrito está vacío. Elige un combo, servicio o producto a la izquierda.</div>}
+                    {(current?.pendingCharges ?? []).filter((charge) => chargeIds.includes(charge.id)).map((charge) => <div key={charge.id} className="flex items-start gap-1 rounded-lg bg-card p-2.5"><div className="min-w-0 flex-1"><div className="text-[12px] font-bold">{charge.name}</div><div className="text-[11px] text-muted">Cargo pendiente · {fmtRD(charge.price)}</div></div><button type="button" onClick={() => setChargeIds((ids) => ids.filter((id) => id !== charge.id))} aria-label={`Quitar ${charge.name} del carrito`} className="px-1 text-base text-muted hover:text-danger">×</button></div>)}
+                    {cart.map((item) => <div key={item.lineId} className="flex items-start gap-1 rounded-lg bg-card p-2.5"><div className="min-w-0 flex-1"><div className="text-[12px] font-bold leading-snug">{item.name}</div><div className="mt-1 text-[11px] text-muted">{item.qty} × {fmtRD(item.price)} <span className="font-bold text-magenta">· {fmtRD(item.qty * item.price)}</span></div></div><button type="button" onClick={() => removeItem(item.lineId)} aria-label={`Quitar ${item.name} del carrito`} className="px-1 text-base text-muted hover:text-danger">×</button></div>)}
+                  </>
+                )}
+              </div>
+              <div className="border-t border-line pt-3">
+                {!payingSaldo && <div className="flex justify-between text-[11px] text-muted"><span>Subtotal</span><span>{fmtRD(preTotal)}</span></div>}
+                {descAmount > 0 && <div className="mt-1 flex justify-between text-[11px] text-danger"><span>Descuento</span><span>−{fmtRD(descAmount)}</span></div>}
+                <div className="mt-2 flex items-center justify-between text-[15px] font-extrabold"><span>Total</span><span className="text-magenta">{fmtRD(payingSaldo ? t?.balance ?? 0 : lineasTotal)}</span></div>
+              </div>
+            </aside>
+          </div>
+        ) : step === 'cart' ? (
+          <div className="flex flex-col gap-3 overflow-y-auto px-4 py-5 sm:px-6">
+            <div className="rounded-xl bg-navy px-4 py-3 text-white">
+              <div className="text-[11px] font-bold uppercase tracking-wide opacity-75">Carrito de compra</div>
+              <div className="mt-0.5 text-[15px] font-extrabold">{current?.name ?? 'Cliente'} · {payingSaldo ? 'saldo pendiente' : `${cartCount} ${cartCount === 1 ? 'artículo' : 'artículos'}`}</div>
+            </div>
+            {payingSaldo ? (
+              <div className="rounded-xl border border-line p-3.5"><div className="text-[13px] font-bold">{concept}</div><div className="mt-1 text-[12px] text-muted">Saldo disponible: {fmtRD(t?.balance ?? 0)}</div></div>
+            ) : (
+              <>
+                {(current?.pendingCharges ?? []).filter((charge) => chargeIds.includes(charge.id)).map((charge) => (
+                  <div key={charge.id} className="flex items-center gap-2 rounded-xl border border-line p-3">
+                    <div className="min-w-0 flex-1"><div className="text-[13px] font-bold">{charge.name}</div><div className="text-[11px] text-muted">Cargo pendiente</div></div>
+                    <div className="text-[13px] font-extrabold text-magenta">{fmtRD(charge.price)}</div>
+                    <button type="button" onClick={() => setChargeIds((ids) => ids.filter((id) => id !== charge.id))} aria-label={`Quitar ${charge.name} del carrito`} className="rounded-md px-2 text-lg font-bold text-muted hover:text-danger">×</button>
+                  </div>
+                ))}
+                {cart.map((item) => (
+                  <div key={item.lineId} className="rounded-xl border border-line p-3">
+                    <div className="flex items-start gap-2"><div className="min-w-0 flex-1 text-[13px] font-bold">{item.name}</div><button type="button" onClick={() => removeItem(item.lineId)} aria-label={`Quitar ${item.name} del carrito`} className="rounded-md px-2 text-lg font-bold text-muted hover:text-danger">×</button></div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex items-center rounded-lg border border-line"><button type="button" onClick={() => patchLine(item.lineId, { qty: Math.max(1, item.qty - 1) })} aria-label={`Restar ${item.name}`} className="px-2.5 py-1 text-lg">−</button><span className="w-6 text-center text-[13px] font-bold">{item.qty}</span><button type="button" onClick={() => patchLine(item.lineId, { qty: item.qty + 1 })} aria-label={`Sumar ${item.name}`} className="px-2.5 py-1 text-lg">+</button></div>
+                      <label className="flex min-w-0 flex-1 items-center rounded-lg border border-line px-2"><span className="text-[11px] font-bold text-muted">RD$</span><input value={item.price || ''} onChange={(event) => patchLine(item.lineId, { price: num(event.target.value) })} inputMode="numeric" aria-label={`Precio de ${item.name}`} className="w-full min-w-0 px-1 py-1.5 text-right text-[13px] font-bold outline-none" /></label>
+                      <div className="w-[85px] flex-none text-right text-[13px] font-extrabold text-magenta">{fmtRD(item.price * item.qty)}</div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+            <div className="rounded-xl border border-magenta bg-magenta-soft p-4">
+              {!payingSaldo && <div className="flex justify-between text-[12px] text-muted"><span>Subtotal</span><span>{fmtRD(preTotal)}</span></div>}
+              {descAmount > 0 && <div className="mt-1 flex justify-between text-[12px] text-danger"><span>Descuento</span><span>−{fmtRD(descAmount)}</span></div>}
+              <div className="mt-2 flex justify-between border-t border-magenta/30 pt-2 text-[16px] font-extrabold"><span>{payingSaldo ? 'Saldo del plan' : 'Total del carrito'}</span><span className="text-magenta">{fmtRD(payingSaldo ? t?.balance ?? 0 : lineasTotal)}</span></div>
+            </div>
+            <div className="text-[11px] text-muted">Confirma artículos, cantidades y precios. El cobro se emite solo después de revisar el método de pago.</div>
+          </div>
+        ) : step === 'payment' ? (
+          <div className="flex flex-col gap-4 overflow-y-auto px-4 py-5 sm:px-6">
+            <div className="flex items-center justify-between rounded-xl border border-line bg-bg px-4 py-3"><div><div className="text-[11px] font-bold text-muted">Carrito revisado</div><div className="text-[13px] font-bold">{payingSaldo ? concept : `${cartCount} ${cartCount === 1 ? 'artículo' : 'artículos'}`}</div></div><button type="button" onClick={() => setStep('cart')} className="text-[12px] font-bold text-magenta">Ver carrito</button></div>
 
             {/* 3 · Tipo de pago */}
             {selected && (payingSaldo || hasCharges || cart.length > 0) && (
@@ -576,10 +611,17 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
 
             {/* 5 · Forma de pago */}
             <div>
-              <div className="mb-1.5 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-bold text-muted">¿Cómo paga?</span>
-                <button onClick={() => setSplitOn((v) => !v)} className="text-[11.5px] font-bold text-magenta">{splitOn ? '← Un solo método' : 'Dividir pago'}</button>
+                <span className="text-[11px] font-semibold text-faint">Selecciona una opción</span>
               </div>
+              <button type="button" onClick={() => setSplitOn((v) => !v)} aria-pressed={splitOn}
+                className="mb-2 flex w-full items-center justify-between rounded-[10px] border-2 px-3.5 py-2.5 text-left transition"
+                style={{ borderColor: splitOn ? 'var(--magenta)' : 'var(--line)', background: splitOn ? 'var(--magenta-soft)' : 'var(--card)' }}>
+                <span className="flex items-center gap-2"><span className="text-base">🧾</span><span><span className="block text-[12.5px] font-extrabold" style={{ color: splitOn ? 'var(--magenta)' : 'var(--navy)' }}>{splitOn ? 'Pago dividido activado' : 'Dividir pago'}</span><span className="block text-[10.5px] text-muted">{splitOn ? 'Distribuye el total entre varios métodos' : 'Usa efectivo, transferencia y/o tarjeta'}</span></span></span>
+                <span className="text-[11.5px] font-bold text-magenta">{splitOn ? '← Un solo método' : 'Elegir'}</span>
+              </button>
+              {!splitOn && !method && <div className="mb-2 rounded-lg border border-dashed border-line px-3 py-2 text-[11.5px] font-semibold text-muted">Ningún método seleccionado todavía.</div>}
               {!splitOn ? (
                 <div className="grid grid-cols-3 gap-2">
                   {METHODS.map((m) => {
@@ -609,7 +651,7 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
                 </>
               )}
             </div>
-          </div>
+           </div>
         ) : (
           <div className="flex flex-col gap-3 overflow-y-auto px-4 sm:px-6 py-5">
             <Row k="Paciente" v={current?.name ?? 'Cliente'} />
@@ -665,15 +707,25 @@ export default function BillModal({ preselectId, onClose, onEmitted }: Props) {
           </div>
         )}
 
-        <div className="flex flex-none gap-2.5 border-t border-line px-4 sm:px-6 py-4">
+        <div className="flex flex-none gap-2.5 border-t border-line px-4 py-4 sm:px-6">
           {step === 'form' ? (
             <>
               <button onClick={onClose} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
-              <button onClick={goReview} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">Validar →</button>
+              <button onClick={goCart} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">🛒 Revisar carrito →</button>
+            </>
+          ) : step === 'cart' ? (
+            <>
+              <button onClick={() => setStep('form')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Seguir agregando</button>
+              <button onClick={goPayment} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">Método de pago →</button>
+            </>
+          ) : step === 'payment' ? (
+            <>
+              <button onClick={() => setStep('cart')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Carrito</button>
+              <button onClick={goReview} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">Revisar cobro →</button>
             </>
           ) : (
             <>
-              <button onClick={() => setStep('form')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Editar</button>
+              <button onClick={() => setStep('payment')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Editar pago</button>
               <button onClick={emit} disabled={busy} className="flex-[2] rounded-[10px] bg-navy py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Emitiendo…' : 'Confirmar y emitir'}</button>
             </>
           )}

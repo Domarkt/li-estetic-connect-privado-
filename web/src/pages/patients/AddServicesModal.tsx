@@ -3,10 +3,10 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
-import { fmtRD, type CatalogItem } from '../../lib/types';
+import CatalogChoiceCard from '../../components/CatalogChoiceCard';
+import type { CatalogItem } from '../../lib/types';
 
 type Step = 'modo' | 'items' | 'detalle';
-const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo', PRODUCTO: 'Producto' };
 
 /**
  * Asistente paso a paso para cargar servicios/combos a la ficha de un paciente:
@@ -15,7 +15,7 @@ const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paque
  *   3) Detalle del plan histórico (sesiones restantes, saldo y "restan" por técnica)  — solo histórico
  * Una sola tarea por pantalla: antes todo iba apilado en un modal que se cortaba.
  */
-export default function AddServicesModal({ patientId, canBillNow, onClose, onSaved, afterAdd }: { patientId: string; canBillNow?: boolean; onClose: () => void; onSaved: () => void; afterAdd?: (patientId: string) => void }) {
+export default function AddServicesModal({ patientId, historicalOnly = false, onClose, onSaved }: { patientId: string; historicalOnly?: boolean; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const { staff } = useAuth();
   const canHistorical = staff?.role === 'ADMIN' || staff?.role === 'RECEPCIONISTA';
@@ -23,8 +23,8 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState<'normal' | 'historico'>('normal');
-  const [step, setStep] = useState<Step>(canHistorical ? 'modo' : 'items');
+  const [mode, setMode] = useState<'normal' | 'historico'>(historicalOnly ? 'historico' : 'normal');
+  const [step, setStep] = useState<Step>(historicalOnly || !canHistorical ? 'items' : 'modo');
   const [remainingSessions, setRemainingSessions] = useState('');
   const [outstandingBalance, setOutstandingBalance] = useState('0');
   const [remainingTechniques, setRemainingTechniques] = useState<Record<string, string>>({});
@@ -39,7 +39,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
   }, []);
 
   // Pasos activos (para el indicador "Paso X de N").
-  const steps: Step[] = canHistorical ? (historical ? ['modo', 'items', 'detalle'] : ['modo', 'items']) : ['items'];
+  const steps: Step[] = historicalOnly ? ['items', 'detalle'] : canHistorical ? (historical ? ['modo', 'items', 'detalle'] : ['modo', 'items']) : ['items'];
   const stepNo = steps.indexOf(step) + 1;
 
   const selectedItem = useMemo(() => items.find((it) => cart.has(it.id)) ?? null, [items, cart]);
@@ -47,7 +47,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
 
   const visibles = items
     .filter((it) => !historical || it.kind !== 'PRODUCTO')
-    .filter((it) => { const q = query.trim().toLowerCase(); return !q || it.name.toLowerCase().includes(q) || (it.code ?? '').toLowerCase().includes(q); });
+    .filter((it) => { const q = query.trim().toLowerCase(); return !q || it.name.toLowerCase().includes(q) || (it.code ?? '').toLowerCase().includes(q) || (it.services ?? []).some((service) => service.name.toLowerCase().includes(q)); });
 
   const toggle = (id: string) => {
     if (historical) { setCart((current) => (current.has(id) ? new Set() : new Set([id]))); setRemainingTechniques({}); return; }
@@ -87,8 +87,6 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
       toast(r.message);
       onSaved();
       onClose();
-      // Recepción/Admin: pasa directo a cobrar para asegurar el pago antes de que el cliente se vaya.
-      if (!historical && canBillNow && afterAdd) afterAdd(patientId);
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Error');
     } finally {
@@ -102,7 +100,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
       ? 'Ajusta lo que todavía le queda del plan ya pagado'
       : historical
         ? 'Elige el plan que el paciente ya pagó (uno solo)'
-        : canBillNow ? 'Selecciona lo que eligió el paciente · pasarás a cobrar de inmediato' : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar';
+        : 'Selecciona lo que eligió el paciente · se enviará a recepción para facturar';
 
   return (
     <Overlay onClose={onClose} z={120}>
@@ -110,7 +108,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
         {/* Encabezado + progreso */}
         <div className="flex-none border-b border-line px-6 py-5">
           <div className="flex items-center gap-2">
-            <div className="flex-1 text-base font-extrabold">Agregar servicios / productos</div>
+            <div className="flex-1 text-base font-extrabold">{historicalOnly ? 'Cargar plan anterior' : 'Agregar servicios / productos'}</div>
             {steps.length > 1 && <div className="flex-none text-[11.5px] font-bold text-muted">Paso {stepNo} de {steps.length}</div>}
           </div>
           <div className="mt-0.5 text-[12.5px] text-muted">{subtitle}</div>
@@ -130,7 +128,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
               className="flex items-start gap-3 rounded-xl border px-4 py-4 text-left transition hover:border-magenta"
               style={{ borderColor: 'var(--line)', background: 'var(--card)' }}>
               <span className="mt-0.5 text-[20px]">🛒</span>
-              <span><span className="block text-[14px] font-extrabold text-navy">Servicio o combo nuevo</span><span className="mt-0.5 block text-[12px] leading-normal text-muted">Lo que el paciente va a comprar ahora. {canBillNow ? 'Pasarás a cobrarlo de inmediato.' : 'Se envía a recepción para facturar.'}</span></span>
+              <span><span className="block text-[14px] font-extrabold text-navy">Servicio o combo nuevo</span><span className="mt-0.5 block text-[12px] leading-normal text-muted">Lo que el paciente va a comprar ahora. Se envía a recepción para facturar.</span></span>
             </button>
             <button onClick={() => elegirModo('historico')}
               className="flex items-start gap-3 rounded-xl border px-4 py-4 text-left transition hover:border-magenta"
@@ -152,13 +150,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
               {visibles.map((it) => {
                 const on = cart.has(it.id);
                 return (
-                  <div key={it.id} onClick={() => toggle(it.id)}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3"
-                    style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)' }}>
-                    <span className="flex h-5 w-5 flex-none items-center justify-center rounded-md text-[11px] font-extrabold text-white" style={{ background: on ? 'var(--magenta)' : 'var(--line)' }}>✓</span>
-                    <div className="min-w-0 flex-1"><div className="truncate text-[13.5px] font-bold">{it.name}</div><div className="text-[11.5px] text-muted">{KIND_TAG[it.kind] ?? it.kind}</div></div>
-                    <div className="flex-none text-[13.5px] font-extrabold text-magenta">{it.price ? fmtRD(it.price) : <span className="text-[12px] text-muted">Sin precio</span>}</div>
-                  </div>
+                  <CatalogChoiceCard key={it.id} item={it} selected={on} action="Seleccionar" onClick={() => toggle(it.id)} />
                 );
               })}
               {visibles.length === 0 && <div className="py-8 text-center text-[12.5px] text-muted">{items.length === 0 ? 'Cargando catálogo…' : 'Sin coincidencias.'}</div>}
@@ -197,7 +189,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
         {/* Pie: navegación del asistente */}
         <div className="flex flex-none items-center gap-2.5 border-t border-line px-6 py-4">
           {step === 'items' && !historical && <div className="flex-1 text-[12.5px] font-semibold text-muted">{cart.size} seleccionado(s)</div>}
-          {(step === 'items' || step === 'detalle') && canHistorical ? (
+          {(step === 'items' || step === 'detalle') && canHistorical && !(historicalOnly && step === 'items') ? (
             <button onClick={() => setStep(step === 'detalle' ? 'items' : 'modo')} className="rounded-[10px] border border-line bg-card px-4 py-3 text-[13.5px] font-bold text-muted">← Atrás</button>
           ) : (
             <button onClick={onClose} className="rounded-[10px] border border-line bg-card px-4 py-3 text-[13.5px] font-bold text-muted">Cancelar</button>
@@ -207,7 +199,7 @@ export default function AddServicesModal({ patientId, canBillNow, onClose, onSav
             <button onClick={irADetalle} disabled={cart.size !== 1} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Siguiente →</button>
           )}
           {step === 'items' && !historical && (
-            <button onClick={send} disabled={busy || cart.size === 0} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{canBillNow ? 'Agregar y cobrar →' : 'Enviar a recepción →'}</button>
+            <button onClick={send} disabled={busy || cart.size === 0} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">Enviar a recepción →</button>
           )}
           {step === 'detalle' && (
             <button onClick={send} disabled={busy} className="rounded-[10px] bg-magenta px-[18px] py-3 text-[13.5px] font-bold text-white disabled:opacity-60">{busy ? 'Guardando…' : 'Guardar saldo anterior'}</button>

@@ -14,7 +14,7 @@ interface Props {
   onClose: () => void;
   onOpenFicha: (p: { id: string; name: string }) => void;
   onOpenAddServices: (id: string) => void;
-  onOpenBill: (id: string) => void;
+  onOpenBill: (id: string, newPurchase?: boolean) => void;
   reloadKey: number;
 }
 
@@ -447,11 +447,12 @@ export default function PatientDrawer({ patientId, onClose, onOpenFicha, onOpenA
               )}
               {canBill && (
                 <div className="flex flex-col gap-2.5 pt-1">
-                  <button onClick={() => onOpenAddServices(d.id)} className="flex w-full items-center justify-center gap-2 rounded-[10px] border border-magenta bg-magenta-soft py-3 text-[13.5px] font-bold text-magenta">
+                  <button onClick={() => onOpenBill(d.id, true)} className="flex w-full items-center justify-center gap-2 rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white">
                     <span className="text-base">+</span> Agregar servicios / productos y cobrar
                   </button>
                   <div className="flex gap-2.5">
-                    <button onClick={() => onOpenBill(d.id)} className="flex-1 rounded-[10px] bg-navy py-3 text-[13.5px] font-bold text-white">Cobrar / Facturar</button>
+                    <button onClick={() => onOpenAddServices(d.id)} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[12.5px] font-bold text-navy">Cargar plan anterior</button>
+                    {d.balance > 0 && <button onClick={() => onOpenBill(d.id)} className="flex-1 rounded-[10px] bg-navy py-3 text-[12.5px] font-bold text-white">Cobrar saldo</button>}
                     <div className="flex-1 rounded-[10px] bg-bg px-3.5 py-2.5 text-center"><div className="text-[11px] font-semibold text-muted">Saldo</div><div className="text-[15px] font-extrabold" style={{ color: d.balance > 0 ? 'var(--danger)' : 'var(--ok)' }}>{fmtRD(d.balance)}</div></div>
                   </div>
                 </div>
