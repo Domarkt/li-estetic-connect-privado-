@@ -9,8 +9,9 @@ import { fmtRD, type AgendaResponse, type Appointment, type CalendarStatus, type
 import ScheduleModal from './ScheduleModal';
 import FichaWizard from '../patients/FichaWizard';
 import CalendarView from './CalendarView';
+import { localISODate } from '../../lib/date';
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = localISODate;
 
 export default function AgendaPage() {
   const { staff } = useAuth();
@@ -62,7 +63,7 @@ export default function AgendaPage() {
   }, [branchQuery, date]);
 
   function shiftDate(days: number) {
-    const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
+    const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(localISODate(d));
   }
 
   useEffect(() => { load(); }, [load]);
@@ -536,7 +537,7 @@ function FinishModal({ appt, onClose, onDone, onRegistrar }: {
 
   const cargarSesionHoy = useCallback(() => {
     if (!appt.treatmentId) { setRegistradaHoy(null); return; }
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = localISODate();
     api.get<{ sesiones: { id: string; at: string; areas: string[]; techniques: string[] }[] }>(`/patients/treatments/${appt.treatmentId}/sessions`)
       .then((r) => {
         const dela = r.sesiones.find((s) => s.at.slice(0, 10) === hoy) ?? null;

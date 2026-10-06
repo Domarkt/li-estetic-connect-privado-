@@ -4,6 +4,7 @@ import { api, tokenStore } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
+import { localISODate } from '../../lib/date';
 import { Overlay, Portal, stop } from '../../components/Modal';
 import FirmaDigital from '../../components/FirmaDigital';
 import ReceiptModal from '../billing/ReceiptModal';
@@ -571,7 +572,7 @@ function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClo
   const [busy, setBusy] = useState('');
   // "+ Agregar sesión (corrección)": registra una sesión hacia atrás para cuadrar el conteo.
   const [addOpen, setAddOpen] = useState(false);
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(localISODate);
   const [aSel, setASel] = useState<Set<string>>(new Set());
   const [tSel, setTSel] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -629,7 +630,7 @@ function SesionesModal({ pkg, onClose, onChanged }: { pkg: PatientPackage; onClo
                 <div className="flex flex-col gap-2.5">
                   <div className="text-[12px] font-bold text-navy">Registrar una sesión que se hizo pero no se registró</div>
                   <label className="flex flex-col gap-1"><span className="text-[11px] font-bold text-muted">Fecha en que se aplicó</span>
-                    <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} max={new Date().toISOString().slice(0, 10)} className="rounded-[9px] border border-line bg-card px-3 py-2 text-[13px]" /></label>
+                    <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} max={localISODate()} className="rounded-[9px] border border-line bg-card px-3 py-2 text-[13px]" /></label>
                   {areasDisp.length > 0 && (
                     <div>
                       <div className="mb-1 text-[11px] font-bold text-muted">Áreas trabajadas</div>

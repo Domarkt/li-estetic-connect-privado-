@@ -5,10 +5,11 @@ import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD, type BusinessHours, type CatalogItem, type PatientRow, type PatientType } from '../../lib/types';
+import { localISODate } from '../../lib/date';
 
 interface Props { branchQuery: string; onClose: () => void; onSaved: () => void }
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = localISODate;
 // Mismas etiquetas que en el cobro, para que el equipo vea siempre el mismo formato.
 const KIND_TAG: Record<string, string> = { SERVICIO: 'Servicio', PAQUETE: 'Paquete', COMBO: 'Combo' };
 type Step = 'cliente' | 'servicio' | 'fecha';

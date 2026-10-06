@@ -3,9 +3,11 @@ import { api } from '../../lib/api';
 import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { fmtRD, type CashCloseAdminView } from '../../lib/types';
+import { localISODate } from '../../lib/date';
+import CashCloseDailyReport from './CashCloseDailyReport';
 
 const METHOD_LABEL: Record<string, string> = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', TRANSFERENCIA: 'Transferencia', AZUL: 'Azul' };
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = localISODate;
 
 const STATUS_META: Record<string, { label: string; bg: string; fg: string }> = {
   PENDIENTE: { label: 'Sin enviar', bg: 'var(--navy-soft)', fg: 'var(--muted)' },
@@ -185,6 +187,7 @@ export default function CashCloseAdmin() {
                   Validar y cuadrar
                 </button>
               </div>
+              <CashCloseDailyReport branchId={b.branchId} branchName={b.branchName} date={date} />
             </div>
           );
         })}

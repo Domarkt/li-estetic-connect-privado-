@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { fmtRD, type CashCloseToday } from '../../lib/types';
+import { useAuth } from '../../auth/AuthContext';
+import { localISODate } from '../../lib/date';
+import CashCloseDailyReport from './CashCloseDailyReport';
 
 export default function CashCloseRecepcion() {
+  const { staff } = useAuth();
   const toast = useToast();
   const [denoms, setDenoms] = useState<number[]>([]);
   const [qty, setQty] = useState<Record<string, string>>({});
@@ -149,6 +153,7 @@ export default function CashCloseRecepcion() {
         <div className="text-right"><div className="text-[11.5px] font-semibold text-muted">Total contado (todos los métodos)</div><div className="text-[20px] font-extrabold">{fmtRD(grandTotal)}</div></div>
         <button onClick={submit} disabled={busy || locked} className="rounded-[10px] bg-magenta px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50">{busy ? 'Enviando…' : 'Enviar cierre'}</button>
       </div>
+      {staff?.branchId && <CashCloseDailyReport branchId={staff.branchId} branchName={staff.branch?.name ?? 'tu sucursal'} date={localISODate()} openByDefault />}
     </div>
   );
 }

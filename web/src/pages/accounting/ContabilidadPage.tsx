@@ -4,6 +4,7 @@ import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD } from '../../lib/types';
+import { localISODate } from '../../lib/date';
 
 // ─────────────────────────────────────────────────────────────
 // Tipos del API de contabilidad
@@ -46,8 +47,8 @@ const TABS: { key: Tab; label: string }[] = [
 const TYPE_LABEL: Record<string, string> = { INGRESO: 'Ingreso', EGRESO: 'Egreso / Gasto', RETIRO: 'Retiro de socia', APORTE: 'Aporte de socia', TRASLADO: 'Traslado / Depósito' };
 const METHODS = [{ v: 'EFECTIVO', l: 'Efectivo' }, { v: 'TRANSFERENCIA', l: 'Transferencia' }, { v: 'TARJETA', l: 'Tarjeta' }, { v: 'OTRO', l: 'Otro' }];
 
-const firstOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const firstOfMonth = () => { const d = new Date(); return localISODate(new Date(d.getFullYear(), d.getMonth(), 1)); };
+const todayISO = localISODate;
 
 /** Descarga un CSV en el navegador (BOM para que Excel respete los acentos). */
 function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {

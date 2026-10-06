@@ -7,6 +7,7 @@ import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { Overlay, stop } from '../../components/Modal';
 import { fmtRD } from '../../lib/types';
+import { localISODate } from '../../lib/date';
 
 interface Purchase {
   id: string; branchId: string; branch: string;
@@ -131,7 +132,7 @@ function NuevaCompra({ branches, isAdmin, onClose, onSaved }: { branches: { id: 
   const [ncf, setNcf] = useState('');
   const [supplierRnc, setSupplierRnc] = useState('');
   const [itbis, setItbis] = useState('');
-  const [purchasedAt, setPurchasedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [purchasedAt, setPurchasedAt] = useState(localISODate());
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [invoiceImage, setInvoiceImage] = useState<string | null>(null);
   const [notes, setNotes] = useState('');

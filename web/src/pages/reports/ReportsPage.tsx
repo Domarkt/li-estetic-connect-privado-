@@ -4,6 +4,7 @@ import { useBranch } from '../../layout/BranchContext';
 import { useToast } from '../../components/Toast';
 import { fmtRD } from '../../lib/types';
 import { Cartera, ComboPasivo, Esteticistas, Descuentos } from './managerial';
+import { localISODate } from '../../lib/date';
 
 // ── Tipos del reporte ──
 interface Overview {
@@ -34,8 +35,8 @@ interface Campaign {
 }
 
 type Tab = 'ventas' | 'operacion' | 'equipo' | 'campanas' | 'cartera' | 'combos' | 'esteticistas' | 'descuentos';
-const firstOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const firstOfMonth = () => { const d = new Date(); return localISODate(new Date(d.getFullYear(), d.getMonth(), 1)); };
+const todayISO = localISODate;
 
 export default function ReportsPage() {
   const { activeBranch } = useBranch();

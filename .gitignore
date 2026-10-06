@@ -8,3 +8,6 @@ build/
 coverage/
 .vite/
 graphify-out/
+.wrangler/
+.playwright-cli/
+web/.playwright-cli/

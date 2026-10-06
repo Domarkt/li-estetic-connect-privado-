@@ -8,8 +8,9 @@ import { fmtRD, type BillingResponse, type BillPatient, type Receipt } from '../
 import BillModal from './BillModal';
 import ReceiptModal from './ReceiptModal';
 import { useToast } from '../../components/Toast';
+import { localISODate } from '../../lib/date';
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = localISODate;
 
 const METHOD_CHIP: Record<string, { bg: string; fg: string }> = {
   Efectivo: { bg: 'var(--ok-soft)', fg: 'var(--ok)' },
@@ -65,7 +66,7 @@ export default function BillingPage() {
   useAutoRefresh(load);
 
   function shiftDate(days: number) {
-    const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(d.toISOString().slice(0, 10));
+    const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + days); setDate(localISODate(d));
   }
 
   async function reprint(id: string) {
