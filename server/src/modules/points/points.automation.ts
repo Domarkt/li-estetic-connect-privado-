@@ -36,13 +36,16 @@ export async function awardSalePoints(therapistId: string, branchId: string, amo
     const dayStart = new Date(when.getFullYear(), when.getMonth(), when.getDate());
     const hour = when.getHours();
 
-    const [monthAgg, salesTodayCount, branch] = await Promise.all([
+    const [monthAgg, monthSplitAgg, salesTodayCount, salesTodaySplitCount, branch] = await Promise.all([
       prisma.invoice.aggregate({ where: { therapistId, status: 'PAGADA', issuedAt: { gte: monthStart } }, _sum: { total: true } }),
+      prisma.invoiceCommissionAllocation.aggregate({ where: { therapistId, invoice: { status: 'PAGADA', issuedAt: { gte: monthStart } } }, _sum: { amount: true } }),
       prisma.invoice.count({ where: { therapistId, status: 'PAGADA', issuedAt: { gte: dayStart } } }),
+      prisma.invoiceCommissionAllocation.count({ where: { therapistId, invoice: { status: 'PAGADA', issuedAt: { gte: dayStart } } } }),
       prisma.branch.findUnique({ where: { id: branchId } }),
     ]);
-    const monthTotal = monthAgg._sum.total ?? 0; // incluye esta venta
+    const monthTotal = (monthAgg._sum.total ?? 0) + (monthSplitAgg._sum.amount ?? 0); // incluye esta venta
     const monthBefore = monthTotal - amount;
+    const salesCount = salesTodayCount + salesTodaySplitCount;
 
     // Mantiene monthSales del perfil en sincronía (base de comisión, resumen de equipo).
     await prisma.therapistProfile.upsert({
@@ -50,7 +53,7 @@ export async function awardSalePoints(therapistId: string, branchId: string, amo
     });
 
     // 1ª venta del día antes de 11 AM (> 3,000)
-    if (salesTodayCount === 1 && hour < 11 && amount > 3000) {
+    if (salesCount === 1 && hour < 11 && amount > 3000) {
       await award(therapistId, AUTO_POINTS.FIRST_SALE_BEFORE_11, 'VENTA', '1ª venta antes de 11 AM');
     }
     // Venta de paquete premium (> 15,000)

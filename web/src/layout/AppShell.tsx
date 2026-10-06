@@ -75,6 +75,7 @@ const PAGE_TITLE: Record<string, { title: string; sub: string }> = {
   agenda: { title: 'Agenda', sub: 'Citas del día' },
   mensajes: { title: 'Mensajes', sub: 'Bandeja omnicanal' },
   facturacion: { title: 'Facturación', sub: 'Cobros y recibos' },
+  cobro: { title: 'Cobro', sub: 'Carrito de servicios, combos y productos' },
   'cuentas-por-cobrar': { title: 'Cuentas por cobrar', sub: 'Saldos pendientes: monto y fecha generada' },
   catalogo: { title: 'Catálogo', sub: 'Servicios, paquetes, combos y productos' },
   inventario: { title: 'Inventario', sub: 'Stock de productos e insumos por sucursal' },

@@ -226,6 +226,7 @@ model User {
   clinicalRecords  ClinicalRecord[]  @relation("TherapistRecords")
   invoicesIssued   Invoice[]         @relation("CashierInvoices")
   invoicesSold     Invoice[]         @relation("TherapistInvoices")
+  commissionAllocations InvoiceCommissionAllocation[]
   pointsLedger     PointsEntry[]
   redemptions      Redemption[]
   therapistProfile TherapistProfile?
@@ -804,6 +805,7 @@ model Invoice {
   therapist User?         @relation("TherapistInvoices", fields: [therapistId], references: [id])
   treatment Treatment?    @relation(fields: [treatmentId], references: [id])
   items     InvoiceItem[]
+  commissionAllocations InvoiceCommissionAllocation[]
 
   @@unique([branchId, number]) // el No. de recibo es único DENTRO de cada sucursal
   @@index([branchId, issuedAt])
@@ -819,6 +821,23 @@ model InvoiceItem {
   total     Int
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+// Reparto opcional de la comisión de venta entre varias esteticistas. El monto
+// representa únicamente la parte comisionable (por ejemplo, la diferencia de una
+// venta sugerida), no necesariamente el total cobrado de la factura.
+model InvoiceCommissionAllocation {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  therapistId String
+  amount      Int
+  createdAt   DateTime @default(now())
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  therapist User    @relation(fields: [therapistId], references: [id], onDelete: Restrict)
+
+  @@unique([invoiceId, therapistId])
+  @@index([therapistId, createdAt])
 }
 
 // Secuencia de recibos / NCF por sucursal

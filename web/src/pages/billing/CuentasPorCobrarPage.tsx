@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAutoRefresh } from '../../lib/useAutoRefresh';
 import { useAuth } from '../../auth/AuthContext';
 import { useBranch } from '../../layout/BranchContext';
 import { Cargando, ErrorCarga } from '../../components/EstadoCarga';
 import { fmtRD } from '../../lib/types';
+import type { Receipt } from '../../lib/types';
+import BillModal from './BillModal';
+import ReceiptModal from './ReceiptModal';
 
 interface Row {
   id: string; patientId: string; patientName: string; phone: string; branch: string;
@@ -18,7 +20,6 @@ interface Data { rows: Row[]; total: number; count: number }
  * pendientes), con su monto y la fecha en que se generó. Para recepción/administración.
  */
 export default function CuentasPorCobrarPage() {
-  const navigate = useNavigate();
   const { staff } = useAuth();
   const { activeBranch } = useBranch();
   const branchQP = staff?.role === 'ADMIN' && activeBranch !== 'all' ? `?branch=${activeBranch}` : '';
@@ -26,6 +27,8 @@ export default function CuentasPorCobrarPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [billFor, setBillFor] = useState<{ patientId: string; treatmentId?: string; chargeId?: string } | null>(null);
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   const load = useCallback(() => {
     setCargando(true); setError(null);
@@ -42,6 +45,15 @@ export default function CuentasPorCobrarPage() {
   const texto = q.trim().toLowerCase();
   const rows = data.rows.filter((r) => !texto || r.patientName.toLowerCase().includes(texto) || r.concept.toLowerCase().includes(texto));
   const totalMostrado = rows.reduce((s, r) => s + r.monto, 0);
+
+  function openBill(row: Row) {
+    const [kind, id] = row.id.split('_', 2);
+    setBillFor({
+      patientId: row.patientId,
+      ...(kind === 't' ? { treatmentId: id } : {}),
+      ...(kind === 'c' ? { chargeId: id } : {}),
+    });
+  }
 
   return (
     <div className="animate-fade flex flex-col gap-4">
@@ -91,7 +103,7 @@ export default function CuentasPorCobrarPage() {
                 {r.wa && (
                   <a href={r.wa} target="_blank" rel="noreferrer" className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold text-white no-underline" style={{ background: '#25D366' }}>💬</a>
                 )}
-                <button onClick={() => navigate('/app/facturacion')} className="rounded-lg bg-navy px-2.5 py-1.5 text-[11.5px] font-bold text-white">Cobrar</button>
+                <button onClick={() => openBill(r)} className="rounded-lg bg-navy px-2.5 py-1.5 text-[11.5px] font-bold text-white">Cobrar</button>
               </div>
             </div>
           ))}
@@ -100,8 +112,19 @@ export default function CuentasPorCobrarPage() {
 
       <p className="text-[11.5px] text-faint">
         Reúne los <b>saldos de planes</b> (abonos sin terminar de pagar) y los <b>cargos pendientes</b> de facturar.
-        El botón 💬 abre WhatsApp con el mensaje listo para invitar a saldar; <b>Cobrar</b> te lleva a Facturación.
+        El botón 💬 abre WhatsApp con el mensaje listo para invitar a saldar; <b>Cobrar</b> abre el mismo carrito de Facturación con este saldo/cargo listo para revisar.
       </p>
+
+      {billFor && (
+        <BillModal
+          preselectId={billFor.patientId}
+          preselectTreatmentId={billFor.treatmentId}
+          preselectChargeId={billFor.chargeId}
+          onClose={() => setBillFor(null)}
+          onEmitted={(r) => { setReceipt(r); setBillFor(null); load(); }}
+        />
+      )}
+      {receipt && <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} onVoided={load} />}
     </div>
   );
 }

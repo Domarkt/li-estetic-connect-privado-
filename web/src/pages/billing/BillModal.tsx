@@ -20,11 +20,21 @@ const num = (v: string) => parseInt((v || '').replace(/[^0-9]/g, ''), 10) || 0;
 
 // Las líneas del carrito se agrupan por artículo: repetirlo aumenta la cantidad.
 interface CartItem { lineId: string; catalogId: string; name: string; price: number; qty: number }
-interface Props { preselectId?: string; startNewPurchase?: boolean; onClose: () => void; onEmitted: (r: Receipt) => void }
+type CommissionMode = 'AUTO' | 'SINGLE' | 'SPLIT';
+interface Props {
+  preselectId?: string;
+  /** Desde Cuentas por cobrar: fija el plan concreto cuando el paciente tiene varios. */
+  preselectTreatmentId?: string;
+  /** Desde Cuentas por cobrar: fija el cargo concreto sin perder la opción de agregar más. */
+  preselectChargeId?: string;
+  startNewPurchase?: boolean;
+  onClose: () => void;
+  onEmitted: (r: Receipt) => void;
+}
 
 let lineSeq = 0;
 
-export default function BillModal({ preselectId, startNewPurchase = false, onClose, onEmitted }: Props) {
+export default function BillModal({ preselectId, preselectTreatmentId, preselectChargeId, startNewPurchase = false, onClose, onEmitted }: Props) {
   const toast = useToast();
   const { staff } = useAuth();
   const { activeBranch } = useBranch();
@@ -61,6 +71,9 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
   // quién cargó el servicio o la ficha). Recepción puede fijar/cambiar aquí.
   const [therapists, setTherapists] = useState<TherapistLite[]>([]);
   const [ventaTid, setVentaTid] = useState('');
+  const [commissionMode, setCommissionMode] = useState<CommissionMode>('AUTO');
+  const [commissionAmount, setCommissionAmount] = useState('');
+  const [commissionSplits, setCommissionSplits] = useState<Record<string, string>>({});
 
   // ── Datos fiscales del comprobante ──
   // No todos los servicios estéticos llevan ITBIS: se decide al cobrar.
@@ -139,12 +152,21 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     setSelected(p.id); setCart([]); setSQuery('');
     if (startNewPurchase) {
       setConcept(''); setChargeIds([]); setTreatmentId(null); setAmount(''); setDesdeAgenda(null);
+    } else if (preselectTreatmentId && saldosDe(p).some((x) => x.id === preselectTreatmentId)) {
+      const t = saldosDe(p).find((x) => x.id === preselectTreatmentId)!;
+      setConcept(`Saldo ${t.name}`); setTreatmentId(t.id);
+      setChargeIds([]); setAmount('');
     } else if (p.pendingCharges.length) {
-      setConcept(p.pendingCharges.map((c) => c.name).join(' + '));
-      setChargeIds(p.pendingCharges.map((c) => c.id)); setTreatmentId(null); setAmount('');
+      const selectedCharges = preselectChargeId
+        ? p.pendingCharges.filter((c) => c.id === preselectChargeId)
+        : p.pendingCharges;
+      const charges = selectedCharges.length ? selectedCharges : p.pendingCharges;
+      setConcept(charges.map((c) => c.name).join(' + '));
+      setChargeIds(charges.map((c) => c.id)); setTreatmentId(null); setAmount('');
     } else if (saldosDe(p).length) {
-      // Se toma el primer plan con saldo; si tiene varios, se puede cambiar abajo.
-      const t = saldosDe(p)[0];
+      // Desde Cuentas por cobrar se puede abrir el plan exacto, aunque la paciente
+      // tenga varios saldos activos. En el cobro normal se conserva el primero.
+      const t = saldosDe(p).find((x) => x.id === preselectTreatmentId) ?? saldosDe(p)[0];
       setConcept(`Saldo ${t.name}`); setTreatmentId(t.id);
       setChargeIds([]); setAmount('');
     } else {
@@ -165,6 +187,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     setMethod(null);
     setPayKind(null);
     setNcfType(null);
+    setVentaTid(''); setCommissionMode('AUTO'); setCommissionAmount(''); setCommissionSplits({});
   }
 
   function setKind(k: PayKind) {
@@ -218,6 +241,10 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     : (amt > 0 && method ? [{ method: method as PaymentMethod, amount: amt }] : []);
   const paymentReady = !!payKind && !!ncfType && amt > 0 && (splitOn ? assigned === amt : !!method);
   const balanceAfter = t ? Math.max(0, t.balance - amt) : 0;
+  const commissionAssigned = Object.values(commissionSplits).reduce((sum, value) => sum + num(value), 0);
+  const commissionTarget = num(commissionAmount);
+  const commissionReady = commissionMode === 'AUTO'
+    || (commissionMode === 'SINGLE' ? !!ventaTid : (commissionTarget > 0 && Object.keys(commissionSplits).length >= 2 && commissionAssigned === commissionTarget));
 
   function validate(): string | null {
     if (!payingSaldo && !hasCharges && cart.length === 0) return 'Agrega al menos un servicio o producto';
@@ -231,6 +258,12 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     if (payingSaldo && t && amt > t.balance) return `El monto no puede superar el saldo (${fmtRD(t.balance)})`;
     if (freeAbono && amt >= lineasTotal) return 'El abono debe ser menor que el total';
     if (splitOn && assigned !== amt) return `El pago dividido (${fmtRD(assigned)}) debe sumar el total (${fmtRD(amt)})`;
+    if (commissionMode === 'SINGLE' && !ventaTid) return 'Selecciona la esteticista de la venta';
+    if (commissionMode === 'SPLIT') {
+      if (Object.keys(commissionSplits).length < 2) return 'Selecciona al menos dos esteticistas para dividir la comisión';
+      if (!commissionTarget) return 'Especifica el monto comisionable';
+      if (commissionAssigned !== commissionTarget) return `La comisión repartida (${fmtRD(commissionAssigned)}) debe sumar ${fmtRD(commissionTarget)}`;
+    }
     // Crédito fiscal: sin identificación del comprador el comprobante no sirve
     // y después no se puede corregir.
     if (ncfType === 'B01') {
@@ -264,7 +297,11 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
     try {
       const r = await api.post<{ receipt: Receipt; message: string; citaWhatsappUrl: string | null }>('/invoices', {
         patientId: selected ?? undefined, concept: finalConcept.trim(),
-        therapistId: ventaTid || undefined,
+        therapistId: commissionMode === 'SINGLE' ? (ventaTid || undefined) : undefined,
+        commissionAmount: commissionMode === 'SPLIT' ? commissionTarget : undefined,
+        commissionSplits: commissionMode === 'SPLIT'
+          ? Object.entries(commissionSplits).filter(([, value]) => num(value) > 0).map(([therapistId, value]) => ({ therapistId, amount: num(value) }))
+          : undefined,
         payments: paymentsList, treatmentId: payingSaldo ? treatmentId : undefined,
         paymentKind: (payingSaldo || freeAbono) ? payKind! : 'TOTAL',
         chargeItemIds: chargeIds.length ? chargeIds : undefined,
@@ -304,7 +341,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
                 <div className="flex items-center gap-2.5 rounded-[11px] border border-magenta bg-magenta-soft px-3 py-2.5">
                   <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[11.5px] font-bold text-white" style={{ background: current.avatarColor }}>{current.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>
                   <div className="min-w-0 flex-1"><div className="text-[13.5px] font-bold">{current.name}</div><div className="text-[11.5px] text-muted">{current.plan}{current.balance > 0 ? ` · saldo ${fmtRD(current.balance)}` : ''}</div></div>
-                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); setMethod(null); setPayKind(null); setNcfType(null); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
+                  <button onClick={() => { setSelected(null); setConcept(''); setChargeIds([]); setTreatmentId(null); setCart([]); setDesdeAgenda(null); setMethod(null); setPayKind(null); setNcfType(null); setVentaTid(''); setCommissionMode('AUTO'); setCommissionAmount(''); setCommissionSplits({}); }} className="rounded-lg px-2 py-1 text-[12px] font-bold text-magenta">Cambiar</button>
                 </div>
               ) : (
                 <>
@@ -656,6 +693,61 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
                 </>
               )}
             </div>
+            {/* 6 · Comisión de venta: una o varias esteticistas. El reparto usa
+                el diferencial comisionable, no obliga a comisionar toda la factura. */}
+            {selected && (
+              <div className="rounded-[11px] border border-line-2 p-3">
+                <div className="mb-1 text-[11.5px] font-bold text-muted">Comisión / venta para</div>
+                <div className="mb-2 text-[10.5px] text-faint">Si una venta sube de RD$10,000 a RD$15,000, escribe RD$5,000 como monto comisionable y repártelo.</div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {([['AUTO', 'Automático'], ['SINGLE', 'Una esteticista'], ['SPLIT', 'Varias esteticistas']] as const).map(([mode, label]) => (
+                    <button key={mode} type="button" onClick={() => {
+                      setCommissionMode(mode);
+                      if (mode !== 'SPLIT') { setCommissionAmount(''); setCommissionSplits({}); }
+                    }}
+                      className="rounded-[9px] border px-2 py-2 text-[11px] font-bold"
+                      style={{ borderColor: commissionMode === mode ? 'var(--magenta)' : 'var(--line)', background: commissionMode === mode ? 'var(--magenta-soft)' : 'var(--card)', color: commissionMode === mode ? 'var(--magenta)' : 'var(--muted)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {commissionMode === 'AUTO' && <div className="mt-2 text-[10.5px] text-faint">Se atribuye a quien cargó el servicio o a la ficha clínica.</div>}
+                {commissionMode === 'SINGLE' && (
+                  <select value={ventaTid} onChange={(e) => setVentaTid(e.target.value)} className="mt-2 w-full rounded-[9px] border border-line px-3 py-2 text-[13px] outline-none focus:border-magenta">
+                    <option value="">Selecciona una esteticista</option>
+                    {therapists.map((th) => <option key={th.id} value={th.id}>{th.name}</option>)}
+                  </select>
+                )}
+                {commissionMode === 'SPLIT' && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <label className="flex items-center gap-2 rounded-[9px] border border-line px-3 py-2">
+                      <span className="text-[11px] font-bold text-muted">Monto comisionable RD$</span>
+                      <input value={commissionAmount} onChange={(e) => setCommissionAmount(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="Ej. 5000" className="min-w-0 flex-1 text-right text-[13px] font-bold outline-none" />
+                    </label>
+                    <div className="text-[10.5px] font-bold text-muted">Selecciona participantes y asigna su parte:</div>
+                    {therapists.map((th) => {
+                      const on = Object.prototype.hasOwnProperty.call(commissionSplits, th.id);
+                      return (
+                        <div key={th.id} className="flex items-center gap-2">
+                          <button type="button" onClick={() => setCommissionSplits((current) => {
+                            const next = { ...current };
+                            if (on) delete next[th.id]; else next[th.id] = '';
+                            return next;
+                          })} className="min-w-0 flex-1 rounded-[9px] border px-3 py-2 text-left text-[12px] font-bold"
+                            style={{ borderColor: on ? 'var(--magenta)' : 'var(--line)', background: on ? 'var(--magenta-soft)' : 'var(--card)', color: on ? 'var(--magenta)' : 'var(--muted)' }}>
+                            {on ? '✓ ' : ''}{th.name}
+                          </button>
+                          {on && <label className="flex w-[118px] items-center rounded-[9px] border border-line px-2"><span className="text-[10px] font-bold text-muted">RD$</span><input value={commissionSplits[th.id] ?? ''} onChange={(e) => setCommissionSplits((current) => ({ ...current, [th.id]: e.target.value.replace(/[^0-9]/g, '') }))} inputMode="numeric" placeholder="0" className="w-full px-1 py-2 text-right text-[12px] font-bold outline-none" /></label>}
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between rounded-[9px] bg-bg px-3 py-2 text-[11px] font-bold" style={{ color: commissionAssigned === commissionTarget && commissionTarget > 0 ? 'var(--ok)' : 'var(--warn)' }}>
+                      <span>Repartido</span><span>{fmtRD(commissionAssigned)} / {fmtRD(commissionTarget)}{commissionTarget > 0 && commissionAssigned === commissionTarget ? ' ✓' : ''}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
            </div>
         ) : (
           <div className="flex flex-col gap-3 overflow-y-auto px-4 sm:px-6 py-5">
@@ -698,16 +790,15 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
             {t && (payKind === 'ABONO' || payKind === 'SALDO') && (
               <div className="rounded-md px-3 py-2 text-[12px] font-semibold" style={{ background: 'var(--teal-soft)', color: '#1E5A82' }}>Saldo tras el pago: {fmtRD(balanceAfter)}{balanceAfter > 0 && t.remaining > 0 ? ` · ${fmtRD(Math.round(balanceAfter / t.remaining))}/sesión` : ''}</div>
             )}
-            {selected && (
-              <label className="flex flex-col gap-1 rounded-[11px] border border-line-2 p-3">
-                <span className="text-[11.5px] font-bold text-muted">Comisión / venta para (esteticista)</span>
-                <select value={ventaTid} onChange={(e) => setVentaTid(e.target.value)} className="rounded-[9px] border border-line px-3 py-2 text-[13px] outline-none focus:border-magenta">
-                  <option value="">Automático (quien cargó el servicio / la ficha)</option>
-                  {therapists.map((th) => <option key={th.id} value={th.id}>{th.name}</option>)}
-                </select>
-                <span className="text-[10.5px] text-faint">Si lo dejas en automático, se atribuye a quien agregó el combo/servicio o, si no, a la esteticista de la ficha.</span>
-              </label>
+            {selected && commissionMode === 'SPLIT' && (
+              <div className="rounded-[11px] border border-line-2 p-3">
+                <div className="mb-1.5 text-[11.5px] font-bold text-muted">Reparto de comisión</div>
+                {Object.entries(commissionSplits).map(([id, value]) => <div key={id} className="flex justify-between py-0.5 text-[12.5px]"><span>{therapists.find((th) => th.id === id)?.name ?? 'Esteticista'}</span><b>{fmtRD(num(value))}</b></div>)}
+                <div className="mt-1 flex justify-between border-t border-line-2 pt-1 text-[12px] font-bold"><span>Total comisionable</span><span className="text-magenta">{fmtRD(commissionTarget)}</span></div>
+              </div>
             )}
+            {selected && commissionMode === 'SINGLE' && <Row k="Comisión / venta para" v={therapists.find((th) => th.id === ventaTid)?.name ?? 'Sin seleccionar'} />}
+            {selected && commissionMode === 'AUTO' && <Row k="Comisión / venta para" v="Automático" />}
             <div className="text-[11.5px] text-faint">Revisa los datos. Al confirmar se emite el recibo y se registra en caja.</div>
           </div>
         )}
@@ -726,7 +817,7 @@ export default function BillModal({ preselectId, startNewPurchase = false, onClo
           ) : step === 'payment' ? (
             <>
               <button onClick={() => setStep('cart')} className="flex-1 rounded-[10px] border border-line bg-card py-3 text-[13.5px] font-bold text-muted">← Carrito</button>
-              <button onClick={goReview} disabled={!paymentReady} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-50">Revisar cobro →</button>
+              <button onClick={goReview} disabled={!paymentReady || !commissionReady} className="flex-[2] rounded-[10px] bg-magenta py-3 text-[13.5px] font-bold text-white disabled:opacity-50">Revisar cobro →</button>
             </>
           ) : (
             <>

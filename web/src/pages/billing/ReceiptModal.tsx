@@ -251,7 +251,15 @@ export default function ReceiptModal({ receipt, onClose, onVoided }: { receipt: 
           </div>
         )}
 
-        {isAdmin && receipt.invoiceId && (
+        {receipt.commissionSplits && receipt.commissionSplits.length > 0 && (
+          <div className="border-t border-line bg-card px-[22px] py-4">
+            <div className="mb-1 text-[13px] font-extrabold">Reparto de comisión</div>
+            <div className="mb-2 text-[11.5px] text-muted">La venta quedó distribuida sobre la parte comisionable:</div>
+            {receipt.commissionSplits.map((split) => <div key={split.therapistId} className="flex justify-between py-0.5 text-[12.5px]"><span>{split.therapistName}</span><b className="text-magenta">{fmtRD(split.amount)}</b></div>)}
+          </div>
+        )}
+
+        {isAdmin && receipt.invoiceId && (!receipt.commissionSplits || receipt.commissionSplits.length === 0) && (
           <div className="border-t border-line bg-card px-[22px] py-4">
             <div className="mb-2 text-[13px] font-extrabold">Esteticista de la venta (comisión)</div>
             <div className="mb-2 text-[11.5px] text-muted">Actual: <b>{tName ?? 'Sin esteticista'}</b>. Asígnala o corrígela para que la comisión y el ranking cuadren.</div>

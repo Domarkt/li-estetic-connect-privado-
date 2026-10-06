@@ -85,6 +85,9 @@ export default function App() {
             <Route path="agenda" element={<AgendaPage />} />
             <Route path="mensajes" element={<MessagesPage />} />
             <Route path="facturacion" element={<BillingPage />} />
+            {/* Compatibilidad con el acceso antiguo /app/cobro: ambos deben abrir
+                exactamente el mismo carrito de cuatro pasos. */}
+            <Route path="cobro" element={<BillingPage />} />
             <Route path="cuentas-por-cobrar" element={<CuentasPorCobrarPage />} />
             <Route path="catalogo" element={<CatalogPage />} />
             <Route path="portal" element={<PortalAdminPage />} />

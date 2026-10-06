@@ -289,6 +289,10 @@ const billSchema = z.object({
   items: z.array(z.object({ name: z.string().min(1), price: z.number().int().nonnegative(), qty: z.number().int().positive().default(1), catalogItemId: z.string().optional() })).optional(),
   treatmentId: z.string().nullish(), // aplica el pago/abono a este tratamiento
   therapistId: z.string().nullish(), // esteticista a la que se le acredita la venta (comisión)
+  // Reparto manual de la parte comisionable entre varias esteticistas. Cuando se
+  // envía, la suma debe coincidir con commissionAmount.
+  commissionAmount: z.number().int().positive().optional(),
+  commissionSplits: z.array(z.object({ therapistId: z.string().min(1), amount: z.number().int().positive() })).max(20).optional(),
   paymentKind: z.enum(['TOTAL', 'ABONO', 'SALDO']).default('TOTAL'),
   // Tipo de comprobante: consumo final (B02) o crédito fiscal (B01, exige RNC).
   ncfType: z.enum(['B02', 'B01']).default('B02'),
@@ -325,6 +329,32 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
   const amount = b.payments.reduce((s, p) => s + p.amount, 0);
   if (amount <= 0) return res.status(400).json({ error: 'El monto debe ser mayor que cero' });
   const dominant = [...b.payments].sort((x, y) => y.amount - x.amount)[0].method;
+
+  // Si recepción divide la comisión, la suma se controla aquí (y no solo en el
+  // navegador). La venta puede seguir teniendo un total cobrado distinto: en una
+  // venta sugerida de RD$15,000, por ejemplo, se puede comisionar únicamente la
+  // diferencia de RD$5,000.
+  const commissionSplits = b.commissionSplits?.filter((x) => x.amount > 0) ?? [];
+  if (commissionSplits.length > 0) {
+    if (!b.commissionAmount || b.commissionAmount <= 0) {
+      return res.status(400).json({ error: 'Especifica el monto comisionable antes de repartirlo' });
+    }
+    const ids = commissionSplits.map((x) => x.therapistId);
+    if (new Set(ids).size !== ids.length) {
+      return res.status(400).json({ error: 'Una esteticista no puede aparecer dos veces en el reparto' });
+    }
+    const repartido = commissionSplits.reduce((s, x) => s + x.amount, 0);
+    if (repartido !== b.commissionAmount) {
+      return res.status(400).json({ error: `La comisión repartida (RD$${repartido.toLocaleString('en-US')}) debe sumar el monto comisionable (RD$${b.commissionAmount.toLocaleString('en-US')})` });
+    }
+    const participantes = await prisma.user.findMany({
+      where: { id: { in: ids }, role: 'ESTETICISTA', active: true, ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}) },
+      select: { id: true },
+    });
+    if (participantes.length !== ids.length) {
+      return res.status(400).json({ error: 'Una o más esteticistas no están activas o no pertenecen a la sucursal del cobro' });
+    }
+  }
 
   // Si el pago aplica a un tratamiento, ajusta el saldo (abono/saldo descuentan lo pagado).
   let treatmentAfter: { balance: number; perSession: number; remaining: number } | null = null;
@@ -488,6 +518,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     const created = await tx.invoice.create({ data: {
       number, ncf, branchId, patientId: b.patientId ?? null, cashierId: req.staff!.sub,
       treatmentId: b.treatmentId ?? null, paymentKind: b.paymentKind,
+      // Las facturas con reparto quedan detalladas en InvoiceCommissionAllocation;
+      // therapistId se conserva para el flujo histórico de una sola esteticista.
+      therapistId: commissionSplits.length ? null : (b.therapistId ?? null),
       concept: b.concept, subtotal, itbis, total: amount, method: dominant,
       discount: descuento, discountReason: descuento > 0 ? (b.discountReason?.trim() || null) : null,
       ncfType: b.ncfType, itbisApplied: b.itbisApplied,
@@ -495,6 +528,9 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
       clientName: b.ncfType === 'B01' ? b.clientName!.trim() : null,
       payments: b.payments, status: 'PAGADA',
       items: { create: lineItems },
+      ...(commissionSplits.length ? {
+        commissionAllocations: { create: commissionSplits.map((x) => ({ therapistId: x.therapistId, amount: x.amount })) },
+      } : {}),
     }, include: invoiceInclude });
 
     if (!b.skipPlan && b.patientId && planSources.length) {
@@ -557,21 +593,29 @@ invoicesRouter.post('/', requireStaff, requireRole(...billers), branchScope, asy
     //  3) la de la ficha clínica.
     // Antes SOLO era (3): las fichas sin esteticista dejaban la venta sin atribuir
     // (≈65% del mes), por eso las que más venden aparecían con menos ventas.
-    let ventaTid: string | null = b.therapistId ?? null;
-    if (!ventaTid && charges.length) {
-      const creatorIds = [...new Set(charges.map((c) => c.createdById).filter((x): x is string => !!x))];
-      if (creatorIds.length) {
-        const creadores = await prisma.user.findMany({ where: { id: { in: creatorIds }, role: 'ESTETICISTA' }, select: { id: true } });
-        ventaTid = creadores[0]?.id ?? null;
+    if (commissionSplits.length) {
+      // En un reparto explícito no se vuelve a atribuir la factura a una sola
+      // esteticista por la ficha o por quien creó el cargo.
+      for (const split of commissionSplits) {
+        await awardSalePoints(split.therapistId, branchId, split.amount); // puntos por la parte comisionable
       }
-    }
-    if (!ventaTid) {
-      const cr = await prisma.clinicalRecord.findUnique({ where: { patientId: b.patientId }, select: { therapistId: true } });
-      ventaTid = cr?.therapistId ?? null;
-    }
-    if (ventaTid) {
-      await prisma.invoice.update({ where: { id: invoice.id }, data: { therapistId: ventaTid } });
-      await awardSalePoints(ventaTid, branchId, amount); // puntos automáticos (no rompe el cobro)
+    } else {
+      let ventaTid: string | null = b.therapistId ?? null;
+      if (!ventaTid && charges.length) {
+        const creatorIds = [...new Set(charges.map((c) => c.createdById).filter((x): x is string => !!x))];
+        if (creatorIds.length) {
+          const creadores = await prisma.user.findMany({ where: { id: { in: creatorIds }, role: 'ESTETICISTA' }, select: { id: true } });
+          ventaTid = creadores[0]?.id ?? null;
+        }
+      }
+      if (!ventaTid) {
+        const cr = await prisma.clinicalRecord.findUnique({ where: { patientId: b.patientId }, select: { therapistId: true } });
+        ventaTid = cr?.therapistId ?? null;
+      }
+      if (ventaTid) {
+        await prisma.invoice.update({ where: { id: invoice.id }, data: { therapistId: ventaTid } });
+        await awardSalePoints(ventaTid, branchId, amount); // puntos automáticos (no rompe el cobro)
+      }
     }
 
     // El paciente pagó: activa su ACCESO al portal (correo + teléfono) y se lo envía por

@@ -247,6 +247,8 @@ export interface Receipt {
   status?: string;
   /** Esteticista atribuida a la venta (comisión); editable por Admin desde el recibo. */
   therapistId?: string | null; therapistName?: string | null;
+  /** Reparto explícito de la parte comisionable entre varias esteticistas. */
+  commissionSplits?: { therapistId: string; therapistName: string; amount: number }[];
   /** Tras cobrar: enlace de WhatsApp con la CITA del paciente y su código
    *  (ya pagó, así que ahora sí se le puede entregar el código). */
   citaWhatsappUrl?: string | null;

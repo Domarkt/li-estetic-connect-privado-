@@ -87,6 +87,7 @@ export const invoiceInclude = {
   patient: true,
   items: true,
   therapist: { select: { name: true } },
+  commissionAllocations: { include: { therapist: { select: { name: true } } }, orderBy: { createdAt: 'asc' as const } },
 } satisfies Prisma.InvoiceInclude;
 
 /**
@@ -170,5 +171,6 @@ export function serializeReceipt(i: Prisma.InvoiceGetPayload<{ include: typeof i
     // Esteticista atribuida (para ver/corregir la comisión desde el recibo).
     therapistId: i.therapistId ?? null,
     therapistName: i.therapist?.name ?? null,
+    commissionSplits: i.commissionAllocations.map((x) => ({ therapistId: x.therapistId, therapistName: x.therapist.name, amount: x.amount })),
   };
 }

@@ -71,12 +71,21 @@ reportsRouter.get('/dashboard', requireStaff, async (req, res) => {
   // Meta por esteticista (solo Admin): ventas atribuidas del mes vs meta por asesor.
   let staffGoals: { name: string; branch: string; ventas: number; meta: number; pct: number }[] = [];
   if (isAdmin) {
-    const ventasPorTera = await prisma.invoice.groupBy({
-      by: ['therapistId'],
-      where: { status: 'PAGADA', issuedAt: { gte: monthStart }, therapistId: { not: null }, ...(scopeBranch ? { branchId: scopeBranch } : {}) },
-      _sum: { total: true },
-    });
-    const vmap = new Map(ventasPorTera.map((v) => [v.therapistId, v._sum.total ?? 0]));
+    const [ventasPorTera, ventasRepartidas] = await Promise.all([
+      prisma.invoice.groupBy({
+        by: ['therapistId'],
+        where: { status: 'PAGADA', issuedAt: { gte: monthStart }, therapistId: { not: null }, ...(scopeBranch ? { branchId: scopeBranch } : {}) },
+        _sum: { total: true },
+      }),
+      prisma.invoiceCommissionAllocation.groupBy({
+        by: ['therapistId'],
+        where: { invoice: { status: 'PAGADA', issuedAt: { gte: monthStart }, ...(scopeBranch ? { branchId: scopeBranch } : {}) } },
+        _sum: { amount: true },
+      }),
+    ]);
+    const vmap = new Map<string, number>();
+    for (const v of ventasPorTera) if (v.therapistId) vmap.set(v.therapistId, v._sum.total ?? 0);
+    for (const v of ventasRepartidas) vmap.set(v.therapistId, (vmap.get(v.therapistId) ?? 0) + (v._sum.amount ?? 0));
     const teras = await prisma.user.findMany({
       where: { role: 'ESTETICISTA', active: true, ...(scopeBranch ? { branchId: scopeBranch } : {}) },
       select: { id: true, name: true, branchId: true, branch: { select: { name: true } } },
@@ -416,6 +425,11 @@ reportsRouter.get('/staff-performance', async (req, res) => {
     FROM "Invoice" i
     WHERE i.status='PAGADA' AND i."therapistId" IS NOT NULL AND i."issuedAt" BETWEEN ${from} AND ${to} ${bfI}
     GROUP BY i."therapistId"`;
+  const ventasRepartidas = await prisma.$queryRaw<Array<{ tid: string; ventas: number; recibos: number }>>`
+    SELECT a."therapistId" tid, COALESCE(SUM(a.amount),0)::int ventas, COUNT(DISTINCT a."invoiceId")::int recibos
+    FROM "InvoiceCommissionAllocation" a JOIN "Invoice" i ON i.id=a."invoiceId"
+    WHERE i.status='PAGADA' AND i."issuedAt" BETWEEN ${from} AND ${to} ${scope ? Prisma.sql`AND i."branchId" = ${scope}` : Prisma.empty}
+    GROUP BY a."therapistId"`;
   const citas = await prisma.$queryRaw<Array<{ tid: string; atendidas: number; rating: number | null; avgMin: number | null }>>`
     SELECT a."therapistId" tid,
       COUNT(*) FILTER (WHERE a.status='COMPLETADA' OR a."serviceEndedAt" IS NOT NULL)::int atendidas,
@@ -424,9 +438,14 @@ reportsRouter.get('/staff-performance', async (req, res) => {
     FROM "Appointment" a
     WHERE a."therapistId" IS NOT NULL AND a."startsAt" BETWEEN ${from} AND ${to} ${bfA}
     GROUP BY a."therapistId"`;
-  const ids = [...new Set([...ventas.map((v) => v.tid), ...citas.map((c) => c.tid)])];
+  const ventasMap = new Map<string, { tid: string; ventas: number; recibos: number }>();
+  for (const v of [...ventas, ...ventasRepartidas]) {
+    const prev = ventasMap.get(v.tid);
+    ventasMap.set(v.tid, { tid: v.tid, ventas: (prev?.ventas ?? 0) + v.ventas, recibos: (prev?.recibos ?? 0) + v.recibos });
+  }
+  const ids = [...new Set([...ventasMap.keys(), ...citas.map((c) => c.tid)])];
   const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, branch: { select: { name: true } } } }) : [];
-  const vMap = new Map(ventas.map((v) => [v.tid, v]));
+  const vMap = ventasMap;
   const cMap = new Map(citas.map((c) => [c.tid, c]));
   const rows = users.map((u) => ({
     therapist: u.name, branch: u.branch?.name ?? '—',
